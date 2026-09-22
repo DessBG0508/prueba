@@ -1,0 +1,562 @@
+import { useMemo, useState, useEffect } from "react";
+import {
+  Activity,
+  ShieldCheck,
+  UsersRound,
+  CalendarPlus,
+  PhoneCall,
+  Search,
+  Calendar,
+  FileText,
+  Clock,
+  ShieldAlert,
+  LogOut,
+  AlertTriangle,
+  FolderOpen,
+  UserCheck,
+} from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { PageShell } from "@/components/layout/page-shell";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { NotificationsCenter } from "@/components/notifications/notifications-center";
+import { CaseDetailSheet } from "./case-detail-sheet";
+import { ScheduleSessionDialog } from "./schedule-session-dialog";
+import { ContactPatientDialog } from "./contact-patient-dialog";
+import { CrisisProtocolDialog } from "./crisis-protocol-dialog";
+import { PsychologistAgenda } from "./psychologist-agenda";
+import { ClinicalNotesFeed } from "./clinical-notes-feed";
+import { useAuth } from "@/lib/auth-context";
+import { getPsychologistCases, getCaseNotes } from "@/lib/psychologist-store";
+import type { CaseSummary, RiskLevel, CaseStatus } from "@/lib/types";
+
+const riskStyles: Record<
+  RiskLevel,
+  { label: string; dot: string; surface: string; border: string }
+> = {
+  rojo: {
+    label: "Riesgo alto",
+    dot: "bg-rose-500",
+    surface: "bg-rose-50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300",
+    border: "border-rose-200 dark:border-rose-900/60",
+  },
+  amarillo: {
+    label: "Seguimiento",
+    dot: "bg-amber-500",
+    surface: "bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300",
+    border: "border-amber-200 dark:border-amber-900/60",
+  },
+  verde: {
+    label: "Estable",
+    dot: "bg-emerald-500",
+    surface: "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300",
+    border: "border-emerald-200 dark:border-emerald-900/60",
+  },
+};
+
+const statusLabels: Record<CaseStatus, { label: string; surface: string }> = {
+  por_contactar: {
+    label: "Por contactar",
+    surface: "bg-amber-100 text-amber-800 border-amber-200",
+  },
+  en_seguimiento: {
+    label: "En seguimiento",
+    surface: "bg-indigo-100 text-indigo-800 border-indigo-200",
+  },
+  cita_programada: {
+    label: "Cita programada",
+    surface: "bg-teal/15 text-teal border-teal/30 font-semibold",
+  },
+  atendido: {
+    label: "Atendido / Estable",
+    surface: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  },
+};
+
+export function PsychologistDashboard() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState<"casos" | "agenda" | "bitacora">("casos");
+  const [activeRiskFilter, setActiveRiskFilter] = useState<RiskLevel | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const [cases, setCases] = useState<CaseSummary[]>(() => getPsychologistCases());
+
+  // Diálogos y Sheets interactivos
+  const [selectedCaseForDetail, setSelectedCaseForDetail] = useState<CaseSummary | null>(null);
+  const [scheduleDialogCase, setScheduleDialogCase] = useState<CaseSummary | null>(null);
+  const [contactDialogCase, setContactDialogCase] = useState<CaseSummary | null>(null);
+  const [crisisDialogCase, setCrisisDialogCase] = useState<CaseSummary | null>(null);
+
+  const refreshCases = () => {
+    setCases(getPsychologistCases());
+  };
+
+  useEffect(() => {
+    refreshCases();
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    toast.info("Has cerrado sesión como profesional.");
+    navigate({ to: "/login", replace: true });
+  };
+
+  const handleOpenCaseById = (caseId: string) => {
+    const found = cases.find((c) => c.id === caseId);
+    if (found) {
+      setSelectedCaseForDetail(found);
+      setActiveTab("casos");
+    }
+  };
+
+  // Filtrado y búsqueda de casos
+  const visibleCases = useMemo(() => {
+    return cases.filter((item) => {
+      const matchesRisk = activeRiskFilter === null || item.riskLevel === activeRiskFilter;
+      const query = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        query === "" ||
+        item.initials.toLowerCase().includes(query) ||
+        (item.studentName && item.studentName.toLowerCase().includes(query)) ||
+        (item.career && item.career.toLowerCase().includes(query)) ||
+        item.summary.toLowerCase().includes(query);
+
+      return matchesRisk && matchesSearch;
+    });
+  }, [cases, activeRiskFilter, searchQuery]);
+
+  const redCount = cases.filter((c) => c.riskLevel === "rojo").length;
+  const yellowCount = cases.filter((c) => c.riskLevel === "amarillo").length;
+  const greenCount = cases.filter((c) => c.riskLevel === "verde").length;
+  const scheduledCount = cases.filter((c) => c.status === "cita_programada").length;
+
+  return (
+    <PageShell showAppHeader={false} showBottomNav={false}>
+      {/* Header Institucional de Psicología */}
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-5 sm:py-7 border-b border-border/60">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-teal flex items-center gap-1.5">
+            <span className="inline-block size-2 rounded-full bg-teal animate-pulse" />
+            Servicio de Acompañamiento Psicológico TESH
+          </p>
+          <h1 className="mt-0.5 font-display text-2xl sm:text-3xl text-primary font-bold">
+            Panel Clínico y de Casos
+          </h1>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2.5">
+          {/* Centro de Notificaciones y Alertas Interactivo */}
+          <NotificationsCenter
+            role="psicologo"
+            onSelectCase={handleOpenCaseById}
+            onOpenAgenda={() => setActiveTab("agenda")}
+          />
+
+          {/* Menú de Usuario Psicólogo */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="rounded-full outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-accent"
+                aria-label="Menú de psicólogo"
+              >
+                <Avatar className="size-11 border-2 border-teal/40 shadow-soft">
+                  <AvatarFallback className="bg-primary font-semibold text-primary-foreground">
+                    {user?.name
+                      ?.split(" ")
+                      .map((w) => w[0])
+                      .slice(0, 2)
+                      .join("") || "MG"}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64 border-border bg-card">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {user?.name || "Dra. Marta Gómez"}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {user?.email || "dra.marta@tesh.mx"}
+                  </p>
+                  <Badge
+                    variant="outline"
+                    className="mt-1 w-fit bg-teal/10 text-teal border-teal/20 text-[10px] font-bold"
+                  >
+                    Psicóloga Clínica TESH
+                  </Badge>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive gap-2 text-xs"
+              >
+                <LogOut className="size-3.5" />
+                <span>Cerrar sesión</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      {/* Navegación por Pestañas */}
+      <main className="py-6 pb-16">
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => setActiveTab(val as "casos" | "agenda" | "bitacora")}
+          className="space-y-6"
+        >
+          <TabsList className="bg-muted/50 p-1 rounded-2xl border border-border/80 h-11 w-full max-w-lg">
+            <TabsTrigger
+              value="casos"
+              className="rounded-xl text-xs sm:text-sm font-semibold flex-1 gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
+              <ShieldCheck className="size-4 text-teal" />
+              <span>Casos y Alertas</span>
+              {redCount > 0 && (
+                <span className="ml-1 rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
+                  {redCount}
+                </span>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="agenda"
+              className="rounded-xl text-xs sm:text-sm font-semibold flex-1 gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
+              <Calendar className="size-4 text-accent" />
+              <span>Agenda de Citas</span>
+              {scheduledCount > 0 && (
+                <span className="ml-1 rounded-full bg-teal px-1.5 py-0.2 text-[10px] font-bold text-white">
+                  {scheduledCount}
+                </span>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="bitacora"
+              className="rounded-xl text-xs sm:text-sm font-semibold flex-1 gap-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
+              <FileText className="size-4 text-indigo-500" />
+              <span>Bitácora Clínica</span>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* TAB 1: CASOS Y ALERTAS */}
+          <TabsContent value="casos" className="space-y-6">
+            {/* Tarjetas de Métricas Rápidas y Filtros */}
+            <section
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+              aria-label="Filtros rápidos por riesgo"
+            >
+              <button
+                type="button"
+                onClick={() => setActiveRiskFilter((prev) => (prev === "rojo" ? null : "rojo"))}
+                className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
+                  activeRiskFilter === "rojo"
+                    ? "border-rose-400 bg-rose-50/70 dark:bg-rose-950/30 ring-2 ring-rose-400/20"
+                    : "border-border hover:border-rose-200"
+                }`}
+              >
+                <div>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
+                    <ShieldAlert className="size-3.5" />
+                    Riesgo Alto
+                  </span>
+                  <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                    {redCount}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Atención prioritaria</p>
+                </div>
+                <div className="size-2.5 rounded-full bg-rose-500 self-start animate-ping" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveRiskFilter((prev) => (prev === "amarillo" ? null : "amarillo"))
+                }
+                className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
+                  activeRiskFilter === "amarillo"
+                    ? "border-amber-400 bg-amber-50/70 dark:bg-amber-950/30 ring-2 ring-amber-400/20"
+                    : "border-border hover:border-amber-200"
+                }`}
+              >
+                <div>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                    <Activity className="size-3.5" />
+                    Seguimiento
+                  </span>
+                  <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                    {yellowCount}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Monitoreo activo</p>
+                </div>
+                <div className="size-2.5 rounded-full bg-amber-500 self-start" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveRiskFilter((prev) => (prev === "verde" ? null : "verde"))}
+                className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
+                  activeRiskFilter === "verde"
+                    ? "border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 ring-2 ring-emerald-400/20"
+                    : "border-border hover:border-emerald-200"
+                }`}
+              >
+                <div>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    <UsersRound className="size-3.5" />
+                    Estables
+                  </span>
+                  <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                    {greenCount}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Sin alertas críticas</p>
+                </div>
+                <div className="size-2.5 rounded-full bg-emerald-500 self-start" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("agenda")}
+                className="ethereal-card p-4 rounded-2xl border border-border hover:border-teal/50 transition-all text-left flex items-center justify-between"
+              >
+                <div>
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-teal">
+                    <Calendar className="size-3.5" />
+                    Citas Activas
+                  </span>
+                  <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                    {scheduledCount}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">En agenda clínica</p>
+                </div>
+                <CalendarPlus className="size-4 text-teal self-start" />
+              </button>
+            </section>
+
+            {/* Barra de Filtros y Búsqueda */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar por iniciales, nombre, carrera o síntoma..."
+                  className="pl-9 rounded-xl border-border bg-card text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground font-semibold">
+                  Mostrando {visibleCases.length} de {cases.length} casos
+                </span>
+                {activeRiskFilter && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setActiveRiskFilter(null)}
+                    className="h-7 text-xs text-accent px-2"
+                  >
+                    Restablecer filtro
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Lista de Tarjetas de Pacientes */}
+            <div className="grid gap-4 md:grid-cols-2">
+              {visibleCases.length === 0 ? (
+                <div className="col-span-2 p-12 text-center rounded-2xl border border-dashed border-border bg-card/40">
+                  <p className="text-sm font-semibold text-foreground">No se encontraron casos</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Prueba modificando la búsqueda o el filtro de nivel de riesgo.
+                  </p>
+                </div>
+              ) : (
+                visibleCases.map((item) => {
+                  const style = riskStyles[item.riskLevel];
+                  const statusInfo = statusLabels[item.status || "por_contactar"];
+
+                  return (
+                    <article
+                      key={item.id}
+                      className={`ethereal-card p-5 rounded-2xl border ${style.border} flex flex-col justify-between space-y-4 hover:shadow-soft transition-all`}
+                    >
+                      <div>
+                        {/* Cabecera de la tarjeta */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-lavender-soft font-bold text-primary text-base">
+                              {item.initials}
+                            </div>
+                            <div>
+                              <h3 className="text-base font-bold text-foreground leading-tight">
+                                {item.studentName || `Estudiante ${item.initials}`}
+                              </h3>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {item.career} {item.semester ? `• ${item.semester}` : ""}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <Badge
+                              variant="outline"
+                              className={`${style.surface} text-xs font-bold`}
+                            >
+                              <span className={`mr-1.5 size-2 rounded-full ${style.dot}`} />
+                              {style.label}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={`${statusInfo.surface} text-[10px] font-medium`}
+                            >
+                              {statusInfo.label}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Reporte clínico / Resumen */}
+                        <p className="mt-3.5 text-xs text-foreground font-medium leading-relaxed line-clamp-2 bg-muted/20 p-2.5 rounded-xl border border-border/40">
+                          {item.summary}
+                        </p>
+
+                        {/* Puntajes de tamizaje e info de contacto */}
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary">
+                              PHQ-9: {item.phq9}/27
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary">
+                              GAD-7: {item.gad7}/21
+                            </span>
+                          </div>
+
+                          <span className="text-[11px] flex items-center gap-1 font-medium text-muted-foreground">
+                            <Clock className="size-3 text-teal" />
+                            {item.lastCheckIn}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Botones de Acción Inmediata */}
+                      <div className="pt-2 border-t border-border/60 grid grid-cols-3 gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => setScheduleDialogCase(item)}
+                          className="rounded-xl bg-teal hover:bg-teal/90 text-white text-xs h-8 gap-1 font-semibold"
+                        >
+                          <CalendarPlus className="size-3.5" />
+                          <span className="truncate">Agendar</span>
+                        </Button>
+
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setContactDialogCase(item)}
+                          className="rounded-xl border-accent text-accent hover:bg-accent/10 text-xs h-8 gap-1 font-semibold"
+                        >
+                          <PhoneCall className="size-3.5" />
+                          <span className="truncate">Contactar</span>
+                        </Button>
+
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedCaseForDetail(item)}
+                          className="rounded-xl text-xs h-8 gap-1 text-foreground hover:bg-card font-semibold"
+                        >
+                          <FolderOpen className="size-3.5 text-primary" />
+                          <span className="truncate">Expediente</span>
+                        </Button>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </TabsContent>
+
+          {/* TAB 2: AGENDA DE CITAS */}
+          <TabsContent value="agenda">
+            <PsychologistAgenda
+              onScheduleNew={() => {
+                // Abre modal para agendar con el primer caso prioritario o seleccionado
+                setScheduleDialogCase(cases[0] || null);
+              }}
+            />
+          </TabsContent>
+
+          {/* TAB 3: BITÁCORA CLÍNICA */}
+          <TabsContent value="bitacora">
+            <ClinicalNotesFeed onSelectCase={handleOpenCaseById} />
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Diálogo de Agendar Sesión */}
+      <ScheduleSessionDialog
+        caseItem={scheduleDialogCase}
+        isOpen={scheduleDialogCase !== null}
+        onOpenChange={(open) => {
+          if (!open) setScheduleDialogCase(null);
+        }}
+        onSuccess={refreshCases}
+      />
+
+      {/* Diálogo de Registrar Contacto */}
+      <ContactPatientDialog
+        caseItem={contactDialogCase}
+        isOpen={contactDialogCase !== null}
+        onOpenChange={(open) => {
+          if (!open) setContactDialogCase(null);
+        }}
+        onSuccess={refreshCases}
+      />
+
+      {/* Diálogo de Protocolo de Emergencia / Crisis */}
+      <CrisisProtocolDialog
+        caseItem={crisisDialogCase}
+        isOpen={crisisDialogCase !== null}
+        onOpenChange={(open) => {
+          if (!open) setCrisisDialogCase(null);
+        }}
+        onSuccess={refreshCases}
+      />
+
+      {/* Sheet de Expediente Detallado */}
+      <CaseDetailSheet
+        item={selectedCaseForDetail}
+        isOpen={selectedCaseForDetail !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedCaseForDetail(null);
+        }}
+        onSchedule={(caseItem) => setScheduleDialogCase(caseItem)}
+        onContact={(caseItem) => setContactDialogCase(caseItem)}
+        onCrisis={(caseItem) => setCrisisDialogCase(caseItem)}
+        onCaseUpdated={refreshCases}
+      />
+    </PageShell>
+  );
+}
