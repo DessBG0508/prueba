@@ -7,6 +7,7 @@ import estrellaFeliz from "@/assets/moods/estrella-feliz.png.asset.json";
 import nubeLigera from "@/assets/moods/nube-ligera.png.asset.json";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
+import { BreathingSphereView } from "@/components/effects/breathing-sphere-view";
 import type { CrisisResource, RiskLevel } from "@/lib/types";
 
 const ALERT_LEVEL: RiskLevel = "rojo";
@@ -166,9 +167,7 @@ export function AlertaPage() {
           aria-labelledby="breathing-title"
         >
           <div className="flex min-h-56 items-center justify-center" aria-hidden="true">
-            <div className="breathing-orb grid size-36 place-items-center rounded-full bg-cyan-soft shadow-soft ring-8 ring-card/70 sm:size-40">
-              <div className="breathing-orb-core size-20 rounded-full bg-teal/55" />
-            </div>
+            <BreathingSphereView />
           </div>
           <div>
             <div className="mb-3 flex items-center gap-2 text-teal">

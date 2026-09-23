@@ -21,6 +21,29 @@ import { PageShell } from "@/components/layout/page-shell";
 import { moods, wellbeingStats } from "@/lib/mock-data";
 import type { MoodId } from "@/lib/types";
 
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.06, // 60ms stagger between cards
+      delayChildren: 0.04,
+    },
+  },
+};
+
+const staggerCard = {
+  hidden: { opacity: 0, y: 14 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.35,
+      ease: [0.25, 1, 0.5, 1],
+    },
+  },
+};
+
 const quickActions = [
   { title: "Check-in emocional", detail: "Tómate 2 min", icon: HeartPulse, tone: "bg-mint-soft" },
   {
@@ -37,6 +60,7 @@ const statIcons = [Brain, BedDouble, CircleGauge, BatteryMedium];
 export function HomePage() {
   const navigate = useNavigate();
   const [selectedMood, setSelectedMood] = useState<MoodId>("regular");
+  const shouldReduceMotion = useReducedMotion();
 
   return (
     <PageShell>
@@ -44,17 +68,23 @@ export function HomePage() {
         <section className="mb-7 max-w-2xl animate-fade-in sm:mb-9">
           <p className="mb-1 text-sm font-semibold text-accent">Sábado, 19 de septiembre</p>
           <h1 className="font-display text-4xl leading-tight text-primary sm:text-5xl">
-            Hola, Dess <span aria-hidden>✨</span>
+            Hola, Dess
           </h1>
           <p className="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             Qué bueno verte por aquí. Siempre es un buen momento para cuidar de ti.
           </p>
         </section>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)] lg:gap-7">
+        <motion.div
+          variants={shouldReduceMotion ? undefined : staggerContainer}
+          initial={shouldReduceMotion ? undefined : "hidden"}
+          animate="visible"
+          className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)] lg:gap-7"
+        >
           <div className="space-y-5 lg:space-y-7">
             {/* Tarjeta destacada de Eli — Asistente de apoyo emocional */}
-            <section
+            <motion.section
+              variants={shouldReduceMotion ? undefined : staggerCard}
               className="ethereal-card overflow-hidden p-5 sm:p-6 border-accent/30 bg-gradient-to-r from-card via-card to-lavender-soft/40 shadow-soft"
               aria-label="Asistente Eli"
             >
@@ -86,9 +116,13 @@ export function HomePage() {
                   </Link>
                 </Button>
               </div>
-            </section>
+            </motion.section>
 
-            <section className="ethereal-card p-5 sm:p-7" aria-labelledby="mood-title">
+            <motion.section
+              variants={shouldReduceMotion ? undefined : staggerCard}
+              className="ethereal-card p-5 sm:p-7"
+              aria-labelledby="mood-title"
+            >
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                   <p className="mb-1 text-xs font-bold uppercase text-teal">Pausa contigo</p>
@@ -128,116 +162,129 @@ export function HomePage() {
                   );
                 })}
               </div>
-            </section>
+            </motion.section>
 
-            <section aria-labelledby="quick-title">
+            <motion.section
+              variants={shouldReduceMotion ? undefined : staggerCard}
+              aria-labelledby="quick-title"
+            >
               <h2 id="quick-title" className="mb-4 font-display text-2xl text-primary">
                 Para cuidar de ti
               </h2>
               <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {quickActions.map(({ title, detail, icon: Icon, tone }) =>
                   title === "Check-in emocional" ? (
-                    <Button
-                      key={title}
-                      asChild
-                      variant="outline"
-                      className="ethereal-card group h-auto min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
-                    >
-                      <Link to="/checkin">
-                        <span
-                          className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
-                        >
-                          <Icon />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
-                            {title}
-                          </span>
-                          <span className="mt-1 block text-xs font-medium text-muted-foreground">
-                            {detail}
-                          </span>
-                        </span>
-                      </Link>
-                    </Button>
-                  ) : title === "Ejercicios de respiración" || title === "Recursos" ? (
-                    <Button
-                      key={title}
-                      asChild
-                      variant="outline"
-                      className="ethereal-card group h-auto min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
-                    >
-                      <Link to="/recursos">
-                        <span
-                          className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
-                        >
-                          <Icon />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
-                            {title}
-                          </span>
-                          <span className="mt-1 block text-xs font-medium text-muted-foreground">
-                            {detail}
-                          </span>
-                        </span>
-                      </Link>
-                    </Button>
-                  ) : title === "Mis citas" ? (
-                    <Button
-                      key={title}
-                      asChild
-                      variant="outline"
-                      className="ethereal-card group h-auto min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
-                    >
-                      <Link to="/citas">
-                        <span
-                          className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
-                        >
-                          <Icon />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
-                            {title}
-                          </span>
-                          <span className="mt-1 block text-xs font-medium text-muted-foreground">
-                            {detail}
-                          </span>
-                        </span>
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button
-                      key={title}
-                      type="button"
-                      variant="outline"
-                      onClick={() => toast("Próximamente")}
-                      className="ethereal-card group h-auto min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
-                    >
-                      <span
-                        className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
+                    <TiltCard key={title} className="h-full">
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="ethereal-card group h-full w-full min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
                       >
-                        <Icon />
-                      </span>
-                      <span>
-                        <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
-                          {title}
+                        <Link to="/checkin">
+                          <span
+                            className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
+                          >
+                            <Icon />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
+                              {title}
+                            </span>
+                            <span className="mt-1 block text-xs font-medium text-muted-foreground">
+                              {detail}
+                            </span>
+                          </span>
+                        </Link>
+                      </Button>
+                    </TiltCard>
+                  ) : title === "Ejercicios de respiración" || title === "Recursos" ? (
+                    <TiltCard key={title} className="h-full">
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="ethereal-card group h-full w-full min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
+                      >
+                        <Link to="/recursos">
+                          <span
+                            className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
+                          >
+                            <Icon />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
+                              {title}
+                            </span>
+                            <span className="mt-1 block text-xs font-medium text-muted-foreground">
+                              {detail}
+                            </span>
+                          </span>
+                        </Link>
+                      </Button>
+                    </TiltCard>
+                  ) : title === "Mis citas" ? (
+                    <TiltCard key={title} className="h-full">
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="ethereal-card group h-full w-full min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
+                      >
+                        <Link to="/citas">
+                          <span
+                            className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
+                          >
+                            <Icon />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
+                              {title}
+                            </span>
+                            <span className="mt-1 block text-xs font-medium text-muted-foreground">
+                              {detail}
+                            </span>
+                          </span>
+                        </Link>
+                      </Button>
+                    </TiltCard>
+                  ) : (
+                    <TiltCard key={title} className="h-full">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => toast("Próximamente")}
+                        className="ethereal-card group h-full w-full min-h-36 flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5"
+                      >
+                        <span
+                          className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
+                        >
+                          <Icon />
                         </span>
-                        <span className="mt-1 block text-xs font-medium text-muted-foreground">
-                          {detail}
+                        <span>
+                          <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
+                            {title}
+                          </span>
+                          <span className="mt-1 block text-xs font-medium text-muted-foreground">
+                            {detail}
+                          </span>
                         </span>
-                      </span>
-                    </Button>
+                      </Button>
+                    </TiltCard>
                   ),
                 )}
               </div>
-            </section>
+            </motion.section>
 
-            <LiquidButton onClick={() => navigate({ to: "/citas" })}>
-              Agendar cita con psicólogo
-            </LiquidButton>
+            <motion.div variants={shouldReduceMotion ? undefined : staggerCard}>
+              <LiquidButton onClick={() => navigate({ to: "/citas" })}>
+                Agendar cita con psicólogo
+              </LiquidButton>
+            </motion.div>
           </div>
 
-          <section className="ethereal-card h-fit p-5 sm:p-7" aria-labelledby="stats-title">
+          <motion.section
+            variants={shouldReduceMotion ? undefined : staggerCard}
+            className="ethereal-card h-fit p-5 sm:p-7"
+            aria-labelledby="stats-title"
+          >
             <div className="mb-6 flex items-end justify-between gap-4">
               <div>
                 <p className="mb-1 text-xs font-bold uppercase text-teal">Últimos 7 días</p>
@@ -281,8 +328,8 @@ export function HomePage() {
             <p className="mt-5 rounded-2xl bg-mint-soft px-4 py-3 text-sm leading-relaxed text-primary/80">
               Tus días no tienen que ser perfectos para contar. Cada pausa también es un avance.
             </p>
-          </section>
-        </div>
+          </motion.section>
+        </motion.div>
       </main>
     </PageShell>
   );

@@ -6,6 +6,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { SelectableChip } from "@/components/ui/selectable-chip";
 import { saveCheckIn, triggerRedAlert } from "@/lib/api-client";
+import { recordCheckInSuccess } from "@/lib/streak-store";
 import { DEMO_MODE } from "@/lib/mock-data";
 import type { CheckIn, RiskLevel } from "@/lib/types";
 
@@ -55,6 +56,7 @@ export function CheckInPage() {
 
     try {
       const savedCheckIn = await saveCheckIn(checkIn);
+      recordCheckInSuccess();
       const shouldOfferSupport = DEMO_MODE && riskLevel === "rojo";
       if (shouldOfferSupport) {
         await triggerRedAlert(savedCheckIn.id);

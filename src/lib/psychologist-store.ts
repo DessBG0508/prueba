@@ -169,7 +169,16 @@ export function updateCaseStatus(caseId: string, status: CaseStatus): CaseSummar
 export function getAllClinicalNotes(): ClinicalNote[] {
   try {
     const stored = localStorage.getItem(NOTES_STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      const parsed: ClinicalNote[] = JSON.parse(stored);
+      return parsed.filter(
+        (n) =>
+          !n.content.toLowerCase().includes("zpojz") &&
+          !n.title.toLowerCase().includes("zpojz") &&
+          !n.content.toLowerCase().includes("equilibra-tesh-tu-bienestar") &&
+          !n.title.toLowerCase().includes("equilibra-tesh-tu-bienestar"),
+      );
+    }
   } catch (e) {
     console.error("Error al leer notas clínicas", e);
   }
@@ -261,6 +270,107 @@ export function recordPatientContact(
   });
 }
 
+export function getStoredAppointments(): Appointment[] {
+  try {
+    const raw = localStorage.getItem(APPOINTMENTS_STORAGE_KEY);
+    if (raw) {
+      const parsed: Appointment[] = JSON.parse(raw);
+      // Ensure studentName fallback if missing
+      return parsed.map((apt, idx) => {
+        if (!apt.studentName) {
+          const matchingMock = mockAppointments.find((m) => m.id === apt.id);
+          const fallbackNames = [
+            "Mireya González",
+            "Luis Ramírez",
+            "Carlos Paredes",
+            "Andrea Valdés",
+            "Jimena Soto",
+          ];
+          return {
+            ...apt,
+            studentName: matchingMock?.studentName || fallbackNames[idx % fallbackNames.length],
+          };
+        }
+        return apt;
+      });
+    }
+  } catch (e) {
+    console.error("Error al leer citas", e);
+  }
+  return mockAppointments;
+}
+
+export function saveStoredAppointments(appointments: Appointment[]): void {
+  try {
+    localStorage.setItem(APPOINTMENTS_STORAGE_KEY, JSON.stringify(appointments));
+  } catch (e) {
+    console.error("Error al guardar citas", e);
+  }
+}
+
+export function completeAppointment(appointmentId: string): {
+  appointments: Appointment[];
+  completedAppointment: Appointment | null;
+  clinicalNote: ClinicalNote | null;
+} {
+  const current = getStoredAppointments();
+  const target = current.find((a) => a.id === appointmentId);
+  if (!target) {
+    return { appointments: current, completedAppointment: null, clinicalNote: null };
+  }
+
+  const updatedTarget: Appointment = {
+    ...target,
+    status: "realizada",
+  };
+
+  const updatedAppointments = current.map((a) => (a.id === appointmentId ? updatedTarget : a));
+  saveStoredAppointments(updatedAppointments);
+
+  // Determinar caso asociado
+  const allCases = getPsychologistCases();
+  let caseId = target.caseId;
+  if (!caseId && target.studentName) {
+    const foundCase = allCases.find(
+      (c) => c.studentName?.toLowerCase() === target.studentName?.toLowerCase(),
+    );
+    if (foundCase) caseId = foundCase.id;
+  }
+  if (!caseId) {
+    caseId = allCases[0]?.id || "case-mg";
+  }
+
+  // Registrar nota clínica automática bajo la categoría "sesion" (Sesión Clínica)
+  const patientName = target.studentName || "Paciente";
+  const note = addClinicalNote({
+    caseId,
+    author: target.psychologistName || "Dra. Marta Gómez",
+    title: `Sesión clínica completada — ${patientName}`,
+    category: "sesion",
+    content: `Sesión de acompañamiento completada satisfactoriamente con ${patientName}.\nFecha: ${target.date} | Horario: ${target.timeSlot}\nModalidad: ${
+      target.modality === "presencial" ? "Presencial (Consultorio 3)" : "En línea (Google Meet)"
+    }\nObservaciones: ${target.notes || "Sesión realizada según plan de intervención."}`,
+  });
+
+  // Actualizar caso a atendido o en seguimiento
+  updateCaseStatus(caseId, "atendido");
+
+  return {
+    appointments: updatedAppointments,
+    completedAppointment: updatedTarget,
+    clinicalNote: note,
+  };
+}
+
+export function cancelAppointment(appointmentId: string): Appointment[] {
+  const current = getStoredAppointments();
+  const updatedAppointments = current.map((a) =>
+    a.id === appointmentId ? { ...a, status: "cancelada" as const } : a,
+  );
+  saveStoredAppointments(updatedAppointments);
+  return updatedAppointments;
+}
+
 export function scheduleSessionFromPsychologist(data: {
   caseId: string;
   studentInitials: string;
@@ -272,13 +382,7 @@ export function scheduleSessionFromPsychologist(data: {
   sessionTopic: string;
   notes?: string;
 }): Appointment {
-  let appointments: Appointment[] = [];
-  try {
-    const raw = localStorage.getItem(APPOINTMENTS_STORAGE_KEY);
-    appointments = raw ? JSON.parse(raw) : mockAppointments;
-  } catch {
-    appointments = mockAppointments;
-  }
+  const appointments = getStoredAppointments();
 
   const locationOrLink =
     data.modality === "presencial"
@@ -287,6 +391,8 @@ export function scheduleSessionFromPsychologist(data: {
 
   const newAppointment: Appointment = {
     id: `apt-${Date.now()}`,
+    studentName: data.studentName,
+    caseId: data.caseId,
     date: data.date,
     timeSlot: data.timeSlot,
     modality: data.modality,
@@ -299,11 +405,7 @@ export function scheduleSessionFromPsychologist(data: {
   };
 
   const updatedAppointments = [newAppointment, ...appointments];
-  try {
-    localStorage.setItem(APPOINTMENTS_STORAGE_KEY, JSON.stringify(updatedAppointments));
-  } catch (e) {
-    console.error("Error al guardar cita en agenda", e);
-  }
+  saveStoredAppointments(updatedAppointments);
 
   // Actualizar estado del caso
   updateCaseStatus(data.caseId, "cita_programada");
@@ -351,7 +453,7 @@ export function activateCrisisProtocol(
   addClinicalNote({
     caseId,
     author,
-    title: "🚨 Protocolo de Emergencia / Riesgo Alto Activado",
+    title: "Protocolo de Emergencia / Riesgo Alto Activado",
     category: "emergencia",
     content: `Se activó protocolo de atención inmediata para el caso ${initials}.\nDetalles: ${details}\nAcciones inmediatas: Canalización a Línea de la Vida (800 911 2000), alerta preventiva a Coordinación de Tutorías y Servicio Médico TESH.`,
   });
@@ -361,7 +463,7 @@ export function activateCrisisProtocol(
   addSystemNotification({
     recipientRole: "psicologo",
     type: "alerta_roja",
-    title: `🚨 Protocolo Activado — Caso ${initials}`,
+    title: `Protocolo Activado — Caso ${initials}`,
     message: `Se registró activación de protocolo de emergencia para ${initials}. Revisa el expediente para seguimiento continuo.`,
     priority: "alta",
     caseId,

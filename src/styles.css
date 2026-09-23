@@ -28,7 +28,8 @@
 
 @theme inline {
   --font-sans: "Montserrat", ui-sans-serif, sans-serif;
-  --font-display: "Milesdane", "Playfair Display", ui-serif, serif;
+  --font-display: "Playfair Display", "Milesdane", ui-serif, serif;
+  --font-serif: "Playfair Display", ui-serif, serif;
   --font-numeric: "Playfair Display", ui-serif, serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -176,16 +177,7 @@
     min-width: 320px;
   }
 
-  button,
-  a {
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  /* Micro-feedback global: escala 0.98 al presionar en todos los botones */
-  button:not(:disabled):active,
-  [role="button"]:not([aria-disabled="true"]):active {
-    transform: scale(0.98);
-  }
+  button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 @utility ethereal-card {
@@ -194,13 +186,19 @@
   background: color-mix(in oklab, var(--card) 88%, transparent);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px);
-  transition:
-    transform 250ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 250ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 250ms cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: transform;
   &:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-float);
   }
+}
+
+/* Pressed micro-feedback on buttons: pressed escala 0.98 */
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(0.98);
+  transition: transform 120ms ease;
 }
 
 .aurora-shell {
@@ -211,286 +209,125 @@
   background: var(--background);
 }
 
-/* Aurora viva: contenedor de los 3 blobs de gradiente */
-.aurora-blobs-container {
+.aurora-blobs {
   position: fixed;
-  inset: -15%;
+  inset: 0;
   z-index: -2;
   pointer-events: none;
   overflow: hidden;
-  filter: blur(65px);
-  will-change: transform;
 }
 
 .aurora-blob {
   position: absolute;
   border-radius: 9999px;
-  will-change: transform, opacity;
+  filter: blur(95px);
+  will-change: transform;
   pointer-events: none;
 }
 
-/* Blob 1: Tono secundaria institucional / lavanda suave (#6857E4 / var(--secondary)) */
+/* Blob 1: Lila (#6857E4 / secondary) - 25s loop */
 .aurora-blob-1 {
-  width: 50vw;
-  height: 50vw;
-  min-width: 320px;
-  min-height: 320px;
-  left: 2%;
-  top: 4%;
-  background: radial-gradient(
-    circle at center,
-    color-mix(in oklab, var(--secondary) 46%, transparent) 0%,
-    transparent 72%
-  );
-  opacity: 0.44;
-  animation: aurora-drift-1 24s ease-in-out infinite alternate;
+  top: -10%;
+  left: 10%;
+  width: 38rem;
+  height: 38rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--secondary) 65%, transparent), transparent 70%);
+  opacity: 0.32;
+  animation: aurora-blob-1 25s ease-in-out infinite alternate;
 }
 
-/* Blob 2: Tono verde suave / menta (#87FFBD / var(--green-soft)) */
+/* Blob 2: Menta / Verde (#87FFBD / green-soft) - 29s loop */
 .aurora-blob-2 {
-  width: 54vw;
-  height: 54vw;
-  min-width: 340px;
-  min-height: 340px;
-  right: 0%;
-  top: 8%;
-  background: radial-gradient(
-    circle at center,
-    color-mix(in oklab, var(--green-soft) 68%, transparent) 0%,
-    transparent 74%
-  );
-  opacity: 0.38;
-  animation: aurora-drift-2 28s ease-in-out infinite alternate;
+  top: 25%;
+  right: -8%;
+  width: 34rem;
+  height: 34rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--green-soft) 85%, transparent), transparent 70%);
+  opacity: 0.28;
+  animation: aurora-blob-2 29s ease-in-out infinite alternate;
 }
 
-/* Blob 3: Tono cian / teal institucional (var(--cyan) / var(--teal)) */
+/* Blob 3: Cyan (#00BCC8 / cyan) - 22s loop */
 .aurora-blob-3 {
-  width: 58vw;
-  height: 58vw;
-  min-width: 360px;
-  min-height: 360px;
-  left: 20%;
-  bottom: 2%;
-  background: radial-gradient(
-    circle at center,
-    color-mix(in oklab, var(--cyan) 32%, transparent) 0%,
-    transparent 75%
-  );
-  opacity: 0.36;
-  animation: aurora-drift-3 26s ease-in-out infinite alternate;
+  bottom: -10%;
+  left: 25%;
+  width: 36rem;
+  height: 36rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--cyan) 45%, transparent), transparent 70%);
+  opacity: 0.26;
+  animation: aurora-blob-3 22s ease-in-out infinite alternate;
 }
 
-.grain-layer {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.22;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E");
-}
-.mood-circle {
-  display: grid;
-  width: 3.25rem;
-  height: 3.25rem;
-  place-items: center;
-  border-radius: 999px;
-  color: var(--primary);
-  transition: box-shadow 250ms ease;
-}
-.mood-illustration {
-  width: 88%;
-  height: 88%;
-  object-fit: contain;
-  filter: drop-shadow(0 3px 5px color-mix(in oklab, var(--primary) 12%, transparent));
-}
-.mood-teal {
-  background: color-mix(in oklab, var(--teal) 65%, white);
-}
-.mood-cyan {
-  background: color-mix(in oklab, var(--cyan) 55%, white);
-}
-.mood-mint {
-  background: var(--green-soft);
-}
-.mood-lavender {
-  background: var(--secondary);
-}
-.mood-deep {
-  background: color-mix(in oklab, var(--primary) 82%, white);
-  color: var(--primary-foreground);
-}
-
-/* Botón Líquido: Brillo radial + onda expansiva */
-.liquid-sheen {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: radial-gradient(
-    circle 8rem at var(--liquid-x) var(--liquid-y),
-    color-mix(in oklab, var(--cyan) 65%, transparent),
-    transparent 70%
-  );
-  opacity: 0;
-  transition: opacity 300ms ease;
-}
-
+.grain-layer { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .22; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E"); }
+.mood-circle { display: grid; width: 3.25rem; height: 3.25rem; place-items: center; border-radius: 999px; color: var(--primary); transition: box-shadow 250ms ease; }
+.mood-illustration { width: 88%; height: 88%; object-fit: contain; filter: drop-shadow(0 3px 5px color-mix(in oklab, var(--primary) 12%, transparent)); }
+.mood-teal { background: color-mix(in oklab, var(--teal) 65%, white); }
+.mood-cyan { background: color-mix(in oklab, var(--cyan) 55%, white); }
+.mood-mint { background: var(--green-soft); }
+.mood-lavender { background: var(--secondary); }
+.mood-deep { background: color-mix(in oklab, var(--primary) 82%, white); color: var(--primary-foreground); }
+.liquid-button::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle 7.5rem at var(--liquid-x) var(--liquid-y), color-mix(in oklab, var(--cyan) 75%, transparent), transparent 72%); opacity: 0; transition: opacity 300ms ease; }
 @media (hover: hover) and (pointer: fine) {
-  .liquid-button:hover .liquid-sheen {
-    opacity: 1;
-  }
+  .liquid-button:hover::before { opacity: 1; }
+}
+.liquid-glow { position: absolute; inset: 1px; border-radius: inherit; border: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent); pointer-events: none; }
+.breathing-orb { animation: breathing-478 19s ease-in-out infinite; }
+.breathing-orb-core { animation: breathing-478-opacity 19s ease-in-out infinite; }
+
+@keyframes aurora-blob-1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(10%, 15%, 0) scale(1.06); }
+  100% { transform: translate3d(-8%, 20%, 0) scale(0.95); }
 }
 
-.liquid-glow {
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  border: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
-  pointer-events: none;
+@keyframes aurora-blob-2 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-12%, 10%, 0) scale(1.1); }
+  100% { transform: translate3d(-18%, -8%, 0) scale(0.96); }
 }
 
-.liquid-ripple {
-  pointer-events: none;
-  position: absolute;
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle,
-    color-mix(in oklab, var(--primary-foreground) 42%, transparent) 0%,
-    transparent 72%
-  );
-  animation: liquid-wave 550ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  will-change: transform, opacity;
-}
-
-@keyframes liquid-wave {
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0.6;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0;
-  }
-}
-
-.breathing-orb {
-  animation: breathing-478 19s ease-in-out infinite;
-}
-.breathing-orb-core {
-  animation: breathing-478-opacity 19s ease-in-out infinite;
-}
-
-/* Keyframes de los 3 blobs de la aurora (solo transform y opacity, bucle 20-30s) */
-@keyframes aurora-drift-1 {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.44;
-  }
-  50% {
-    transform: translate3d(8vw, 10vh, 0) scale(1.08);
-    opacity: 0.54;
-  }
-  100% {
-    transform: translate3d(-5vw, 6vh, 0) scale(0.95);
-    opacity: 0.42;
-  }
-}
-
-@keyframes aurora-drift-2 {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.38;
-  }
-  50% {
-    transform: translate3d(-10vw, 8vh, 0) scale(1.12);
-    opacity: 0.5;
-  }
-  100% {
-    transform: translate3d(-4vw, -7vh, 0) scale(0.92);
-    opacity: 0.36;
-  }
-}
-
-@keyframes aurora-drift-3 {
-  0% {
-    transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.36;
-  }
-  50% {
-    transform: translate3d(7vw, -9vh, 0) scale(1.06);
-    opacity: 0.46;
-  }
-  100% {
-    transform: translate3d(-8vw, -4vh, 0) scale(0.96);
-    opacity: 0.34;
-  }
+@keyframes aurora-blob-3 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(14%, -12%, 0) scale(1.08); }
+  100% { transform: translate3d(5%, -18%, 0) scale(0.94); }
 }
 
 @keyframes breathing-478 {
-  0% {
-    transform: scale(0.82);
-  }
-  21.0526%,
-  57.8947% {
-    transform: scale(1.16);
-  }
-  100% {
-    transform: scale(0.82);
-  }
+  0% { transform: scale(.82); }
+  21.0526%, 57.8947% { transform: scale(1.16); }
+  100% { transform: scale(.82); }
 }
 @keyframes breathing-478-opacity {
+  0% { opacity: .45; }
+  21.0526%, 57.8947% { opacity: .85; }
+  100% { opacity: .45; }
+}
+
+@keyframes liquid-ripple {
   0% {
+    transform: translate(-50%, -50%) scale(0);
     opacity: 0.45;
-  }
-  21.0526%,
-  57.8947% {
-    opacity: 0.85;
   }
   100% {
-    opacity: 0.45;
+    transform: translate(-50%, -50%) scale(2.6);
+    opacity: 0;
   }
 }
-@media (min-width: 640px) {
-  .mood-circle {
-    width: 4rem;
-    height: 4rem;
-  }
-}
-
-/* Desactivación de tilt 3D en pantallas táctiles */
-@media (hover: none) or (pointer: coarse) {
-  .tilt-card-inner {
-    transform: none !important;
-  }
-}
-
-/* Respeto estricto a prefers-reduced-motion */
+@media (min-width: 640px) { .mood-circle { width: 4rem; height: 4rem; } }
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
+    animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: .01ms !important;
   }
-
-  .aurora-blob-1,
-  .aurora-blob-2,
-  .aurora-blob-3 {
+  .aurora-blob {
     animation: none !important;
     transform: none !important;
   }
-
-  .liquid-ripple {
-    display: none !important;
-  }
-
-  .tilt-card-inner {
+  .ethereal-card:hover {
     transform: none !important;
-    transition: none !important;
   }
-
   button:not(:disabled):active,
   [role="button"]:not([aria-disabled="true"]):active {
     transform: none !important;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import {
   Calendar,
   Clock,
@@ -7,19 +7,33 @@ import {
   CheckCircle2,
   XCircle,
   CalendarPlus,
-  Filter,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { mockAppointments } from "@/lib/mock-data";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  getStoredAppointments,
+  completeAppointment,
+  cancelAppointment,
+} from "@/lib/psychologist-store";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
 
 interface PsychologistAgendaProps {
+  appointments?: Appointment[];
   onScheduleNew: () => void;
+  onAppointmentsChange?: () => void;
 }
-
-const STORAGE_KEY = "equilibra_citas_v1";
 
 const statusStyles: Record<AppointmentStatus, { label: string; surface: string }> = {
   confirmada: { label: "Confirmada", surface: "bg-teal/15 text-teal border-teal/30" },
@@ -28,48 +42,81 @@ const statusStyles: Record<AppointmentStatus, { label: string; surface: string }
   cancelada: { label: "Cancelada", surface: "bg-rose-100 text-rose-800 border-rose-300" },
 };
 
-export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
-  const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // Fallback
-    }
-    return mockAppointments;
-  });
+function formatFriendlyDate(dateStr: string) {
+  try {
+    const parts = dateStr.split("-").map(Number);
+    if (parts.length !== 3) return dateStr;
+    const [year, month, day] = parts;
+    const dateObj = new Date(year, month - 1, day);
+    const formatted = dateObj.toLocaleDateString("es-MX", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    // Capitalize first letter
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  } catch {
+    return dateStr;
+  }
+}
+
+export function PsychologistAgenda({
+  appointments: externalAppointments,
+  onScheduleNew,
+  onAppointmentsChange,
+}: PsychologistAgendaProps) {
+  const [internalAppointments, setInternalAppointments] = useState<Appointment[]>(() =>
+    getStoredAppointments(),
+  );
+
+  const appointments = externalAppointments || internalAppointments;
 
   const [filter, setFilter] = useState<"all" | "upcoming" | "past">("all");
+  const [completingApt, setCompletingApt] = useState<Appointment | null>(null);
+  const [cancellingApt, setCancellingApt] = useState<Appointment | null>(null);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(appointments));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [appointments]);
+  const upcomingCount = useMemo(
+    () => appointments.filter((a) => a.status === "confirmada" || a.status === "pendiente").length,
+    [appointments],
+  );
 
-  const handleUpdateStatus = (id: string, newStatus: AppointmentStatus) => {
-    const updated = appointments.map((a) => (a.id === id ? { ...a, status: newStatus } : a));
-    setAppointments(updated);
-    toast.success(
-      newStatus === "realizada"
-        ? "Cita marcada como realizada"
-        : newStatus === "cancelada"
-          ? "Cita cancelada"
-          : "Estado de cita actualizado",
-    );
+  const pastCount = useMemo(
+    () => appointments.filter((a) => a.status === "realizada" || a.status === "cancelada").length,
+    [appointments],
+  );
+
+  const filteredAppointments = useMemo(() => {
+    return appointments.filter((a) => {
+      if (filter === "upcoming") {
+        return a.status === "confirmada" || a.status === "pendiente";
+      }
+      if (filter === "past") {
+        return a.status === "realizada" || a.status === "cancelada";
+      }
+      return true;
+    });
+  }, [appointments, filter]);
+
+  const handleConfirmComplete = () => {
+    if (!completingApt) return;
+    const result = completeAppointment(completingApt.id);
+    setInternalAppointments(result.appointments);
+    setCompletingApt(null);
+    setFilter("past");
+    onAppointmentsChange?.();
+    toast.success("Sesión completada y registrada en bitácora");
   };
 
-  const filteredAppointments = appointments.filter((a) => {
-    if (filter === "upcoming") {
-      return a.status === "confirmada" || a.status === "pendiente";
-    }
-    if (filter === "past") {
-      return a.status === "realizada" || a.status === "cancelada";
-    }
-    return true;
-  });
+  const handleConfirmCancel = () => {
+    if (!cancellingApt) return;
+    const updated = cancelAppointment(cancellingApt.id);
+    setInternalAppointments(updated);
+    setCancellingApt(null);
+    setFilter("past");
+    onAppointmentsChange?.();
+    toast.success("Cita cancelada");
+  };
 
   return (
     <div className="space-y-6">
@@ -91,7 +138,7 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
         </Button>
       </div>
 
-      {/* Filtros de la agenda */}
+      {/* Filtros unificados de la agenda */}
       <div className="flex items-center gap-2">
         <Button
           size="sm"
@@ -111,9 +158,7 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
             filter === "upcoming" ? "bg-teal text-white" : "bg-card/70"
           }`}
         >
-          Próximas (
-          {appointments.filter((a) => a.status === "confirmada" || a.status === "pendiente").length}
-          )
+          Próximas ({upcomingCount})
         </Button>
         <Button
           size="sm"
@@ -123,8 +168,7 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
             filter === "past" ? "bg-accent text-accent-foreground" : "bg-card/70"
           }`}
         >
-          Historial (
-          {appointments.filter((a) => a.status === "realizada" || a.status === "cancelada").length})
+          Historial ({pastCount})
         </Button>
       </div>
 
@@ -142,13 +186,18 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
           filteredAppointments.map((apt) => {
             const statusStyle = statusStyles[apt.status] || statusStyles.pendiente;
             const isUpcoming = apt.status === "confirmada" || apt.status === "pendiente";
+            const isCancelled = apt.status === "cancelada";
 
             return (
               <div
                 key={apt.id}
-                className="ethereal-card p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 border border-border/80"
+                className={`ethereal-card p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 border transition-all ${
+                  isCancelled
+                    ? "opacity-75 bg-muted/20 border-rose-200/50 dark:border-rose-950/40"
+                    : "border-border/80 hover:border-border"
+                }`}
               >
-                <div className="space-y-2">
+                <div className="space-y-2 flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline" className={`${statusStyle.surface} text-xs font-bold`}>
                       {statusStyle.label}
@@ -174,10 +223,20 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
                   </div>
 
                   <div>
-                    <h3 className="font-display text-lg text-primary">{apt.date}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">{apt.locationOrLink}</p>
+                    {/* Nombre del paciente en fuente serif cursiva display legible sin elementos encimados */}
+                    <h3 className="font-display italic text-lg sm:text-xl font-semibold text-primary tracking-tight">
+                      {apt.studentName || "Paciente TESH"}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-0.5 font-medium">
+                      <span className="font-semibold text-foreground">
+                        {formatFriendlyDate(apt.date)}
+                      </span>
+                      <span>•</span>
+                      <span>{apt.locationOrLink}</span>
+                    </div>
+
                     {apt.notes && (
-                      <p className="text-xs text-foreground font-medium mt-1.5 bg-muted/30 p-2 rounded-lg">
+                      <p className="text-xs text-foreground font-medium mt-2 bg-muted/30 p-2.5 rounded-xl border border-border/40">
                         {apt.notes}
                       </p>
                     )}
@@ -188,17 +247,17 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
                   <div className="flex items-center gap-2 self-end md:self-center shrink-0">
                     <Button
                       size="sm"
-                      onClick={() => handleUpdateStatus(apt.id, "realizada")}
-                      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 gap-1.5 font-semibold"
+                      onClick={() => setCompletingApt(apt)}
+                      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 gap-1.5 font-semibold shadow-xs"
                     >
                       <CheckCircle2 className="size-3.5" />
-                      <span>Completada</span>
+                      <span>Marcar completada</span>
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleUpdateStatus(apt.id, "cancelada")}
-                      className="rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs h-8 gap-1.5"
+                      onClick={() => setCancellingApt(apt)}
+                      className="rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs h-8 gap-1.5 font-medium"
                     >
                       <XCircle className="size-3.5" />
                       <span>Cancelar</span>
@@ -210,6 +269,74 @@ export function PsychologistAgenda({ onScheduleNew }: PsychologistAgendaProps) {
           })
         )}
       </div>
+
+      {/* Modal de confirmación para Marcar Completada */}
+      <AlertDialog
+        open={completingApt !== null}
+        onOpenChange={(open) => {
+          if (!open) setCompletingApt(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl border-border bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-xl text-primary flex items-center gap-2">
+              <CheckCircle2 className="size-5 text-emerald-600" />
+              ¿Deseas marcar esta sesión como completada?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+              Al confirmar, la sesión con{" "}
+              <strong className="text-foreground">
+                {completingApt?.studentName || "el paciente"}
+              </strong>{" "}
+              se moverá al historial de citas y se registrará automáticamente una nota de evolución
+              en la bitácora clínica confidencial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="rounded-xl text-xs h-9">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmComplete}
+              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 font-semibold"
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal de confirmación para Cancelar Cita */}
+      <AlertDialog
+        open={cancellingApt !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancellingApt(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl border-border bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-xl text-destructive flex items-center gap-2">
+              <AlertCircle className="size-5 text-rose-600" />
+              ¿Estás seguro de cancelar esta cita?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+              Esta acción marcará la cita con{" "}
+              <strong className="text-foreground">
+                {cancellingApt?.studentName || "el paciente"}
+              </strong>{" "}
+              como cancelada. El paciente será notificado y la cita quedará registrada en el
+              historial.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="rounded-xl text-xs h-9">Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmCancel}
+              className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 font-semibold"
+            >
+              Confirmar cancelación
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

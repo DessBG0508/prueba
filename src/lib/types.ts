@@ -80,6 +80,8 @@ export interface Appointment {
   status: AppointmentStatus;
   notes?: string;
   createdAt: string;
+  studentName?: string;
+  caseId?: string;
 }
 
 export type ResourceCategory = "Ansiedad" | "Estrés" | "Sueño" | "Ánimo" | "Respiración";

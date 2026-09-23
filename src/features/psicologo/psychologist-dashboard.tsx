@@ -39,8 +39,12 @@ import { CrisisProtocolDialog } from "./crisis-protocol-dialog";
 import { PsychologistAgenda } from "./psychologist-agenda";
 import { ClinicalNotesFeed } from "./clinical-notes-feed";
 import { useAuth } from "@/lib/auth-context";
-import { getPsychologistCases, getCaseNotes } from "@/lib/psychologist-store";
-import type { CaseSummary, RiskLevel, CaseStatus } from "@/lib/types";
+import {
+  getPsychologistCases,
+  getCaseNotes,
+  getStoredAppointments,
+} from "@/lib/psychologist-store";
+import type { CaseSummary, RiskLevel, CaseStatus, Appointment } from "@/lib/types";
 
 const riskStyles: Record<
   RiskLevel,
@@ -94,6 +98,7 @@ export function PsychologistDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const [cases, setCases] = useState<CaseSummary[]>(() => getPsychologistCases());
+  const [appointments, setAppointments] = useState<Appointment[]>(() => getStoredAppointments());
 
   // Diálogos y Sheets interactivos
   const [selectedCaseForDetail, setSelectedCaseForDetail] = useState<CaseSummary | null>(null);
@@ -105,8 +110,13 @@ export function PsychologistDashboard() {
     setCases(getPsychologistCases());
   };
 
+  const refreshAppointments = () => {
+    setAppointments(getStoredAppointments());
+  };
+
   useEffect(() => {
     refreshCases();
+    refreshAppointments();
   }, []);
 
   const handleLogout = () => {
@@ -142,7 +152,11 @@ export function PsychologistDashboard() {
   const redCount = cases.filter((c) => c.riskLevel === "rojo").length;
   const yellowCount = cases.filter((c) => c.riskLevel === "amarillo").length;
   const greenCount = cases.filter((c) => c.riskLevel === "verde").length;
-  const scheduledCount = cases.filter((c) => c.status === "cita_programada").length;
+  const activeAppointmentsCount = useMemo(
+    () => appointments.filter((a) => a.status === "confirmada" || a.status === "pendiente").length,
+    [appointments],
+  );
+  const scheduledCount = activeAppointmentsCount;
 
   return (
     <PageShell showAppHeader={false} showBottomNav={false}>
@@ -242,9 +256,9 @@ export function PsychologistDashboard() {
             >
               <Calendar className="size-4 text-accent" />
               <span>Agenda de Citas</span>
-              {scheduledCount > 0 && (
+              {activeAppointmentsCount > 0 && (
                 <span className="ml-1 rounded-full bg-teal px-1.5 py-0.2 text-[10px] font-bold text-white">
-                  {scheduledCount}
+                  {activeAppointmentsCount}
                 </span>
               )}
             </TabsTrigger>
@@ -344,7 +358,7 @@ export function PsychologistDashboard() {
                     Citas Activas
                   </span>
                   <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
-                    {scheduledCount}
+                    {activeAppointmentsCount}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">En agenda clínica</p>
                 </div>
@@ -501,9 +515,14 @@ export function PsychologistDashboard() {
           {/* TAB 2: AGENDA DE CITAS */}
           <TabsContent value="agenda">
             <PsychologistAgenda
+              appointments={appointments}
               onScheduleNew={() => {
                 // Abre modal para agendar con el primer caso prioritario o seleccionado
                 setScheduleDialogCase(cases[0] || null);
+              }}
+              onAppointmentsChange={() => {
+                refreshAppointments();
+                refreshCases();
               }}
             />
           </TabsContent>
@@ -522,7 +541,10 @@ export function PsychologistDashboard() {
         onOpenChange={(open) => {
           if (!open) setScheduleDialogCase(null);
         }}
-        onSuccess={refreshCases}
+        onSuccess={() => {
+          refreshCases();
+          refreshAppointments();
+        }}
       />
 
       {/* Diálogo de Registrar Contacto */}

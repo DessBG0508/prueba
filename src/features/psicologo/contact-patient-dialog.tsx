@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PhoneCall, Mail, UserCheck, MessageSquare, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -47,6 +47,14 @@ export function ContactPatientDialog({
   const [outcome, setOutcome] = useState<string>(OUTCOMES[0]);
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setNotes("");
+      setChannel(CHANNELS[0].id);
+      setOutcome(OUTCOMES[0]);
+    }
+  }, [isOpen, caseItem]);
 
   if (!caseItem) return null;
 

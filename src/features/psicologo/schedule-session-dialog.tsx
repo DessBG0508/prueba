@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Calendar, Clock, MapPin, Video, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { scheduleSessionFromPsychologist } from "@/lib/psychologist-store";
+import { scheduleSessionFromPsychologist, getStoredAppointments } from "@/lib/psychologist-store";
 import type { CaseSummary, AppointmentModality } from "@/lib/types";
 
 interface ScheduleSessionDialogProps {
@@ -56,12 +56,35 @@ export function ScheduleSessionDialog({
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  const appointments = useMemo(() => (isOpen ? getStoredAppointments() : []), [isOpen]);
+
+  const occupiedSlots = useMemo(() => {
+    return appointments
+      .filter((a) => a.date === date && (a.status === "confirmada" || a.status === "pendiente"))
+      .map((a) => a.timeSlot);
+  }, [appointments, date]);
+
+  // Si el horario seleccionado queda ocupado al cambiar la fecha, cambiar al primer disponible
+  useEffect(() => {
+    if (occupiedSlots.includes(timeSlot)) {
+      const firstAvailable = TIME_SLOTS.find((s) => !occupiedSlots.includes(s));
+      if (firstAvailable) {
+        setTimeSlot(firstAvailable);
+      }
+    }
+  }, [date, occupiedSlots, timeSlot]);
+
   if (!caseItem) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!date) {
       toast.error("Por favor selecciona una fecha para la sesión.");
+      return;
+    }
+
+    if (occupiedSlots.includes(timeSlot)) {
+      toast.error("El horario seleccionado ya está ocupado para esa fecha. Por favor elige otro.");
       return;
     }
 
@@ -180,11 +203,19 @@ export function ScheduleSessionDialog({
                     onChange={(e) => setTimeSlot(e.target.value)}
                     className="w-full rounded-xl border border-input bg-background px-3 py-2 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-accent"
                   >
-                    {TIME_SLOTS.map((slot) => (
-                      <option key={slot} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
+                    {TIME_SLOTS.map((slot) => {
+                      const isOccupied = occupiedSlots.includes(slot);
+                      return (
+                        <option
+                          key={slot}
+                          value={slot}
+                          disabled={isOccupied}
+                          className={isOccupied ? "text-muted-foreground italic" : ""}
+                        >
+                          {slot} {isOccupied ? "— (Ocupado)" : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

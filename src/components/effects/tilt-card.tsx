@@ -1,81 +1,58 @@
-import { useState, useRef, useCallback, type MouseEvent, type ReactNode } from "react";
+import { useState, useRef, type PointerEvent, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 
 interface TiltCardProps {
   children: ReactNode;
   className?: string;
-  maxAngle?: number; // Máximo 4 grados según especificación
+  maxTilt?: number; // max tilt in degrees, defaults to 4
 }
 
-export function TiltCard({ children, className = "", maxAngle = 4 }: TiltCardProps) {
-  const shouldReduceMotion = useReducedMotion();
+export function TiltCard({ children, className = "", maxTilt = 4 }: TiltCardProps) {
+  const [transform, setTransform] = useState<string>("none");
   const cardRef = useRef<HTMLDivElement>(null);
-  const [transformStyle, setTransformStyle] = useState<string>("");
-  const [isHovered, setIsHovered] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent<HTMLDivElement>) => {
-      if (shouldReduceMotion || !cardRef.current) return;
-
-      // Desactivado en pantallas táctiles
-      if (typeof window !== "undefined" && !window.matchMedia("(pointer: fine)").matches) {
-        return;
-      }
-
-      const rect = cardRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-
-      // Inclinación máxima de 4 grados
-      const rotateX = Math.max(-maxAngle, Math.min(maxAngle, ((y - centerY) / centerY) * -maxAngle));
-      const rotateY = Math.max(-maxAngle, Math.min(maxAngle, ((x - centerX) / centerX) * maxAngle));
-
-      // Solo transform (rotación 3D + ligera elevación de 2px)
-      setTransformStyle(
-        `perspective(800px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) translateY(-2px)`,
-      );
-    },
-    [shouldReduceMotion, maxAngle],
-  );
-
-  const handleMouseEnter = () => {
-    if (!shouldReduceMotion && typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches) {
-      setIsHovered(true);
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    // Strictly deactivated on touch/coarse devices and reduced-motion
+    if (shouldReduceMotion || event.pointerType !== "mouse") {
+      return;
     }
+
+    const card = cardRef.current;
+    if (!card) return;
+
+    const rect = card.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    const x = (event.clientX - rect.left) / rect.width - 0.5; // -0.5 to 0.5
+    const y = (event.clientY - rect.top) / rect.height - 0.5; // -0.5 to 0.5
+
+    const rotateX = (-y * (maxTilt * 2)).toFixed(2);
+    const rotateY = (x * (maxTilt * 2)).toFixed(2);
+
+    setTransform(`perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`);
   };
 
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    // Retorno suave a posición neutra
-    setTransformStyle("perspective(800px) rotateX(0deg) rotateY(0deg) translateY(0px)");
+  const handlePointerLeave = () => {
+    setTransform("none");
   };
 
   return (
     <div
       ref={cardRef}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      className={`tilt-card-wrapper ${className}`}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      className={`will-change-transform ${className}`}
       style={{
-        perspective: "800px",
+        transform: shouldReduceMotion ? "none" : transform,
+        transformStyle: "preserve-3d",
+        transition:
+          transform === "none"
+            ? "transform 350ms cubic-bezier(0.2, 0.8, 0.4, 1)"
+            : "transform 100ms ease-out",
       }}
     >
-      <div
-        className="tilt-card-inner h-full w-full"
-        style={{
-          transform: shouldReduceMotion ? "none" : transformStyle || undefined,
-          transformStyle: "preserve-3d",
-          transition: isHovered
-            ? "transform 80ms ease-out"
-            : "transform 300ms cubic-bezier(0.22, 1, 0.36, 1)",
-          willChange: isHovered ? "transform" : "auto",
-        }}
-      >
-        {children}
-      </div>
+      {children}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { profileIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
 import { wellbeingStats } from "@/lib/mock-data";
+import { WellbeingStreakCard } from "./wellbeing-streak-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -173,7 +174,10 @@ export function PerfilPage() {
           </div>
         </section>
 
-        {/* 2. SECCIONES EN CARDS */}
+        {/* 2. RACHA DE AUTOCUIDADO EMOCIONAL (Estilo Duolingo / TikTok) */}
+        <WellbeingStreakCard />
+
+        {/* 3. SECCIONES EN CARDS */}
         <div className="grid gap-6 md:grid-cols-2">
           {/* Card 1: Mi Bienestar */}
           <section

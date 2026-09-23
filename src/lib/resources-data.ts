@@ -171,4 +171,40 @@ export const psychoResources: PsychoResource[] = [
     keyTakeaway:
       "Activa el modo descanso una hora antes de dormir. La noche es para recargar tu propia energía.",
   },
+  {
+    id: "rec-gestion-bloqueo-academico",
+    title: "Kit de emergencia: De la parálisis a la acción compasiva",
+    shortDescription:
+      "Estrategias paso a paso para destrabar el bloqueo mental frente a proyectos y entregas difíciles.",
+    category: "Estrés",
+    readTime: "6 min de lectura",
+    iconName: "compass",
+    tone: "teal",
+    content: [
+      "La parálisis por procrastinación rara vez es pereza; casi siempre es una respuesta del sistema nervioso ante el perfeccionismo y el miedo a no alcanzar los estándares esperados.",
+      "Para romper la inercia sin pelear contra ti mismo, utiliza la regla de los 'micro-pasos de 5 minutos': no te comprometas a terminar el ensayo o código completo, solo abre el archivo y escribe una sola oración o revisa el encabezado.",
+      "Reducir deliberadamente la fricción de arranque calma la amígdala cerebral y permite que el circuito de recompensa se reactive con una pequeña victoria alcanzable.",
+      "Acepta que un primer borrador imperfecto es infinitamente mejor y más trabajable que una idea perfecta que solo existe en tu mente.",
+    ],
+    keyTakeaway:
+      "Divide la tarea en una acción minúscula de 5 minutos. El objetivo no es terminar, es romper la resistencia inicial con amabilidad.",
+  },
+  {
+    id: "rec-guia-temporada-examenes",
+    title: "Guía integral para afrontar finales sin colapso emocional",
+    shortDescription:
+      "Plan de autocuidado estructurado para organizar estudio, descansos y alimentación en semanas críticas.",
+    category: "Ansiedad",
+    readTime: "7 min de lectura",
+    iconName: "brain",
+    tone: "lavender",
+    content: [
+      "Las semanas de evaluaciones finales concentran un volumen atípico de presión, pero sacrificar el sueño y la nutrición deteriora directamente la memoria de trabajo y la capacidad de resolución de problemas.",
+      "Aplica bloques de estudio activo de 25 a 45 minutos intercalados con pausas verdaderas de 10 minutos lejos de pantallas: estirar el cuerpo, beber agua o contemplar el exterior.",
+      "Diseña una rutina de cierre diario: fija una hora límite a partir de la cual cierras carpetas y libros, permitiéndole a tu mente integrar lo aprendido sin quedar atrapada en la hipervigilancia nocturna.",
+      "Recuerda que una calificación evalúa un desempeño puntual bajo circunstancias específicas, nunca tu valor intrínseco como persona ni tu potencial profesional futuro.",
+    ],
+    keyTakeaway:
+      "Protege tu descanso: estudiar sin dormir disminuye la retención en un 40%. Tu cerebro necesita pausas activas para consolidar la información.",
+  },
 ];

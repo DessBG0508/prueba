@@ -4,12 +4,12 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
-  useLocation,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { RouteGuard } from "@/components/layout/route-guard";
@@ -97,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap",
       },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
     ],
@@ -123,20 +123,17 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function AnimatedRouteOutlet() {
-  const location = useLocation();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const shouldReduceMotion = useReducedMotion();
 
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
-        key={location.pathname}
-        initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 14 }}
+        key={pathname}
+        initial={shouldReduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -10 }}
-        transition={{
-          duration: shouldReduceMotion ? 0 : 0.3,
-          ease: [0.22, 1, 0.36, 1],
-        }}
+        exit={shouldReduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: -10 }}
+        transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
         className="w-full flex-1"
       >
         <Outlet />
@@ -152,7 +149,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <RouteGuard>
-          {/* Required: nested routes render here. Transiciones suaves de 300ms fade + slide-up */}
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <AnimatedRouteOutlet />
         </RouteGuard>
         <Toaster position="bottom-center" />

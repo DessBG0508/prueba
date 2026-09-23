@@ -61,6 +61,7 @@ function getIconComponent(iconName: PsychoResource["iconName"]) {
 export function RecursosPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"Todos" | ResourceCategory>("Todos");
+  const [selectedTimeFilter, setSelectedTimeFilter] = useState<"all" | "under5" | "over5">("all");
   const [activeResource, setActiveResource] = useState<PsychoResource | null>(null);
 
   const filteredResources = useMemo(() => {
@@ -72,9 +73,16 @@ export function RecursosPage() {
         rec.title.toLowerCase().includes(query) ||
         rec.shortDescription.toLowerCase().includes(query) ||
         rec.category.toLowerCase().includes(query);
-      return matchesCategory && matchesSearch;
+
+      const minutes = parseInt(rec.readTime, 10) || 3;
+      const matchesTime =
+        selectedTimeFilter === "all" ||
+        (selectedTimeFilter === "under5" && minutes < 5) ||
+        (selectedTimeFilter === "over5" && minutes >= 5);
+
+      return matchesCategory && matchesSearch && matchesTime;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, selectedTimeFilter]);
 
   return (
     <PageShell>
@@ -224,6 +232,68 @@ export function RecursosPage() {
                     </button>
                   );
                 })}
+              </section>
+
+              {/* Filtro por Tiempo de Lectura / Disponibilidad */}
+              <section
+                aria-label="Filtrar por tiempo de lectura"
+                className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/60 p-3 sm:p-4"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                    <resourceIcons.clock className="size-3.5 text-accent" />
+                    <span>Tiempo de lectura</span>
+                  </div>
+                  {selectedTimeFilter !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTimeFilter("all")}
+                      className="text-[11px] font-semibold text-accent hover:underline"
+                    >
+                      Mostrar todas
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimeFilter("all")}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+                      selectedTimeFilter === "all"
+                        ? "bg-accent/15 text-accent border border-accent/40 font-bold shadow-2xs"
+                        : "border border-border/70 bg-card/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    }`}
+                  >
+                    <span>Cualquier duración</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimeFilter("under5")}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+                      selectedTimeFilter === "under5"
+                        ? "bg-teal-soft text-teal border border-teal/40 font-bold shadow-2xs"
+                        : "border border-border/70 bg-card/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    }`}
+                  >
+                    <span>Menos de 5 min</span>
+                    <span className="text-[10px] font-normal opacity-80">(Pausas breves)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimeFilter("over5")}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all ${
+                      selectedTimeFilter === "over5"
+                        ? "bg-lavender-soft text-[#6857E4] border border-lavender/40 font-bold shadow-2xs"
+                        : "border border-border/70 bg-card/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    }`}
+                  >
+                    <span>5 min o más</span>
+                    <span className="text-[10px] font-normal opacity-80">(Guías detalladas)</span>
+                  </button>
+                </div>
               </section>
 
               {/* Grid de Cards (1 col móvil, 2 tablet, 3 escritorio) */}

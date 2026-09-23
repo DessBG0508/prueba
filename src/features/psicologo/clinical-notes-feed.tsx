@@ -85,17 +85,23 @@ export function ClinicalNotesFeed({ onSelectCase }: ClinicalNotesFeedProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {["all", "emergencia", "sesion", "contacto", "seguimiento"].map((cat) => (
+          {[
+            { id: "all", label: "Todas" },
+            { id: "emergencia", label: "Emergencia" },
+            { id: "sesion", label: "Sesión" },
+            { id: "contacto", label: "Contacto" },
+            { id: "seguimiento", label: "Seguimiento" },
+          ].map(({ id, label }) => (
             <Button
-              key={cat}
+              key={id}
               size="sm"
-              variant={filter === cat ? "default" : "outline"}
-              onClick={() => setFilter(cat)}
-              className={`h-8 rounded-lg text-xs capitalize ${
-                filter === cat ? "bg-primary text-primary-foreground" : "bg-card/70"
+              variant={filter === id ? "default" : "outline"}
+              onClick={() => setFilter(id)}
+              className={`h-8 rounded-lg text-xs ${
+                filter === id ? "bg-primary text-primary-foreground" : "bg-card/70"
               }`}
             >
-              {cat === "all" ? "Todas" : cat}
+              {label}
             </Button>
           ))}
         </div>

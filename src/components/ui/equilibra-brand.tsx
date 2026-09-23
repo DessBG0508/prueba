@@ -1,56 +1,125 @@
-export function EquilibraBrand() {
+import { brandConfig } from "@/config/brand-config";
+
+interface EquilibraBrandProps {
+  className?: string;
+  logoSrc?: string;
+  showText?: boolean;
+  size?: "sm" | "md" | "lg";
+}
+
+export function EquilibraBrand({
+  className = "",
+  logoSrc = brandConfig.logoUrl,
+  showText = true,
+  size = "md",
+}: EquilibraBrandProps) {
+  const sizeClasses = {
+    sm: "size-8 sm:size-9",
+    md: "size-11 sm:size-13",
+    lg: "size-14 sm:size-16",
+  }[size];
+
+  const textClasses = {
+    sm: "text-base sm:text-lg",
+    md: "text-[1.35rem] sm:text-[1.65rem]",
+    lg: "text-2xl sm:text-3xl",
+  }[size];
+
   return (
-    <div className="flex min-w-0 items-center gap-3" aria-label="Equilibra TESH">
-      <svg className="size-12 shrink-0 sm:size-14" viewBox="0 0 64 64" aria-hidden="true">
-        <defs>
-          <linearGradient
-            id="equilibra-brand-gradient"
-            x1="8"
-            y1="8"
-            x2="56"
-            y2="56"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop stopColor="#6857E4" />
-            <stop offset="1" stopColor="#87FFBD" />
-          </linearGradient>
-        </defs>
-        <circle cx="32" cy="32" r="29" fill="url(#equilibra-brand-gradient)" />
-        <circle
-          cx="32"
-          cy="32"
-          r="25"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          opacity="0.88"
+    <div className={`flex min-w-0 items-center gap-3 ${className}`} aria-label="EQUILIBRA TESH">
+      {logoSrc ? (
+        <img
+          src={logoSrc}
+          alt="Logotipo EQUILIBRA TESH"
+          className={`${sizeClasses} shrink-0 object-contain rounded-full`}
         />
-        <path
-          d="M29.5 18.5c-8.2 0-14.7 6.1-14.7 14.1 0 3.7 1.3 6.7 3.6 9l-2 4h6.2v7.2h10V37.5c0-4.9 3.3-8.4 8-8.4"
+      ) : (
+        /* Emblema vectorial fiel a equlibrat.png */
+        <svg
+          className={`${sizeClasses} shrink-0`}
+          viewBox="0 0 100 100"
           fill="none"
-          stroke="currentColor"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M37.2 19.4c5.7 0 10.3 4.6 10.3 10.3 0 7.4-5.6 13.2-13 13.2"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-        <path
-          d="M30 28c3.5-5.3 7.4-5.3 10.8 0s7.2 5.3 10.7 0"
-          fill="none"
-          stroke="var(--color-primary-foreground)"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="min-w-0 font-display text-[1.35rem] leading-none text-primary sm:text-[1.7rem]">
-        EQUILIBRA <span className="text-accent">TESH</span>
-      </span>
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient
+              id="eq-ring-grad"
+              x1="15"
+              y1="15"
+              x2="85"
+              y2="85"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stopColor="#6857E4" />
+              <stop offset="0.5" stopColor="#3B82F6" />
+              <stop offset="1" stopColor="#87FFBD" />
+            </linearGradient>
+            <linearGradient
+              id="eq-head-grad"
+              x1="20"
+              y1="30"
+              x2="55"
+              y2="70"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stopColor="#2DD4BF" />
+              <stop offset="1" stopColor="#10B981" />
+            </linearGradient>
+            <linearGradient
+              id="eq-brain-grad"
+              x1="45"
+              y1="20"
+              x2="80"
+              y2="60"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop stopColor="#7C3AED" />
+              <stop offset="1" stopColor="#6857E4" />
+            </linearGradient>
+          </defs>
+
+          {/* Anillo exterior con degradado púrpura a menta */}
+          <circle cx="50" cy="50" r="46" stroke="url(#eq-ring-grad)" strokeWidth="4.5" />
+          <circle cx="50" cy="50" r="41" fill="currentColor" fillOpacity="0.03" />
+
+          {/* Perfil de cabeza mirando a la izquierda en tono menta/turquesa */}
+          <path
+            d="M48 24C36 24 28 32 27 42C26.5 47 28 50 25 54C23.5 56 21 57 20 60C19.5 62 21 64 24 64C28 64 30 60 32 58C34 65 39 74 50 75C53 75.3 55 74 55 71C55 68 53 66 50 66C44 66 38 60 37 53C41 53 45 52 48 50C52 47 55 42 55 35C55 28 52 24 48 24Z"
+            fill="url(#eq-head-grad)"
+          />
+
+          {/* Conexión cerebral y mano protectora en lavanda/púrpura */}
+          <path
+            d="M50 24C58 24 68 28 72 35C76 41 76 50 71 58C67 64 60 67 53 66C52 64 53 62 55 61C61 60 66 56 68 50C70 44 69 38 65 34C61 30 55 28 50 28C47 28 45 28.5 43 29.5C44 26 47 24 50 24Z"
+            fill="url(#eq-brain-grad)"
+          />
+
+          {/* Surcos sinápticos internos de bienestar */}
+          <path
+            d="M50 33C54 33 58 36 59 40C60 44 57 47 53 48"
+            stroke="white"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeOpacity="0.85"
+          />
+          <path
+            d="M45 42C48 42 51 44 51 47"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeOpacity="0.8"
+          />
+        </svg>
+      )}
+
+      {showText && (
+        <span
+          className={`min-w-0 font-display font-bold tracking-tight leading-none text-primary ${textClasses}`}
+        >
+          EQUILIBRA <span className="text-teal">TESH</span>
+        </span>
+      )}
     </div>
   );
 }

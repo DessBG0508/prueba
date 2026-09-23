@@ -1,13 +1,32 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
+import { History, Plus, MessageSquare, ChevronRight, Sparkles } from "lucide-react";
 import { chatIcons } from "@/config/icons";
 import { sendEliMessage, type EliMessage } from "@/lib/api-client";
 import { sanitizeText } from "@/lib/security";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  updatedAt: string;
+  preview: string;
+  messages: EliMessage[];
+}
+
+const CHAT_SESSIONS_KEY = "equilibra_chat_sessions_v2";
 
 const INITIAL_MESSAGE: EliMessage = {
   id: "initial-welcome-message",
@@ -17,14 +36,120 @@ const INITIAL_MESSAGE: EliMessage = {
   timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
 };
 
+const DEFAULT_SESSIONS: ChatSession[] = [
+  {
+    id: "session-current",
+    title: "Conversación actual",
+    updatedAt: "Hoy",
+    preview: "¿Cómo has estado últimamente?",
+    messages: [INITIAL_MESSAGE],
+  },
+  {
+    id: "session-exam-stress",
+    title: "Gestión de ansiedad ante exámenes",
+    updatedAt: "18 sep 2026",
+    preview: "Inhala suavemente contando hasta 4, sostén el aire 4 segundos...",
+    messages: [
+      {
+        id: "m-101",
+        sender: "eli",
+        text: "Hola, soy Eli. Este es un espacio seguro para ti. ¿Cómo has estado últimamente?",
+        timestamp: "11:15",
+      },
+      {
+        id: "m-102",
+        sender: "user",
+        text: "Tengo un examen de cálculo el viernes y siento mucha presión en el pecho y no logro concentrarme.",
+        timestamp: "11:16",
+      },
+      {
+        id: "m-103",
+        sender: "eli",
+        text: "Entiendo que los exámenes de materias demandantes pueden generar una gran carga física y mental. Esa sensación de presión en el pecho es una respuesta común ante el estrés. ¿Te gustaría que probemos juntos un ejercicio de respiración guiada de 4 tiempos antes de revisar tus horarios de estudio?",
+        timestamp: "11:17",
+      },
+      {
+        id: "m-104",
+        sender: "user",
+        text: "Sí, me vendría muy bien calmarme un poco.",
+        timestamp: "11:18",
+      },
+      {
+        id: "m-105",
+        sender: "eli",
+        text: "Perfecto. Inhala suavemente contando hasta 4, sostén el aire 4 segundos, y exhala lentamente en 4. Hazlo tres veces a tu propio ritmo. Estoy aquí contigo.",
+        timestamp: "11:20",
+      },
+    ],
+  },
+  {
+    id: "session-sleep",
+    title: "Técnicas de respiración y descanso",
+    updatedAt: "12 sep 2026",
+    preview: "El descanso es fundamental para tu bienestar y rendimiento escolar...",
+    messages: [
+      {
+        id: "m-201",
+        sender: "eli",
+        text: "Hola, soy Eli. Este es un espacio seguro para ti. ¿Cómo has estado últimamente?",
+        timestamp: "20:30",
+      },
+      {
+        id: "m-202",
+        sender: "user",
+        text: "He tenido problemas para dormir por las noches pensando en las tareas y entregas.",
+        timestamp: "20:32",
+      },
+      {
+        id: "m-203",
+        sender: "eli",
+        text: "El descanso es fundamental para tu bienestar y rendimiento escolar. Desconectarte de pantallas al menos 30 minutos antes de acostarte y practicar una respiración pausada puede ayudar a que tu sistema nervioso se prepare para el sueño.",
+        timestamp: "20:35",
+      },
+    ],
+  },
+];
+
 export function ChatPage() {
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
-  const [messages, setMessages] = useState<EliMessage[]>([INITIAL_MESSAGE]);
+
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    try {
+      const stored = localStorage.getItem(CHAT_SESSIONS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_SESSIONS;
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    return sessions[0]?.id || "session-current";
+  });
+
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const activeSession = useMemo(() => {
+    return sessions.find((s) => s.id === activeSessionId) || sessions[0] || DEFAULT_SESSIONS[0];
+  }, [sessions, activeSessionId]);
+
+  const messages = activeSession.messages;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_SESSIONS_KEY, JSON.stringify(sessions));
+    } catch (e) {
+      console.error("Error saving chat sessions", e);
+    }
+  }, [sessions]);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -33,6 +158,61 @@ export function ChatPage() {
   useEffect(() => {
     scrollToBottom("smooth");
   }, [messages, isTyping]);
+
+  const handleSelectSession = (session: ChatSession) => {
+    setActiveSessionId(session.id);
+    setIsHistoryOpen(false);
+    toast.success(`Cargada: ${session.title}`);
+  };
+
+  const handleNewConversation = () => {
+    const newSessionId = `session-${Date.now()}`;
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title: "Nueva conversación",
+      updatedAt: "Hoy",
+      preview: "¿Cómo has estado últimamente?",
+      messages: [INITIAL_MESSAGE],
+    };
+
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSessionId);
+    setIsHistoryOpen(false);
+    toast.success("Nueva conversación iniciada");
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 150);
+  };
+
+  const updateActiveSessionMessages = (newMessages: EliMessage[]) => {
+    setSessions((prevSessions) => {
+      return prevSessions.map((session) => {
+        if (session.id === activeSessionId) {
+          const lastMsg = newMessages[newMessages.length - 1];
+          const firstUserMsg = newMessages.find((m) => m.sender === "user");
+          let updatedTitle = session.title;
+          if (
+            (session.title === "Nueva conversación" || session.title === "Conversación actual") &&
+            firstUserMsg
+          ) {
+            updatedTitle =
+              firstUserMsg.text.length > 32
+                ? `${firstUserMsg.text.slice(0, 32)}...`
+                : firstUserMsg.text;
+          }
+
+          return {
+            ...session,
+            title: updatedTitle,
+            updatedAt: "Hoy",
+            preview: lastMsg ? lastMsg.text.slice(0, 70) : session.preview,
+            messages: newMessages,
+          };
+        }
+        return session;
+      });
+    });
+  };
 
   const handleSend = async () => {
     const sanitized = sanitizeText(inputText, 1000);
@@ -49,7 +229,8 @@ export function ChatPage() {
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const newMessagesWithUser = [...messages, userMsg];
+    updateActiveSessionMessages(newMessagesWithUser);
     setInputText("");
     setIsTyping(true);
 
@@ -60,24 +241,21 @@ export function ChatPage() {
         minute: "2-digit",
       });
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          ...response,
-          timestamp: formattedTimestamp,
-        },
-      ]);
+      const eliMsg: EliMessage = {
+        ...response,
+        timestamp: formattedTimestamp,
+      };
+
+      updateActiveSessionMessages([...newMessagesWithUser, eliMsg]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          sender: "eli",
-          text: "Estoy teniendo dificultades para responder en este instante. Por favor, intenta de nuevo en unos momentos.",
-          isCrisisProtocol: false,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-      ]);
+      const errorMsg: EliMessage = {
+        id: crypto.randomUUID(),
+        sender: "eli",
+        text: "Estoy teniendo dificultades para responder en este instante. Por favor, intenta de nuevo en unos momentos.",
+        isCrisisProtocol: false,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      updateActiveSessionMessages([...newMessagesWithUser, errorMsg]);
     } finally {
       setIsTyping(false);
       inputRef.current?.focus();
@@ -97,7 +275,7 @@ export function ChatPage() {
         {/* Encabezado fijo del asistente Eli */}
         <header className="z-20 shrink-0 border-b border-border/60 bg-card/85 px-4 py-3 backdrop-blur-md sm:px-6">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Button
                 variant="ghost"
                 size="icon"
@@ -108,7 +286,7 @@ export function ChatPage() {
                 <chatIcons.back className="size-5" />
               </Button>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3">
                 {/* Avatar de Eli: Círculo con gradiente de la marca (#6857E4 a #87FFBD), sin foto */}
                 <div
                   className="relative flex size-10 items-center justify-center rounded-full bg-gradient-to-tr from-[#6857E4] to-[#87FFBD] shadow-soft ring-2 ring-card"
@@ -132,9 +310,31 @@ export function ChatPage() {
               </div>
             </div>
 
-            <div className="hidden text-right text-xs text-muted-foreground sm:block">
-              <p className="font-medium">Espacio de apoyo emocional</p>
-              <p className="text-[11px] text-muted-foreground/80">Confidencial y seguro</p>
+            {/* Acciones del encabezado: Botón de historial de conversaciones */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsHistoryOpen(true)}
+                className="h-9 rounded-xl border-border bg-card/80 text-xs font-semibold gap-1.5 shadow-xs transition-colors hover:bg-muted"
+                aria-label="Historial de conversaciones"
+              >
+                <History className="size-4 text-primary" />
+                <span className="hidden sm:inline">Historial</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleNewConversation}
+                className="size-9 rounded-xl text-muted-foreground hover:bg-card hover:text-foreground"
+                title="Nueva conversación"
+                aria-label="Nueva conversación"
+              >
+                <Plus className="size-4" />
+              </Button>
             </div>
           </div>
         </header>
@@ -197,7 +397,7 @@ export function ChatPage() {
                     </div>
                   </div>
 
-                  {/* Tarjeta destacada de guardarraíles de crisis (RNF03) */}
+                  {/* Tarjeta destacada de guardarraíles de crisis */}
                   {msg.isCrisisProtocol && msg.crisisData && (
                     <motion.div
                       initial={{ opacity: 0, y: 6 }}
@@ -246,7 +446,7 @@ export function ChatPage() {
               );
             })}
 
-            {/* Indicador de escritura: tres puntos animados con fade-in / fade-out */}
+            {/* Indicador de escritura: tres puntos animados */}
             <AnimatePresence>
               {isTyping && (
                 <motion.div
@@ -279,7 +479,7 @@ export function ChatPage() {
           </div>
         </main>
 
-        {/* Barra de entrada fija abajo (optimizada para no tapar en móvil) */}
+        {/* Barra de entrada fija abajo */}
         <footer className="z-20 shrink-0 border-t border-border/60 bg-card/90 px-3 py-3 backdrop-blur-lg sm:px-6">
           <div className="mx-auto max-w-3xl">
             <form
@@ -301,7 +501,7 @@ export function ChatPage() {
                 />
               </div>
 
-              {/* Botón de micrófono: placeholder deshabilitado con tooltip */}
+              {/* Botón de micrófono placeholder */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -335,6 +535,96 @@ export function ChatPage() {
             </p>
           </div>
         </footer>
+
+        {/* Panel lateral de historial de conversaciones pasadas */}
+        <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto bg-card p-6">
+            <SheetHeader className="text-left pb-4 border-b border-border/60">
+              <div className="flex items-center gap-2">
+                <div className="grid size-8 place-items-center rounded-xl bg-lavender-soft text-primary">
+                  <History className="size-4" />
+                </div>
+                <div>
+                  <SheetTitle className="font-display text-xl text-primary">
+                    Historial de Conversaciones
+                  </SheetTitle>
+                  <SheetDescription className="text-xs text-muted-foreground mt-0.5">
+                    Retoma sesiones anteriores o inicia una nueva plática con Eli.
+                  </SheetDescription>
+                </div>
+              </div>
+            </SheetHeader>
+
+            <div className="mt-4 space-y-4">
+              <Button
+                type="button"
+                onClick={handleNewConversation}
+                className="w-full rounded-xl bg-primary text-primary-foreground font-semibold text-xs h-10 gap-2 shadow-xs transition-transform active:scale-[0.98]"
+              >
+                <Plus className="size-4" />
+                <span>+ Nueva conversación con Eli</span>
+              </Button>
+
+              <div className="space-y-2 pt-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Sesiones Anteriores
+                </p>
+
+                <div className="space-y-2">
+                  {sessions.map((session) => {
+                    const isActive = session.id === activeSessionId;
+                    return (
+                      <button
+                        key={session.id}
+                        type="button"
+                        onClick={() => handleSelectSession(session)}
+                        className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                          isActive
+                            ? "border-accent/60 bg-accent/10 ring-1 ring-accent/30 shadow-xs"
+                            : "border-border/70 bg-card hover:bg-muted/40 hover:border-border"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3
+                              className={`text-xs font-bold truncate ${
+                                isActive ? "text-accent" : "text-foreground"
+                              }`}
+                            >
+                              {session.title}
+                            </h3>
+                            <span className="text-[10px] text-muted-foreground shrink-0 font-medium">
+                              {session.updatedAt}
+                            </span>
+                          </div>
+
+                          <p className="text-[11px] text-muted-foreground line-clamp-1 leading-normal">
+                            {session.preview}
+                          </p>
+
+                          {isActive && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1 bg-accent/15 text-accent border-accent/30 text-[9px] font-semibold py-0 px-1.5"
+                            >
+                              Sesión activa
+                            </Badge>
+                          )}
+                        </div>
+
+                        <ChevronRight
+                          className={`size-4 shrink-0 transition-transform ${
+                            isActive ? "text-accent" : "text-muted-foreground/60"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </AuroraBackground>
     </TooltipProvider>
   );
