@@ -1,16 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RecursosPage } from "@/features/recursos/recursos-page";
+import { BRAND } from "@/lib/branding";
 
 export const Route = createFileRoute("/recursos")({
   head: () => ({
     meta: [
-      { title: "Recursos de Autocuidado — Equilibra TESH" },
+      { title: `Recursos de Autocuidado — ${BRAND.fullName}` },
       {
         name: "description",
         content:
           "Biblioteca de recursos de autocuidado, técnicas de respiración, grounding y psicoeducación del TESH.",
       },
-      { property: "og:title", content: "Recursos de Autocuidado — Equilibra TESH" },
+      { property: "og:title", content: `Recursos de Autocuidado — ${BRAND.fullName}` },
       {
         property: "og:description",
         content:

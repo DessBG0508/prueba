@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
 import { profileIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
-import { wellbeingStats } from "@/lib/mock-data";
+import { BRAND } from "@/lib/branding";
 import { WellbeingStreakCard } from "./wellbeing-streak-card";
+import { WellbeingStatsGrid } from "@/features/bienestar/wellbeing-stats-grid";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -27,8 +28,10 @@ import {
 function getInitials(name?: string) {
   if (!name) return "ES";
   const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  const first = parts[0]?.charAt(0) ?? "";
+  const second = parts[1]?.charAt(0) ?? "";
+  if (first && second) return `${first}${second}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase() || "ES";
 }
 
 const STAT_ICONS = [
@@ -59,8 +62,7 @@ const SECURITY_ITEMS = [
   },
   {
     title: "Acompañamiento sin repercusiones",
-    description:
-      "Equilibra es un espacio de cuidado humano. Nunca se comparte con fines académicos ni disciplinarios.",
+    description: `${BRAND.name} es un espacio de cuidado humano. Nunca se comparte con fines académicos ni disciplinarios.`,
     icon: profileIcons.heartPulse,
   },
 ];
@@ -203,39 +205,7 @@ export function PerfilPage() {
                   </div>
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-                {wellbeingStats.map((stat, idx) => {
-                  const Icon = STAT_ICONS[idx] ?? profileIcons.brain;
-                  return (
-                    <div
-                      key={stat.label}
-                      className="rounded-xl border border-border/60 bg-card/65 p-3"
-                    >
-                      <div className="flex items-center justify-between gap-1 mb-1.5">
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          {stat.label}
-                        </span>
-                        <Icon className="size-3.5 text-accent" />
-                      </div>
-                      <p className="font-numeric text-xl font-bold italic text-primary">
-                        {stat.value}
-                        <span className="ml-0.5 font-sans text-xs font-normal not-italic text-muted-foreground">
-                          {stat.suffix}
-                        </span>
-                      </p>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary/25">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${stat.progress}%` }}
-                          transition={{ duration: 0.8, ease: "easeOut" }}
-                          className="h-full rounded-full bg-teal"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <WellbeingStatsGrid variant="profile" />
             </div>
 
             <div className="mt-5 rounded-xl bg-mint-soft/80 p-3.5 text-xs text-primary/80 leading-relaxed border border-mint/30">

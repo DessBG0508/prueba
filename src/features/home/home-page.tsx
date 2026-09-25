@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
 import {
@@ -18,8 +18,11 @@ import { MoodIllustration } from "@/components/ui/mood-illustration";
 import { LiquidButton } from "@/components/effects/liquid-button";
 import { TiltCard } from "@/components/effects/tilt-card";
 import { PageShell } from "@/components/layout/page-shell";
-import { moods, wellbeingStats } from "@/lib/mock-data";
+import { WellbeingStatsGrid } from "@/features/bienestar/wellbeing-stats-grid";
+import { moods } from "@/lib/mock-data";
 import type { MoodId } from "@/lib/types";
+import { BRAND } from "@/lib/branding";
+import { useMoodStats, getTodayMoodCheckIn } from "@/lib/mood-store";
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -59,8 +62,33 @@ const statIcons = [Brain, BedDouble, CircleGauge, BatteryMedium];
 
 export function HomePage() {
   const navigate = useNavigate();
-  const [selectedMood, setSelectedMood] = useState<MoodId>("regular");
+  const { todayMood, saveTodayMood } = useMoodStats();
+  const [selectedMood, setSelectedMood] = useState<MoodId>(() => {
+    const today = getTodayMoodCheckIn();
+    return today ? today.moodId : "regular";
+  });
+
+  // Sincronía inversa: si se edita desde el panel de métricas o cambia hoy, actualizar el emocionómetro
+  useEffect(() => {
+    if (todayMood && todayMood !== selectedMood) {
+      setSelectedMood(todayMood);
+    }
+  }, [todayMood, selectedMood]);
+
+  const handleMoodSelect = (moodId: MoodId) => {
+    setSelectedMood(moodId);
+    saveTodayMood(moodId);
+    toast("Registro guardado");
+  };
+
   const shouldReduceMotion = useReducedMotion();
+
+  const reducedVariants = {
+    hidden: { opacity: 1, y: 0 },
+    visible: { opacity: 1, y: 0 },
+  };
+  const activeContainerVariants = shouldReduceMotion ? reducedVariants : staggerContainer;
+  const activeCardVariants = shouldReduceMotion ? reducedVariants : staggerCard;
 
   return (
     <PageShell>
@@ -76,17 +104,17 @@ export function HomePage() {
         </section>
 
         <motion.div
-          variants={shouldReduceMotion ? undefined : staggerContainer}
-          initial={shouldReduceMotion ? undefined : "hidden"}
+          variants={activeContainerVariants}
+          initial="hidden"
           animate="visible"
           className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)] lg:gap-7"
         >
           <div className="space-y-5 lg:space-y-7">
             {/* Tarjeta destacada de Eli — Asistente de apoyo emocional */}
             <motion.section
-              variants={shouldReduceMotion ? undefined : staggerCard}
+              variants={activeCardVariants}
               className="ethereal-card overflow-hidden p-5 sm:p-6 border-accent/30 bg-gradient-to-r from-card via-card to-lavender-soft/40 shadow-soft"
-              aria-label="Asistente Eli"
+              aria-label={`Asistente ${BRAND.assistant}`}
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
@@ -97,7 +125,9 @@ export function HomePage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="font-display text-xl font-bold text-primary">Habla con Eli</h2>
+                      <h2 className="font-display text-xl font-bold text-primary">
+                        Habla con {BRAND.assistant}
+                      </h2>
                       <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
                         En línea
                       </span>
@@ -112,14 +142,14 @@ export function HomePage() {
                   className="rounded-2xl bg-[#6857E4] px-5 text-xs font-semibold text-white shadow-soft transition-transform hover:scale-105 active:scale-95"
                 >
                   <Link to="/chat">
-                    <span>Conversar con Eli</span>
+                    <span>Conversar con {BRAND.assistant}</span>
                   </Link>
                 </Button>
               </div>
             </motion.section>
 
             <motion.section
-              variants={shouldReduceMotion ? undefined : staggerCard}
+              variants={activeCardVariants}
               className="ethereal-card p-5 sm:p-7"
               aria-labelledby="mood-title"
             >
@@ -143,7 +173,7 @@ export function HomePage() {
                       type="button"
                       aria-pressed={active}
                       aria-label={`Me siento ${mood.label.toLowerCase()}`}
-                      onClick={() => setSelectedMood(mood.id)}
+                      onClick={() => handleMoodSelect(mood.id)}
                       className="group flex min-w-0 flex-col items-center gap-2 rounded-2xl py-1 focus-visible:outline-hidden focus-visible:ring-3 focus-visible:ring-ring/35"
                     >
                       <motion.span
@@ -164,10 +194,7 @@ export function HomePage() {
               </div>
             </motion.section>
 
-            <motion.section
-              variants={shouldReduceMotion ? undefined : staggerCard}
-              aria-labelledby="quick-title"
-            >
+            <motion.section variants={activeCardVariants} aria-labelledby="quick-title">
               <h2 id="quick-title" className="mb-4 font-display text-2xl text-primary">
                 Para cuidar de ti
               </h2>
@@ -273,7 +300,7 @@ export function HomePage() {
               </div>
             </motion.section>
 
-            <motion.div variants={shouldReduceMotion ? undefined : staggerCard}>
+            <motion.div variants={activeCardVariants}>
               <LiquidButton onClick={() => navigate({ to: "/citas" })}>
                 Agendar cita con psicólogo
               </LiquidButton>
@@ -281,7 +308,7 @@ export function HomePage() {
           </div>
 
           <motion.section
-            variants={shouldReduceMotion ? undefined : staggerCard}
+            variants={activeCardVariants}
             className="ethereal-card h-fit p-5 sm:p-7"
             aria-labelledby="stats-title"
           >
@@ -293,38 +320,7 @@ export function HomePage() {
                 </h2>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
-              {wellbeingStats.map((stat, index) => {
-                const Icon = statIcons[index] ?? Brain;
-                return (
-                  <div
-                    key={stat.label}
-                    className="rounded-2xl border border-border/60 bg-card/65 p-4 lg:grid lg:grid-cols-[auto_1fr_auto] lg:items-center lg:gap-4"
-                  >
-                    <div className="mb-3 grid size-9 place-items-center rounded-xl bg-lavender-soft text-accent lg:mb-0">
-                      <Icon className="size-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-muted-foreground">{stat.label}</p>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary/25">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${stat.progress}%` }}
-                          transition={{ duration: 0.8, ease: "easeOut" }}
-                          className="h-full rounded-full bg-teal"
-                        />
-                      </div>
-                    </div>
-                    <p className="mt-2 font-numeric text-2xl font-semibold italic text-primary lg:mt-0">
-                      {stat.value}
-                      <span className="ml-0.5 font-sans text-xs font-semibold not-italic text-muted-foreground">
-                        {stat.suffix}
-                      </span>
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
+            <WellbeingStatsGrid variant="home" />
             <p className="mt-5 rounded-2xl bg-mint-soft px-4 py-3 text-sm leading-relaxed text-primary/80">
               Tus días no tienen que ser perfectos para contar. Cada pausa también es un avance.
             </p>

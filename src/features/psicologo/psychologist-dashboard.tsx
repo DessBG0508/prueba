@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   FolderOpen,
   UserCheck,
+  ChevronDown,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationsCenter } from "@/components/notifications/notifications-center";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { CaseDetailSheet } from "./case-detail-sheet";
 import { ScheduleSessionDialog } from "./schedule-session-dialog";
 import { ContactPatientDialog } from "./contact-patient-dialog";
@@ -89,13 +91,47 @@ const statusLabels: Record<CaseStatus, { label: string; surface: string }> = {
   },
 };
 
+const TESH_CAREERS = [
+  "Ing. Civil",
+  "Ing. Industrial",
+  "Ing. Mecatrónica",
+  "Ing. en Sistemas Computacionales",
+  "Lic. en Administración",
+  "Lic. en Biología",
+  "Lic. en Gastronomía",
+] as const;
+
+const TESH_SEMESTERS = [
+  "1º Semestre",
+  "2º Semestre",
+  "3º Semestre",
+  "4º Semestre",
+  "5º Semestre",
+  "6º Semestre",
+  "7º Semestre",
+  "8º Semestre",
+  "9º Semestre",
+] as const;
+
+const PAGE_SIZE = 6;
+
+const chipClass = (isActive: boolean) =>
+  `inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border shrink-0 cursor-pointer ${
+    isActive
+      ? "bg-[#6857E4] text-white border-[#6857E4] shadow-sm hover:bg-[#5b4bcc]"
+      : "bg-white dark:bg-card text-foreground border-[#D8D2FF] hover:border-[#6857E4]/60 hover:bg-[#6857E4]/5"
+  }`;
+
 export function PsychologistDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<"casos" | "agenda" | "bitacora">("casos");
   const [activeRiskFilter, setActiveRiskFilter] = useState<RiskLevel | null>(null);
+  const [selectedCareer, setSelectedCareer] = useState<string>("all");
+  const [selectedSemester, setSelectedSemester] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [cases, setCases] = useState<CaseSummary[]>(() => getPsychologistCases());
   const [appointments, setAppointments] = useState<Appointment[]>(() => getStoredAppointments());
@@ -119,6 +155,11 @@ export function PsychologistDashboard() {
     refreshAppointments();
   }, []);
 
+  // Reiniciar a la primera página cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeRiskFilter, selectedCareer, selectedSemester, searchQuery]);
+
   const handleLogout = () => {
     logout();
     toast.info("Has cerrado sesión como profesional.");
@@ -133,21 +174,58 @@ export function PsychologistDashboard() {
     }
   };
 
-  // Filtrado y búsqueda de casos
-  const visibleCases = useMemo(() => {
+  // Filtrado combinable (AND) con la búsqueda por texto
+  const filteredCases = useMemo(() => {
     return cases.filter((item) => {
+      // 1. Filtro por riesgo
       const matchesRisk = activeRiskFilter === null || item.riskLevel === activeRiskFilter;
+
+      // 2. Filtro por carrera
+      const matchesCareer =
+        selectedCareer === "all" ||
+        (item.career && item.career.toLowerCase().includes(selectedCareer.toLowerCase()));
+
+      // 3. Filtro por semestre
+      const matchesSemester =
+        selectedSemester === "all" ||
+        (item.semester &&
+          (item.semester.toLowerCase() === selectedSemester.toLowerCase() ||
+            item.semester.toLowerCase().startsWith(selectedSemester.slice(0, 2).toLowerCase())));
+
+      // 4. Búsqueda por texto
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch =
         query === "" ||
         item.initials.toLowerCase().includes(query) ||
         (item.studentName && item.studentName.toLowerCase().includes(query)) ||
         (item.career && item.career.toLowerCase().includes(query)) ||
+        (item.semester && item.semester.toLowerCase().includes(query)) ||
         item.summary.toLowerCase().includes(query);
 
-      return matchesRisk && matchesSearch;
+      return matchesRisk && matchesCareer && matchesSemester && matchesSearch;
     });
-  }, [cases, activeRiskFilter, searchQuery]);
+  }, [cases, activeRiskFilter, selectedCareer, selectedSemester, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCases.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedCases = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredCases.slice(start, start + PAGE_SIZE);
+  }, [filteredCases, safePage]);
+
+  const handleClearAllFilters = () => {
+    setActiveRiskFilter(null);
+    setSelectedCareer("all");
+    setSelectedSemester("all");
+    setSearchQuery("");
+    setCurrentPage(1);
+  };
+
+  const hasActiveFilters =
+    activeRiskFilter !== null ||
+    selectedCareer !== "all" ||
+    selectedSemester !== "all" ||
+    searchQuery.trim() !== "";
 
   const redCount = cases.filter((c) => c.riskLevel === "rojo").length;
   const yellowCount = cases.filter((c) => c.riskLevel === "amarillo").length;
@@ -173,6 +251,7 @@ export function PsychologistDashboard() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2.5">
+          <ThemeToggle />
           {/* Centro de Notificaciones y Alertas Interactivo */}
           <NotificationsCenter
             role="psicologo"
@@ -380,32 +459,137 @@ export function PsychologistDashboard() {
 
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground font-semibold">
-                  Mostrando {visibleCases.length} de {cases.length} casos
+                  Mostrando {filteredCases.length} de {cases.length} casos
                 </span>
-                {activeRiskFilter && (
+                {hasActiveFilters && (
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setActiveRiskFilter(null)}
-                    className="h-7 text-xs text-accent px-2"
+                    onClick={handleClearAllFilters}
+                    className="h-7 text-xs text-[#6857E4] hover:bg-[#6857E4]/10 px-2 font-medium"
                   >
-                    Restablecer filtro
+                    Limpiar filtros
                   </Button>
                 )}
               </div>
             </div>
 
+            {/* Chips de filtro (Bajo la barra de búsqueda) */}
+            <div className="flex flex-wrap items-center gap-2 pt-1" aria-label="Filtros avanzados">
+              <span className="text-xs font-semibold text-muted-foreground mr-1">Riesgo:</span>
+              <button
+                type="button"
+                onClick={() => setActiveRiskFilter(null)}
+                className={chipClass(activeRiskFilter === null)}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRiskFilter("rojo")}
+                className={chipClass(activeRiskFilter === "rojo")}
+              >
+                Riesgo alto
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRiskFilter("amarillo")}
+                className={chipClass(activeRiskFilter === "amarillo")}
+              >
+                Seguimiento
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveRiskFilter("verde")}
+                className={chipClass(activeRiskFilter === "verde")}
+              >
+                Estable
+              </button>
+
+              <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
+
+              {/* Dropdown Carrera */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={chipClass(selectedCareer !== "all")}>
+                    <span>{selectedCareer === "all" ? "Carrera: Todas" : selectedCareer}</span>
+                    <ChevronDown className="size-3.5 opacity-80" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs font-bold text-muted-foreground">
+                    Carrera TESH
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => setSelectedCareer("all")}
+                    className={selectedCareer === "all" ? "font-bold text-[#6857E4]" : ""}
+                  >
+                    Todas las carreras
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {TESH_CAREERS.map((career) => (
+                    <DropdownMenuItem
+                      key={career}
+                      onClick={() => setSelectedCareer(career)}
+                      className={selectedCareer === career ? "font-bold text-[#6857E4]" : ""}
+                    >
+                      {career}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Dropdown Semestre */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={chipClass(selectedSemester !== "all")}>
+                    <span>{selectedSemester === "all" ? "Semestre: Todos" : selectedSemester}</span>
+                    <ChevronDown className="size-3.5 opacity-80" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52 max-h-72 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs font-bold text-muted-foreground">
+                    Semestre (1º a 9º)
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => setSelectedSemester("all")}
+                    className={selectedSemester === "all" ? "font-bold text-[#6857E4]" : ""}
+                  >
+                    Todos los semestres
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {TESH_SEMESTERS.map((sem) => (
+                    <DropdownMenuItem
+                      key={sem}
+                      onClick={() => setSelectedSemester(sem)}
+                      className={selectedSemester === sem ? "font-bold text-[#6857E4]" : ""}
+                    >
+                      {sem}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
             {/* Lista de Tarjetas de Pacientes */}
             <div className="grid gap-4 md:grid-cols-2">
-              {visibleCases.length === 0 ? (
-                <div className="col-span-2 p-12 text-center rounded-2xl border border-dashed border-border bg-card/40">
-                  <p className="text-sm font-semibold text-foreground">No se encontraron casos</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Prueba modificando la búsqueda o el filtro de nivel de riesgo.
+              {filteredCases.length === 0 ? (
+                <div className="col-span-2 p-12 text-center rounded-2xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center space-y-3">
+                  <p className="text-sm font-semibold text-foreground">
+                    No hay casos con estos filtros
                   </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearAllFilters}
+                    className="rounded-xl border-[#6857E4] text-[#6857E4] hover:bg-[#6857E4]/10 font-medium text-xs"
+                  >
+                    Limpiar filtros
+                  </Button>
                 </div>
               ) : (
-                visibleCases.map((item) => {
+                paginatedCases.map((item) => {
                   const style = riskStyles[item.riskLevel];
                   const statusInfo = statusLabels[item.status || "por_contactar"];
 
@@ -510,6 +694,35 @@ export function PsychologistDashboard() {
                 })
               )}
             </div>
+
+            {/* Paginación de 6 casos por página */}
+            {filteredCases.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="rounded-xl border-[#D8D2FF] text-foreground hover:bg-[#6857E4]/10 disabled:opacity-40 text-xs"
+                >
+                  Anterior
+                </Button>
+                <span className="text-xs text-muted-foreground font-medium">
+                  Página {safePage} de {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="rounded-xl border-[#D8D2FF] text-foreground hover:bg-[#6857E4]/10 disabled:opacity-40 text-xs"
+                >
+                  Siguiente
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* TAB 2: AGENDA DE CITAS */}

@@ -45,6 +45,15 @@ const MOCK_USERS: Array<User & { passwordHash: string }> = [
     passwordHash: "password123",
     createdAt: "2026-09-01T00:00:00.000Z",
   },
+  {
+    id: "demo-directivo-jefatura",
+    name: "Mtro. Roberto Albarrán",
+    matricula: "DIR-33201",
+    email: "jefatura@tesh.mx",
+    role: "directivo",
+    passwordHash: "password123",
+    createdAt: "2026-09-01T00:00:00.000Z",
+  },
 ];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

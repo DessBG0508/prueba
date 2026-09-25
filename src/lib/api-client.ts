@@ -166,7 +166,9 @@ export async function sendEliMessage(mensaje: string): Promise<EliMessage> {
       const fallbackList = CONTEXTUAL_RESPONSES.filter((entry) => entry.keywords.length === 0);
       const chosen = fallbackList[responseIndex % fallbackList.length];
       responseIndex++;
-      chosenText = chosen.text;
+      chosenText = chosen
+        ? chosen.text
+        : "Aquí estoy contigo para escucharte y acompañarte en tu día.";
     }
 
     return {

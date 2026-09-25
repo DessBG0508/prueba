@@ -10,7 +10,7 @@
   font-display: swap;
 }
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * Design system definition.
@@ -18,8 +18,7 @@
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary).
  *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
+ * The :root and .dark blocks define the actual color values using oklch / hex.
  *
  * To add a new semantic color:
  * 1. Add the variable to :root (light value) and .dark (dark value)
@@ -106,7 +105,7 @@
   --ring: oklch(0.55 0.199 286);
   --teal: oklch(0.71 0.126 184);
   --cyan: oklch(0.72 0.128 199);
-  --alert: oklch(0.81907 0.153798 333.806);
+  --alert: #ff9ced;
   --mint-soft: oklch(0.94 0.046 174);
   --lavender-soft: oklch(0.95 0.034 292);
   --cyan-soft: oklch(0.94 0.042 204);
@@ -130,38 +129,48 @@
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --background: #0f0e1a;
+  --foreground: #edeafb;
+  --card: #1b1930;
+  --card-foreground: #edeafb;
+  --popover: #1b1930;
+  --popover-foreground: #edeafb;
+  --primary: #8b7cf0;
+  --primary-foreground: #0f0e1a;
+  --secondary: #282348;
+  --secondary-foreground: #edeafb;
+  --muted: #211e39;
+  --muted-foreground: #a6a2c9;
+  --accent: #8b7cf0;
+  --accent-foreground: #ffffff;
+  --destructive: #ff4d6d;
+  --destructive-foreground: #ffffff;
+  --border: rgba(237, 234, 251, 0.14);
+  --input: rgba(237, 234, 251, 0.18);
+  --ring: #8b7cf0;
+  --teal: #2bd9cf;
+  --cyan: #2bd9cf;
+  --alert: #ff9ced; /* FIJO en ambos temas */
+  --mint-soft: #142728;
+  --lavender-soft: #25203f;
+  --cyan-soft: #122633;
+  --green-soft: #152e25;
+  --shadow-soft: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --shadow-float: 0 18px 48px rgba(0, 0, 0, 0.6);
+  --shadow-nav: 0 10px 35px rgba(0, 0, 0, 0.5);
+  --chart-1: #8b7cf0;
+  --chart-2: #2bd9cf;
+  --chart-3: #87ffbd;
+  --chart-4: #c084fc;
+  --chart-5: #38bdf8;
+  --sidebar: #1b1930;
+  --sidebar-foreground: #edeafb;
+  --sidebar-primary: #8b7cf0;
+  --sidebar-primary-foreground: #0f0e1a;
+  --sidebar-accent: #282348;
+  --sidebar-accent-foreground: #edeafb;
+  --sidebar-border: rgba(237, 234, 251, 0.14);
+  --sidebar-ring: #8b7cf0;
 }
 
 @layer base {
@@ -177,7 +186,10 @@
     min-width: 320px;
   }
 
-  button, a { -webkit-tap-highlight-color: transparent; }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 @utility ethereal-card {
@@ -186,7 +198,9 @@
   background: color-mix(in oklab, var(--card) 88%, transparent);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(18px);
-  transition: transform 250ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 250ms cubic-bezier(0.25, 1, 0.5, 1);
+  transition:
+    transform 250ms cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 250ms cubic-bezier(0.25, 1, 0.5, 1);
   will-change: transform;
   &:hover {
     transform: translateY(-2px);
@@ -231,7 +245,11 @@ button:not(:disabled):active,
   left: 10%;
   width: 38rem;
   height: 38rem;
-  background: radial-gradient(circle, color-mix(in oklab, var(--secondary) 65%, transparent), transparent 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--secondary) 65%, transparent),
+    transparent 70%
+  );
   opacity: 0.32;
   animation: aurora-blob-1 25s ease-in-out infinite alternate;
 }
@@ -242,7 +260,11 @@ button:not(:disabled):active,
   right: -8%;
   width: 34rem;
   height: 34rem;
-  background: radial-gradient(circle, color-mix(in oklab, var(--green-soft) 85%, transparent), transparent 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--green-soft) 85%, transparent),
+    transparent 70%
+  );
   opacity: 0.28;
   animation: aurora-blob-2 29s ease-in-out infinite alternate;
 }
@@ -253,54 +275,202 @@ button:not(:disabled):active,
   left: 25%;
   width: 36rem;
   height: 36rem;
-  background: radial-gradient(circle, color-mix(in oklab, var(--cyan) 45%, transparent), transparent 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--cyan) 45%, transparent),
+    transparent 70%
+  );
   opacity: 0.26;
   animation: aurora-blob-3 22s ease-in-out infinite alternate;
 }
 
-.grain-layer { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .22; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E"); }
-.mood-circle { display: grid; width: 3.25rem; height: 3.25rem; place-items: center; border-radius: 999px; color: var(--primary); transition: box-shadow 250ms ease; }
-.mood-illustration { width: 88%; height: 88%; object-fit: contain; filter: drop-shadow(0 3px 5px color-mix(in oklab, var(--primary) 12%, transparent)); }
-.mood-teal { background: color-mix(in oklab, var(--teal) 65%, white); }
-.mood-cyan { background: color-mix(in oklab, var(--cyan) 55%, white); }
-.mood-mint { background: var(--green-soft); }
-.mood-lavender { background: var(--secondary); }
-.mood-deep { background: color-mix(in oklab, var(--primary) 82%, white); color: var(--primary-foreground); }
-.liquid-button::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle 7.5rem at var(--liquid-x) var(--liquid-y), color-mix(in oklab, var(--cyan) 75%, transparent), transparent 72%); opacity: 0; transition: opacity 300ms ease; }
-@media (hover: hover) and (pointer: fine) {
-  .liquid-button:hover::before { opacity: 1; }
+.grain-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E");
 }
-.liquid-glow { position: absolute; inset: 1px; border-radius: inherit; border: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent); pointer-events: none; }
-.breathing-orb { animation: breathing-478 19s ease-in-out infinite; }
-.breathing-orb-core { animation: breathing-478-opacity 19s ease-in-out infinite; }
+
+/* Versión oscura más sutil de la aurora (contraste AA y descanso visual) */
+.dark .aurora-blob-1 {
+  opacity: 0.12;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #8b7cf0 40%, transparent),
+    transparent 70%
+  );
+}
+
+.dark .aurora-blob-2 {
+  opacity: 0.1;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #2bd9cf 35%, transparent),
+    transparent 70%
+  );
+}
+
+.dark .aurora-blob-3 {
+  opacity: 0.08;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #2bd9cf 30%, transparent),
+    transparent 70%
+  );
+}
+
+.dark .grain-layer {
+  opacity: 0.1;
+}
+
+.mood-circle {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--primary);
+  transition: box-shadow 250ms ease;
+}
+.mood-illustration {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 5px color-mix(in oklab, var(--primary) 12%, transparent));
+}
+.mood-teal {
+  background: color-mix(in oklab, var(--teal) 65%, white);
+}
+.mood-cyan {
+  background: color-mix(in oklab, var(--cyan) 55%, white);
+}
+.mood-mint {
+  background: var(--green-soft);
+}
+.mood-lavender {
+  background: var(--secondary);
+}
+.mood-deep {
+  background: color-mix(in oklab, var(--primary) 82%, white);
+  color: var(--primary-foreground);
+}
+
+.dark .mood-teal {
+  background: color-mix(in srgb, #2bd9cf 22%, #1b1930);
+  color: #2bd9cf;
+}
+.dark .mood-cyan {
+  background: color-mix(in srgb, #2bd9cf 18%, #1b1930);
+  color: #2bd9cf;
+}
+.dark .mood-mint {
+  background: color-mix(in srgb, #87ffbd 18%, #1b1930);
+  color: #87ffbd;
+}
+.dark .mood-lavender {
+  background: color-mix(in srgb, #8b7cf0 22%, #1b1930);
+  color: #edeafb;
+}
+.dark .mood-deep {
+  background: color-mix(in srgb, #8b7cf0 30%, #1b1930);
+  color: #ffffff;
+}
+.liquid-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle 7.5rem at var(--liquid-x) var(--liquid-y),
+    color-mix(in oklab, var(--cyan) 75%, transparent),
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .liquid-button:hover::before {
+    opacity: 1;
+  }
+}
+.liquid-glow {
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
+  pointer-events: none;
+}
+.breathing-orb,
+.breathing-circle {
+  animation: breathing-478 19s ease-in-out infinite;
+  animation-iteration-count: infinite;
+}
+.breathing-orb-core,
+.breathing-circle-core {
+  animation: breathing-478-opacity 19s ease-in-out infinite;
+  animation-iteration-count: infinite;
+}
 
 @keyframes aurora-blob-1 {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(10%, 15%, 0) scale(1.06); }
-  100% { transform: translate3d(-8%, 20%, 0) scale(0.95); }
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(10%, 15%, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(-8%, 20%, 0) scale(0.95);
+  }
 }
 
 @keyframes aurora-blob-2 {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(-12%, 10%, 0) scale(1.1); }
-  100% { transform: translate3d(-18%, -8%, 0) scale(0.96); }
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-12%, 10%, 0) scale(1.1);
+  }
+  100% {
+    transform: translate3d(-18%, -8%, 0) scale(0.96);
+  }
 }
 
 @keyframes aurora-blob-3 {
-  0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(14%, -12%, 0) scale(1.08); }
-  100% { transform: translate3d(5%, -18%, 0) scale(0.94); }
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(14%, -12%, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(5%, -18%, 0) scale(0.94);
+  }
 }
 
 @keyframes breathing-478 {
-  0% { transform: scale(.82); }
-  21.0526%, 57.8947% { transform: scale(1.16); }
-  100% { transform: scale(.82); }
+  0% {
+    transform: scale(0.82);
+  }
+  21.0526%,
+  57.8947% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(0.82);
+  }
 }
 @keyframes breathing-478-opacity {
-  0% { opacity: .45; }
-  21.0526%, 57.8947% { opacity: .85; }
-  100% { opacity: .45; }
+  0% {
+    opacity: 0.45;
+  }
+  21.0526%,
+  57.8947% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0.45;
+  }
 }
 
 @keyframes liquid-ripple {
@@ -313,13 +483,20 @@ button:not(:disabled):active,
     opacity: 0;
   }
 }
-@media (min-width: 640px) { .mood-circle { width: 4rem; height: 4rem; } }
+@media (min-width: 640px) {
+  .mood-circle {
+    width: 4rem;
+    height: 4rem;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
-    animation-duration: .01ms !important;
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
+    transition-duration: 0.01ms !important;
   }
   .aurora-blob {
     animation: none !important;
@@ -332,4 +509,50 @@ button:not(:disabled):active,
   [role="button"]:not([aria-disabled="true"]):active {
     transform: none !important;
   }
+}
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 1.2cm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+  .print-hidden,
+  nav,
+  aside,
+  header.screen-only-header {
+    display: none !important;
+  }
+  .print-only-block {
+    display: block !important;
+  }
+  .print-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
+/* REGLA ESTRICTA: Rosa de alerta #FF9CED y semáforo del panel NUNCA se alteran ni pierden legibilidad */
+.dark section[style*="#FF9CED"],
+.dark .bg-\[\#FF9CED\] {
+  color: #1a0e36 !important;
+}
+.dark section[style*="#FF9CED"] h1,
+.dark section[style*="#FF9CED"] p {
+  color: #1a0e36 !important;
+}
+.dark section[style*="#FF9CED"] button:not(.border-card) {
+  background-color: #1a0e36 !important;
+  color: #edeafb !important;
+}
+.dark section[style*="#FF9CED"] button.border-card {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  color: #1a0e36 !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
 }

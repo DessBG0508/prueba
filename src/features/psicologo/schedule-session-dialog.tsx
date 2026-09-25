@@ -52,7 +52,7 @@ export function ScheduleSessionDialog({
   const [date, setDate] = useState<string>("2026-09-28");
   const [timeSlot, setTimeSlot] = useState<string>("11:00 - 11:50");
   const [modality, setModality] = useState<AppointmentModality>("presencial");
-  const [topic, setTopic] = useState<string>(TOPICS[0]);
+  const [topic, setTopic] = useState<string>(TOPICS[0] ?? "Primera sesión de valoración");
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 

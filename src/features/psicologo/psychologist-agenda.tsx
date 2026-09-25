@@ -46,7 +46,9 @@ function formatFriendlyDate(dateStr: string) {
   try {
     const parts = dateStr.split("-").map(Number);
     if (parts.length !== 3) return dateStr;
-    const [year, month, day] = parts;
+    const year = parts[0] ?? 2026;
+    const month = parts[1] ?? 1;
+    const day = parts[2] ?? 1;
     const dateObj = new Date(year, month - 1, day);
     const formatted = dateObj.toLocaleDateString("es-MX", {
       weekday: "long",

@@ -9,6 +9,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { BreathingSphereView } from "@/components/effects/breathing-sphere-view";
 import type { CrisisResource, RiskLevel } from "@/lib/types";
+import { BRAND } from "@/lib/branding";
 
 const ALERT_LEVEL: RiskLevel = "rojo";
 
@@ -29,8 +30,8 @@ const crisisResources: CrisisResource[] = [
   },
   {
     id: "eli",
-    name: "Chat con Eli",
-    contact: "En línea ahora",
+    name: `Chat con ${BRAND.assistant}`,
+    contact: "Próximamente",
     kind: "chat",
     available: "Acompañamiento por chat 24/7",
   },
@@ -54,7 +55,8 @@ export function AlertaPage() {
         </p>
 
         <section
-          className="relative overflow-hidden rounded-3xl bg-alert p-6 text-primary shadow-float sm:p-9 lg:p-12"
+          className="relative overflow-hidden rounded-3xl bg-[#FF9CED] p-6 text-primary shadow-float sm:p-9 lg:p-12"
+          style={{ backgroundColor: "#FF9CED" }}
           aria-labelledby="alert-title"
         >
           <img
@@ -145,7 +147,7 @@ export function AlertaPage() {
                   key={resource.id}
                   to="/chat"
                   className="ethereal-card flex items-center gap-3 p-4 hover:border-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
-                  aria-label="Abrir chat con Eli"
+                  aria-label={`Chat con ${BRAND.assistant} — Próximamente`}
                 >
                   {content}
                 </Link>
@@ -185,11 +187,11 @@ export function AlertaPage() {
           </div>
         </section>
 
-        <footer className="mt-8 text-center text-sm text-accent/80">
-          <p>Cuando te sientas listo/a, puedes volver cuando quieras.</p>
+        <footer className="mt-8 text-center text-sm text-muted-foreground">
+          <p>Cuando te sientas listo/a, puedes volver cuando quieras</p>
           <Link
             to="/"
-            className="mt-2 inline-block font-semibold text-accent underline decoration-secondary underline-offset-4 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+            className="mt-2 inline-block font-semibold text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
           >
             Volver al inicio
           </Link>

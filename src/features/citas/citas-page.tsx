@@ -43,7 +43,10 @@ const PSYCHOLOGISTS = [
 
 function formatDateDisplay(dateStr: string) {
   try {
-    const [year, month, day] = dateStr.split("-").map(Number);
+    const parts = dateStr.split("-").map(Number);
+    const year = parts[0] ?? 2026;
+    const month = parts[1] ?? 1;
+    const day = parts[2] ?? 1;
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString("es-MX", {
       weekday: "long",
@@ -128,13 +131,13 @@ export function CitasPage() {
       return;
     }
 
-    if (selectedModality !== "presencial" && selectedModality !== "en_linea") {
+    if (selectedModality !== "presencial" && selectedModality !== "en-linea") {
       toast.error("Por favor selecciona una modalidad válida (presencial o en línea).");
       return;
     }
 
-    const psychInfo =
-      PSYCHOLOGISTS.find((p) => p.name === selectedPsychologist) || PSYCHOLOGISTS[0];
+    const defaultPsych = PSYCHOLOGISTS[0]!;
+    const psychInfo = PSYCHOLOGISTS.find((p) => p.name === selectedPsychologist) ?? defaultPsych;
     const location =
       selectedModality === "presencial"
         ? psychInfo.office

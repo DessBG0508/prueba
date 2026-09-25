@@ -1,6 +1,6 @@
 export type RiskLevel = "verde" | "amarillo" | "rojo";
 
-export type UserRole = "estudiante" | "psicologo";
+export type UserRole = "estudiante" | "psicologo" | "directivo";
 
 export interface User {
   id: string;
@@ -18,6 +18,13 @@ export interface Mood {
   label: string;
   value: 1 | 2 | 3 | 4 | 5;
   tone: "teal" | "cyan" | "mint" | "lavender" | "deep";
+}
+
+export interface MoodCheckIn {
+  date: string; // YYYY-MM-DD
+  value: 1 | 2 | 3 | 4 | 5; // Escala interna: Feliz=1, Bien=2, Normal=3, Triste=4, Muy mal=5
+  moodId: MoodId;
+  createdAt?: string;
 }
 
 export interface CheckIn {
@@ -53,6 +60,7 @@ export interface CaseSummary {
   id: string;
   initials: string;
   studentName?: string;
+  matricula?: string;
   career?: string;
   semester?: string;
   riskLevel: RiskLevel;
@@ -64,6 +72,7 @@ export interface CaseSummary {
   gad7: number;
   lastContactDate?: string;
   notesCount?: number;
+  modo_acompanamiento?: boolean;
 }
 
 export type AppointmentModality = "presencial" | "en-linea";
@@ -92,7 +101,8 @@ export interface PsychoResource {
   shortDescription: string;
   category: ResourceCategory;
   readTime: string;
-  iconName: "wind" | "moon" | "sun" | "heart" | "compass" | "brain" | "feather" | "smile";
+  iconName:
+    "wind" | "moon" | "sun" | "heart" | "compass" | "brain" | "feather" | "smile" | "bookOpen";
   tone: "teal" | "cyan" | "mint" | "lavender" | "rose";
   content: string[];
   keyTakeaway?: string;

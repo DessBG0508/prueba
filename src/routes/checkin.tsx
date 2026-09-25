@@ -1,16 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckInPage } from "@/features/checkin/checkin-page";
+import { BRAND } from "@/lib/branding";
 
 export const Route = createFileRoute("/checkin")({
   head: () => ({
     meta: [
-      { title: "Check-in emocional — Equilibra TESH" },
+      { title: `Check-in emocional — ${BRAND.fullName}` },
       {
         name: "description",
         content:
           "Registra cómo se sintió tu semana académica en un espacio tranquilo y confidencial.",
       },
-      { property: "og:title", content: "Check-in emocional — Equilibra TESH" },
+      { property: "og:title", content: `Check-in emocional — ${BRAND.fullName}` },
       {
         property: "og:description",
         content:

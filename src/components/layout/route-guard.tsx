@@ -30,25 +30,40 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     if (isPublic) {
       if (user.role === "psicologo") {
         navigate({ to: "/psicologo", replace: true });
+      } else if (user.role === "directivo") {
+        navigate({ to: "/directivo", replace: true });
       } else {
         navigate({ to: "/", replace: true });
       }
       return;
     }
 
-    // 3. Rol Psicólogo: solo puede ver /psicologo
+    // 3. Rol Psicólogo: solo puede ver /psicologo y /expedientes
     if (user.role === "psicologo") {
-      if (!pathname.startsWith("/psicologo")) {
+      if (!pathname.startsWith("/psicologo") && !pathname.startsWith("/expedientes")) {
         toast.info("Redirigido al panel de psicología correspondiente a tu rol.");
         navigate({ to: "/psicologo", replace: true });
       }
       return;
     }
 
-    // 4. Rol Estudiante: puede ver /, /checkin, /alerta, /chat, /citas, /recursos, /perfil
+    // 4. Rol Directivo: solo puede ver /directivo
+    if (user.role === "directivo") {
+      if (!pathname.startsWith("/directivo")) {
+        toast.info("Redirigido al panel directivo correspondiente a tu rol.");
+        navigate({ to: "/directivo", replace: true });
+      }
+      return;
+    }
+
+    // 5. Rol Estudiante: puede ver /, /checkin, /alerta, /chat, /citas, /recursos, /perfil
     if (user.role === "estudiante") {
-      if (pathname.startsWith("/psicologo")) {
-        toast.info("Esta sección es de acceso exclusivo para el personal de psicología.");
+      if (
+        pathname.startsWith("/psicologo") ||
+        pathname.startsWith("/directivo") ||
+        pathname.startsWith("/expedientes")
+      ) {
+        toast.info("Esta sección es de acceso institucional.");
         navigate({ to: "/", replace: true });
       }
     }
@@ -76,8 +91,20 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   // Si hay usuario y está en una ruta que no le corresponde, no renderizar mientras redirige
   if (user) {
     if (PUBLIC_ROUTES.includes(pathname)) return null;
-    if (user.role === "psicologo" && !pathname.startsWith("/psicologo")) return null;
-    if (user.role === "estudiante" && pathname.startsWith("/psicologo")) return null;
+    if (
+      user.role === "psicologo" &&
+      !pathname.startsWith("/psicologo") &&
+      !pathname.startsWith("/expedientes")
+    )
+      return null;
+    if (user.role === "directivo" && !pathname.startsWith("/directivo")) return null;
+    if (
+      user.role === "estudiante" &&
+      (pathname.startsWith("/psicologo") ||
+        pathname.startsWith("/directivo") ||
+        pathname.startsWith("/expedientes"))
+    )
+      return null;
   }
 
   return <>{children}</>;

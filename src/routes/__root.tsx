@@ -13,9 +13,11 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { RouteGuard } from "@/components/layout/route-guard";
+import { useTheme } from "@/lib/theme";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { BRAND } from "@/lib/branding";
 
 function NotFoundComponent() {
   return (
@@ -82,9 +84,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Equilibra TESH" },
+      { title: BRAND.fullName },
       { name: "description", content: "Apoyo psicológico universitario del TESH Huixquilucan." },
-      { name: "author", content: "Equilibra TESH" },
+      { name: "author", content: BRAND.fullName },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -110,9 +112,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="es-MX">
+    <html lang="es-MX" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("equilibra_theme");var d=t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d){document.documentElement.classList.add("dark")}else{document.documentElement.classList.remove("dark")}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -142,11 +149,17 @@ function AnimatedRouteOutlet() {
   );
 }
 
+function ThemeInitializer() {
+  useTheme();
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ThemeInitializer />
       <AuthProvider>
         <RouteGuard>
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}

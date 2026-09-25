@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { LoginPage } from "@/features/auth/login-page";
+import { BRAND } from "@/lib/branding";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Iniciar sesión — Equilibra TESH" },
+      { title: `Iniciar sesión — ${BRAND.fullName}` },
       {
         name: "description",
         content: "Accede a tu espacio de acompañamiento y bienestar emocional en el TESH.",
       },
-      { property: "og:title", content: "Iniciar sesión — Equilibra TESH" },
+      { property: "og:title", content: `Iniciar sesión — ${BRAND.fullName}` },
       {
         property: "og:description",
         content: "Accede a tu espacio de acompañamiento y bienestar emocional en el TESH.",

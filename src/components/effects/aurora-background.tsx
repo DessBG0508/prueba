@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
 
-export function AuroraBackground({ children }: { children: ReactNode }) {
+export function AuroraBackground({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="aurora-shell">
+    <div className={`aurora-shell ${className}`}>
       <div className="aurora-blobs" aria-hidden="true">
         <div className="aurora-blob aurora-blob-1" />
         <div className="aurora-blob aurora-blob-2" />

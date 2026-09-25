@@ -119,9 +119,11 @@ function OrganicSphereMesh() {
       coreRef.current.rotation.y = -elapsed * 0.16;
     }
 
-    if (materialRef.current) {
-      materialRef.current.uniforms.uTime.value = elapsed;
-      materialRef.current.uniforms.uWobble.value = wobble;
+    if (materialRef.current?.uniforms) {
+      const uTime = materialRef.current.uniforms["uTime"];
+      if (uTime) uTime.value = elapsed;
+      const uWobble = materialRef.current.uniforms["uWobble"];
+      if (uWobble) uWobble.value = wobble;
     }
   });
 

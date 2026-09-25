@@ -1,16 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertaPage } from "@/features/alerta/alerta-page";
+import { BRAND } from "@/lib/branding";
 
 export const Route = createFileRoute("/alerta")({
   head: () => ({
     meta: [
-      { title: "Atención prioritaria — Equilibra TESH" },
+      { title: `Atención prioritaria — ${BRAND.fullName}` },
       {
         name: "description",
         content:
           "Apoyo psicológico inmediato, confidencial y cercano para estudiantes de la comunidad TESH.",
       },
-      { property: "og:title", content: "Atención prioritaria — Equilibra TESH" },
+      { property: "og:title", content: `Atención prioritaria — ${BRAND.fullName}` },
       {
         property: "og:description",
         content: "Encuentra acompañamiento y recursos de apoyo disponibles en este momento.",

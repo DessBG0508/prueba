@@ -43,16 +43,18 @@ export function ContactPatientDialog({
   onOpenChange,
   onSuccess,
 }: ContactPatientDialogProps) {
-  const [channel, setChannel] = useState<string>(CHANNELS[0].id);
-  const [outcome, setOutcome] = useState<string>(OUTCOMES[0]);
+  const [channel, setChannel] = useState<string>(CHANNELS[0]?.id ?? "llamada_telefonica");
+  const [outcome, setOutcome] = useState<string>(
+    OUTCOMES[0] ?? "Paciente contactado/a exitosamente",
+  );
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen) {
       setNotes("");
-      setChannel(CHANNELS[0].id);
-      setOutcome(OUTCOMES[0]);
+      setChannel(CHANNELS[0]?.id ?? "llamada_telefonica");
+      setOutcome(OUTCOMES[0] ?? "Paciente contactado/a exitosamente");
     }
   }, [isOpen, caseItem]);
 

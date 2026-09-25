@@ -5,6 +5,7 @@ import { PageShell } from "@/components/layout/page-shell";
 import { resourceIcons } from "@/config/icons";
 import { psychoResources } from "@/lib/resources-data";
 import type { PsychoResource, ResourceCategory } from "@/lib/types";
+import { BRAND } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,8 @@ function getIconComponent(iconName: PsychoResource["iconName"]) {
       return resourceIcons.feather;
     case "smile":
       return resourceIcons.smile;
+    case "bookOpen":
+      return resourceIcons.bookOpen;
     default:
       return resourceIcons.bookOpen;
   }
@@ -172,7 +175,7 @@ export function RecursosPage() {
                 >
                   <Link to="/chat">
                     <resourceIcons.sparkles className="mr-2 size-4" />
-                    <span>Conversar con Eli sobre este tema</span>
+                    <span>Conversar con {BRAND.assistant} sobre este tema</span>
                   </Link>
                 </Button>
               </div>

@@ -14,12 +14,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { NotificationsCenter } from "@/components/notifications/notifications-center";
+import { ThemeToggle } from "./theme-toggle";
 
 function getInitials(name?: string) {
   if (!name) return "EQ";
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.charAt(0) ?? "";
+  const second = parts[1]?.charAt(0) ?? "";
+  if (first && second) return `${first}${second}`.toUpperCase();
+  return name.slice(0, 2).toUpperCase() || "EQ";
 }
 
 export function AppHeader() {
@@ -38,6 +41,7 @@ export function AppHeader() {
         <EquilibraBrand />
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        <ThemeToggle />
         <NotificationsCenter role={user?.role || "estudiante"} />
 
         <DropdownMenu>

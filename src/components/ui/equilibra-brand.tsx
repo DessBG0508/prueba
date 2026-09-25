@@ -1,4 +1,5 @@
 import { brandConfig } from "@/config/brand-config";
+import { BRAND } from "@/lib/branding";
 
 interface EquilibraBrandProps {
   className?: string;
@@ -26,11 +27,14 @@ export function EquilibraBrand({
   }[size];
 
   return (
-    <div className={`flex min-w-0 items-center gap-3 ${className}`} aria-label="EQUILIBRA TESH">
+    <div
+      className={`flex min-w-0 items-center gap-3 ${className}`}
+      aria-label={BRAND.fullName.toUpperCase()}
+    >
       {logoSrc ? (
         <img
           src={logoSrc}
-          alt="Logotipo EQUILIBRA TESH"
+          alt={`Logotipo ${BRAND.fullName.toUpperCase()}`}
           className={`${sizeClasses} shrink-0 object-contain rounded-full`}
         />
       ) : (
@@ -117,7 +121,7 @@ export function EquilibraBrand({
         <span
           className={`min-w-0 font-display font-bold tracking-tight leading-none text-primary ${textClasses}`}
         >
-          EQUILIBRA <span className="text-teal">TESH</span>
+          {BRAND.name.toUpperCase()} <span className="text-teal">TESH</span>
         </span>
       )}
     </div>

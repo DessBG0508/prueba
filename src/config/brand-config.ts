@@ -7,18 +7,19 @@ import nubeNormal from "@/assets/moods/nube-normal.png.asset.json";
 import gotaTriste from "@/assets/moods/gota-triste.png.asset.json";
 import nubeMuyMal from "@/assets/moods/nube-muy-mal.png.asset.json";
 import type { MoodId } from "@/lib/types";
+import { BRAND } from "@/lib/branding";
 
 export interface BrandConfig {
   institutionName: string;
   appName: string;
   brandSubtext: string;
-  logoUrl?: string; // Opcional: si se desea cargar una imagen PNG directa para el logo
+  logoUrl?: string | undefined; // Opcional: si se desea cargar una imagen PNG directa para el logo
 }
 
 export const brandConfig: BrandConfig = {
   institutionName: "TecNM Valle de Bravo - Ext. Villa Victoria / TESH",
-  appName: "EQUILIBRA TESH",
-  brandSubtext: "Plataforma Institucional de Bienestar y Salud Mental",
+  appName: BRAND.fullName.toUpperCase(),
+  brandSubtext: BRAND.tagline,
   logoUrl: undefined, // Si se define una URL de imagen, EquilibraBrand la usará como primera opción
 };
 

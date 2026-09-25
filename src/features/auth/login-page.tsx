@@ -1,8 +1,10 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { authIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
+import { DEMO_MODE } from "@/lib/mock-data";
 import {
   sanitizeText,
   isValidEmail,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/security";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,6 +91,8 @@ export function LoginPage() {
 
       if (user.role === "psicologo") {
         navigate({ to: "/psicologo", replace: true });
+      } else if (user.role === "directivo") {
+        navigate({ to: "/directivo", replace: true });
       } else {
         navigate({ to: "/", replace: true });
       }
@@ -125,6 +130,9 @@ export function LoginPage() {
 
   return (
     <AuroraBackground>
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+        <ThemeToggle />
+      </div>
       <div className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6 sm:py-16">
         <div className="ethereal-card relative w-full max-w-md space-y-7 rounded-3xl border border-white/40 bg-card/85 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
           {/* Header con Marca */}
@@ -143,41 +151,57 @@ export function LoginPage() {
           </div>
 
           {/* Accesos rápidos DEMO */}
-          <div className="space-y-2 rounded-2xl border border-accent/25 bg-accent/5 p-3.5">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-              <authIcons.sparkles className="size-3.5" />
-              <span>Accesos rápidos DEMO_MODE</span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => handleSelectDemoUser("dess@tesh.mx", "password123")}
-                className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
-              >
-                <authIcons.roleStudent className="size-3.5 shrink-0 text-accent" />
-                <div className="min-w-0 flex-1 truncate">
-                  <span className="block font-semibold">Dess (Estudiante)</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
-                    dess@tesh.mx
-                  </span>
-                </div>
-              </button>
+          {DEMO_MODE && (
+            <div className="space-y-2 rounded-2xl border border-accent/25 bg-accent/5 p-3.5">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-accent">
+                <authIcons.sparkles className="size-3.5" />
+                <span>Accesos rápidos DEMO_MODE</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => handleSelectDemoUser("dess@tesh.mx", "password123")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
+                >
+                  <authIcons.roleStudent className="size-3.5 shrink-0 text-accent" />
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="block font-semibold truncate">Dess (Estudiante)</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      dess@tesh.mx
+                    </span>
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleSelectDemoUser("dra.marta@tesh.mx", "password123")}
-                className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
-              >
-                <authIcons.rolePsychologist className="size-3.5 shrink-0 text-accent" />
-                <div className="min-w-0 flex-1 truncate">
-                  <span className="block font-semibold">Dra. Marta (Psicóloga)</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
-                    dra.marta@tesh.mx
-                  </span>
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectDemoUser("dra.marta@tesh.mx", "password123")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
+                >
+                  <authIcons.rolePsychologist className="size-3.5 shrink-0 text-accent" />
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="block font-semibold truncate">Dra. Marta (Psicóloga)</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      dra.marta@tesh.mx
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectDemoUser("jefatura@tesh.mx", "password123")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
+                >
+                  <GraduationCap className="size-3.5 shrink-0 text-accent" />
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="block font-semibold truncate">Jefatura de Carrera</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      jefatura@tesh.mx
+                    </span>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Formulario */}
           <form onSubmit={handleSubmit} className="space-y-4">

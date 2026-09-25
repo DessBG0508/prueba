@@ -13,86 +13,13 @@ const CASES_STORAGE_KEY = "equilibra_psych_cases_v1";
 const NOTES_STORAGE_KEY = "equilibra_psych_notes_v1";
 const APPOINTMENTS_STORAGE_KEY = "equilibra_citas_v1";
 
-const INITIAL_CASES: CaseSummary[] = [
-  {
-    ...psychologistCases[0], // M.G.
-    studentName: "Mireya González",
-    career: "Ingeniería en Sistemas Computacionales",
-    semester: "6to Semestre",
-    status: "por_contactar",
-    notesCount: 1,
-    lastContactDate: "Pendiente",
-  },
-  {
-    ...psychologistCases[1], // L.R.
-    studentName: "Luis Ramírez",
-    career: "Ingeniería Industrial",
-    semester: "4to Semestre",
-    status: "por_contactar",
-    notesCount: 2,
-    lastContactDate: "14 sep 2026",
-  },
-  {
-    ...psychologistCases[2], // A.V.
-    studentName: "Andrea Valdés",
-    career: "Licenciatura en Administración",
-    semester: "2do Semestre",
-    status: "en_seguimiento",
-    notesCount: 1,
-    lastContactDate: "16 sep 2026",
-  },
-  {
-    ...psychologistCases[3], // C.P.
-    studentName: "Carlos Paredes",
-    career: "Ingeniería Mecatrónica",
-    semester: "5to Semestre",
-    status: "cita_programada",
-    notesCount: 1,
-    lastContactDate: "15 sep 2026",
-  },
-  {
-    ...psychologistCases[4], // J.S.
-    studentName: "Jimena Soto",
-    career: "Ingeniería en Sistemas Computacionales",
-    semester: "3er Semestre",
-    status: "en_seguimiento",
-    notesCount: 0,
-    lastContactDate: "13 sep 2026",
-  },
-  {
-    ...psychologistCases[5], // N.T.
-    studentName: "Natalia Torres",
-    career: "Licenciatura en Gastronomía",
-    semester: "7mo Semestre",
-    status: "atendido",
-    notesCount: 1,
-    lastContactDate: "16 sep 2026",
-  },
-  {
-    ...psychologistCases[6], // D.H.
-    studentName: "David Hernández",
-    career: "Ingeniería Civil",
-    semester: "4to Semestre",
-    status: "atendido",
-    notesCount: 0,
-    lastContactDate: "12 sep 2026",
-  },
-  {
-    ...psychologistCases[7], // R.B.
-    studentName: "Renata Becerra",
-    career: "Ingeniería Industrial",
-    semester: "8vo Semestre",
-    status: "atendido",
-    notesCount: 0,
-    lastContactDate: "11 sep 2026",
-  },
-];
+const INITIAL_CASES: CaseSummary[] = psychologistCases;
 
 const INITIAL_NOTES: ClinicalNote[] = [
   {
     id: "note-01",
     caseId: "case-mg",
-    date: "15 sep 2026, 11:20",
+    date: "22 sep 2026, 11:20",
     author: "Dra. Marta Gómez",
     title: "Alerta de tamizaje recibida (Nivel Rojo)",
     category: "emergencia",
@@ -102,7 +29,7 @@ const INITIAL_NOTES: ClinicalNote[] = [
   {
     id: "note-02",
     caseId: "case-lr",
-    date: "14 sep 2026, 16:45",
+    date: "22 sep 2026, 16:45",
     author: "Dra. Marta Gómez",
     title: "Contacto preventivo inicial",
     category: "contacto",
@@ -112,7 +39,7 @@ const INITIAL_NOTES: ClinicalNote[] = [
   {
     id: "note-03",
     caseId: "case-av",
-    date: "16 sep 2026, 10:15",
+    date: "23 sep 2026, 10:15",
     author: "Lic. Carlos Fuentes",
     title: "Check-in de seguimiento",
     category: "seguimiento",
@@ -124,7 +51,22 @@ const INITIAL_NOTES: ClinicalNote[] = [
 export function getPsychologistCases(): CaseSummary[] {
   try {
     const stored = localStorage.getItem(CASES_STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length >= INITIAL_CASES.length) {
+        return parsed.map((item: CaseSummary) => {
+          const initial = INITIAL_CASES.find((c) => c.id === item.id);
+          return {
+            ...item,
+            matricula: item.matricula || initial?.matricula,
+            modo_acompanamiento:
+              item.modo_acompanamiento !== undefined
+                ? item.modo_acompanamiento
+                : (initial?.modo_acompanamiento ?? true),
+          };
+        });
+      }
+    }
   } catch (e) {
     console.error("Error al leer casos", e);
   }
@@ -145,12 +87,13 @@ export function updateCaseRisk(
   status?: CaseStatus,
 ): CaseSummary[] {
   const current = getPsychologistCases();
-  const updated = current.map((item) => {
+  const updated: CaseSummary[] = current.map((item) => {
     if (item.id === caseId) {
+      const nextStatus = status ?? item.status;
       return {
         ...item,
         riskLevel,
-        status: status || item.status,
+        ...(nextStatus ? { status: nextStatus } : {}),
       };
     }
     return item;
@@ -286,9 +229,11 @@ export function getStoredAppointments(): Appointment[] {
             "Andrea Valdés",
             "Jimena Soto",
           ];
+          const studentName =
+            matchingMock?.studentName ?? fallbackNames[idx % fallbackNames.length] ?? "Estudiante";
           return {
             ...apt,
-            studentName: matchingMock?.studentName || fallbackNames[idx % fallbackNames.length],
+            studentName,
           };
         }
         return apt;

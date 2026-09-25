@@ -7,9 +7,19 @@ import { sanitizeText, isValidEmail, isValidMatricula } from "@/lib/security";
 import type { UserRole } from "@/lib/types";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
+import { BRAND } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+interface FormErrors {
+  name?: string;
+  matricula?: string;
+  email?: string;
+  password?: string;
+  role?: string;
+  form?: string;
+}
 
 export function RegistroPage() {
   const { register } = useAuth();
@@ -22,10 +32,10 @@ export function RegistroPage() {
   const [role, setRole] = useState<UserRole>("estudiante");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<FormErrors>({});
 
   const validate = (): boolean => {
-    const newErrors: Record<string, string> = {};
+    const newErrors: FormErrors = {};
 
     const cleanName = sanitizeText(name, 100);
     const cleanMatricula = sanitizeText(matricula, 30);
@@ -116,7 +126,7 @@ export function RegistroPage() {
                 Crea tu espacio seguro
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Comienza tu registro en Equilibra TESH para recibir el apoyo que necesitas.
+                Comienza tu registro en {BRAND.fullName} para recibir el apoyo que necesitas.
               </p>
             </div>
           </div>
