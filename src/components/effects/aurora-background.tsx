@@ -3,9 +3,11 @@ import type { ReactNode } from "react";
 export function AuroraBackground({
   children,
   className = "",
+  contentClassName = "",
 }: {
   children: ReactNode;
   className?: string;
+  contentClassName?: string;
 }) {
   return (
     <div className={`aurora-shell ${className}`}>
@@ -15,7 +17,7 @@ export function AuroraBackground({
         <div className="aurora-blob aurora-blob-3" />
       </div>
       <div className="grain-layer" aria-hidden="true" />
-      <div className="relative z-10">{children}</div>
+      <div className={`relative z-10 ${contentClassName}`}>{children}</div>
     </div>
   );
 }

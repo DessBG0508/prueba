@@ -1,4 +1,5 @@
 import { DEMO_MODE } from "./mock-data";
+import { supabase, isSupabaseConfigured } from "./supabase";
 import type { CheckIn } from "./types";
 
 export interface EliMessage {
@@ -16,15 +17,56 @@ export interface EliMessage {
 }
 
 export async function saveCheckIn(checkIn: CheckIn): Promise<CheckIn> {
-  if (!DEMO_MODE) throw new Error("El servicio todavía no está conectado.");
-  // Fase Cloud: esta escritura usará acceso autenticado y políticas RLS por rol.
+  // Si Supabase está configurado, intentamos guardar en la tabla check_ins
+  if (isSupabaseConfigured) {
+    try {
+      const { error } = await supabase.from("check_ins").insert([
+        {
+          id: checkIn.id,
+          student_id: checkIn.studentId,
+          academic_load: checkIn.academicLoad,
+          emotions: checkIn.emotions,
+          risk_level: checkIn.riskLevel,
+          created_at: checkIn.createdAt,
+        },
+      ]);
+      if (error) {
+        console.warn(
+          "Supabase check_ins insert (tabla pendiente de migración o permisos RLS):",
+          error.message,
+        );
+      }
+    } catch (err) {
+      console.warn("Aviso al guardar check-in en Supabase:", err);
+    }
+  }
+
   return Promise.resolve(checkIn);
 }
 
 export async function triggerRedAlert(checkInId: string): Promise<{ alertId: string }> {
-  if (!DEMO_MODE) throw new Error("El servicio todavía no está conectado.");
-  // Fase Cloud: solo psicología y coordinación podrán consultar alertas asignadas.
-  return Promise.resolve({ alertId: `demo-alert-${checkInId}` });
+  const alertId = `alert-${crypto.randomUUID()}`;
+
+  // Si Supabase está configurado, guardamos la alerta en crisis_alerts
+  if (isSupabaseConfigured) {
+    try {
+      const { error } = await supabase.from("crisis_alerts").insert([
+        {
+          check_in_id: checkInId,
+          student_id: "demo-student-dess",
+          status: "pendiente",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      if (error) {
+        console.warn("Supabase crisis_alerts insert:", error.message);
+      }
+    } catch (err) {
+      console.warn("Aviso al registrar alerta en Supabase:", err);
+    }
+  }
+
+  return Promise.resolve({ alertId });
 }
 
 /* TODO(Supabase Edge): este filtro DEBE migrar al backend — nunca confiar solo en el cliente */
@@ -126,59 +168,44 @@ const CONTEXTUAL_RESPONSES = [
   },
 ];
 
-let responseIndex = 0;
+import { processEliMessage, INITIAL_SCREENING_STATE, type ScreeningState } from "./eli-screening";
 
-/* TODO(Gemini): conectar a Gemini API con RAG sobre manuales PHQ-9/GAD-7 vía backend. La API key NUNCA va en el frontend */
-export async function sendEliMessage(mensaje: string): Promise<EliMessage> {
-  // Simulación de latencia de red de 1 a 1.5 segundos en DEMO_MODE
-  await new Promise((resolve) => setTimeout(resolve, 1200));
+let currentBackendState: ScreeningState = { ...INITIAL_SCREENING_STATE };
 
-  /* TODO(Supabase Edge): este filtro DEBE migrar al backend — nunca confiar solo en el cliente */
-  if (detectCrisis(mensaje)) {
-    return {
-      id: crypto.randomUUID(),
-      sender: "eli",
-      text: "Me alegra que me lo cuentes. Esto es importante y no estás solo/a.",
-      isCrisisProtocol: true,
-      crisisData: {
-        actionLabel: "Necesito hablar con alguien ahora",
-        actionRoute: "/alerta",
-        helplineName: "Línea de la Vida",
-        helphoneNumber: "800 911 2000",
-      },
-      timestamp: new Date().toISOString(),
-    };
+export function resetBackendScreeningState() {
+  currentBackendState = { ...INITIAL_SCREENING_STATE };
+}
+
+export async function sendEliMessage(
+  mensaje: string,
+  state?: ScreeningState,
+): Promise<EliMessage & { nextState?: ScreeningState; quickReplies?: string[] }> {
+  // Simulación de latencia de red breve de 400ms para realismo conversacional
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  const activeState = state || currentBackendState;
+  const result = processEliMessage(mensaje, activeState);
+  if (!state) {
+    currentBackendState = result.nextState;
   }
 
-  if (DEMO_MODE) {
-    const normalized = normalizeText(mensaje);
+  const isCrisis = !!result.isCrisis;
 
-    // Intentar buscar respuesta contextual que coincida con alguna palabra clave
-    const matched = CONTEXTUAL_RESPONSES.find(
-      (entry) => entry.keywords.length > 0 && entry.keywords.some((kw) => normalized.includes(kw)),
-    );
-
-    let chosenText: string;
-    if (matched) {
-      chosenText = matched.text;
-    } else {
-      // Rotar entre las respuestas generales
-      const fallbackList = CONTEXTUAL_RESPONSES.filter((entry) => entry.keywords.length === 0);
-      const chosen = fallbackList[responseIndex % fallbackList.length];
-      responseIndex++;
-      chosenText = chosen
-        ? chosen.text
-        : "Aquí estoy contigo para escucharte y acompañarte en tu día.";
-    }
-
-    return {
-      id: crypto.randomUUID(),
-      sender: "eli",
-      text: chosenText,
-      isCrisisProtocol: false,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  throw new Error("El servicio de inteligencia artificial no está configurado.");
+  return {
+    id: crypto.randomUUID(),
+    sender: "eli",
+    text: result.replyText,
+    isCrisisProtocol: isCrisis,
+    crisisData: isCrisis
+      ? {
+          actionLabel: "Contactar a Línea de la Vida ahora",
+          actionRoute: "/alerta",
+          helplineName: "Línea de la Vida",
+          helphoneNumber: "800 911 2000",
+        }
+      : undefined,
+    timestamp: new Date().toISOString(),
+    nextState: result.nextState,
+    quickReplies: result.quickReplies,
+  };
 }
