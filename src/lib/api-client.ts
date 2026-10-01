@@ -168,7 +168,13 @@ const CONTEXTUAL_RESPONSES = [
   },
 ];
 
-import { processEliMessage, INITIAL_SCREENING_STATE, type ScreeningState } from "./eli-screening";
+import {
+  processEliMessage,
+  INITIAL_SCREENING_STATE,
+  type ScreeningState,
+  type ScreeningNivel,
+} from "./eli-screening";
+import { supabaseUrl, supabaseAnonKey } from "./supabase";
 
 let currentBackendState: ScreeningState = { ...INITIAL_SCREENING_STATE };
 
@@ -176,14 +182,151 @@ export function resetBackendScreeningState() {
   currentBackendState = { ...INITIAL_SCREENING_STATE };
 }
 
+export interface EdgeTamizajeData {
+  folio?: string;
+  nivel?: ScreeningNivel;
+  alerta?: boolean;
+  paciente?: {
+    iniciales?: string;
+    edad?: number;
+    sexo?: string;
+    semestre?: string;
+  };
+  GAD_7?: {
+    total?: number;
+    items?: number[];
+  };
+  PHQ_9?: {
+    total?: number;
+    items?: number[];
+    item9?: number;
+  };
+  recomendaciones?: string;
+}
+
+export interface EdgeFunctionTamizajeResult {
+  status: "en_progreso" | "completado";
+  mensaje?: string;
+  data?: EdgeTamizajeData;
+  error?: string;
+}
+
+export interface GeminiHistoryItem {
+  role: "user" | "model";
+  parts: { text: string }[];
+}
+
+/**
+ * Llamada oficial a la Edge Function de Supabase `tamizaje`.
+ * La API Key de Gemini reside protegida en Supabase Secrets (no en el frontend).
+ */
+export async function callTamizajeEdgeFunction(
+  historial: GeminiHistoryItem[],
+): Promise<EdgeFunctionTamizajeResult | null> {
+  const URL_FN = `${supabaseUrl}/functions/v1/tamizaje`;
+  const ANON_KEY = supabaseAnonKey;
+
+  try {
+    const res = await fetch(URL_FN, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + ANON_KEY,
+        apikey: ANON_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ messages: historial }),
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    const data: EdgeFunctionTamizajeResult = await res.json();
+    if (data.error) {
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export interface SendEliMessageResult extends EliMessage {
+  status?: "en_progreso" | "completado";
+  edgeData?: EdgeTamizajeData;
+  nextState?: ScreeningState;
+  quickReplies?: string[];
+}
+
 export async function sendEliMessage(
   mensaje: string,
   state?: ScreeningState,
-): Promise<EliMessage & { nextState?: ScreeningState; quickReplies?: string[] }> {
-  // Simulación de latencia de red breve de 400ms para realismo conversacional
-  await new Promise((resolve) => setTimeout(resolve, 400));
-
+  historial?: GeminiHistoryItem[],
+): Promise<SendEliMessageResult> {
   const activeState = state || currentBackendState;
+
+  // 1. Intentar llamar a la Edge Function de Supabase si se provee historial
+  if (historial && historial.length > 0) {
+    const edgeResult = await callTamizajeEdgeFunction(historial);
+
+    if (edgeResult && (edgeResult.status === "en_progreso" || edgeResult.status === "completado")) {
+      const isCompletado = edgeResult.status === "completado";
+      const edgeData = edgeResult.data;
+      const replyText =
+        edgeResult.mensaje ||
+        (isCompletado
+          ? `Tamizaje finalizado. Tu folio es: ${edgeData?.folio || "EQ-0000"}. Gracias. Un profesional revisará tus respuestas.`
+          : "");
+
+      const isCrisis =
+        edgeData?.nivel === "rojo" ||
+        edgeData?.alerta === true ||
+        replyText.includes("Línea de la Vida") ||
+        replyText.includes("urgencias");
+
+      // Construir nextState sincronizado con la Edge Function
+      const nextState: ScreeningState = {
+        ...activeState,
+        step: isCompletado ? "completed" : activeState.step,
+        folio: edgeData?.folio || activeState.folio,
+        nivel: edgeData?.nivel || activeState.nivel,
+        paciente: {
+          iniciales: edgeData?.paciente?.iniciales || activeState.paciente.iniciales,
+          edad: edgeData?.paciente?.edad || activeState.paciente.edad,
+          sexo: edgeData?.paciente?.sexo || activeState.paciente.sexo,
+          semestre: edgeData?.paciente?.semestre || activeState.paciente.semestre,
+        },
+        gad7Items: edgeData?.GAD_7?.items || activeState.gad7Items,
+        phq9Items: edgeData?.PHQ_9?.items || activeState.phq9Items,
+      };
+
+      if (!state) {
+        currentBackendState = nextState;
+      }
+
+      return {
+        id: crypto.randomUUID(),
+        sender: "eli",
+        text: replyText,
+        isCrisisProtocol: isCrisis,
+        crisisData: isCrisis
+          ? {
+              actionLabel: "Contactar a Línea de la Vida ahora",
+              actionRoute: "/alerta",
+              helplineName: "Línea de la Vida",
+              helphoneNumber: "800 911 2000",
+            }
+          : undefined,
+        timestamp: new Date().toISOString(),
+        status: edgeResult.status,
+        edgeData,
+        nextState,
+      };
+    }
+  }
+
+  // 2. Fallback resiliente al motor de reglas local (para desarrollo, offline o si falta GEMINI_API_KEY en Supabase)
+  await new Promise((resolve) => setTimeout(resolve, 350));
   const result = processEliMessage(mensaje, activeState);
   if (!state) {
     currentBackendState = result.nextState;
@@ -205,6 +348,18 @@ export async function sendEliMessage(
         }
       : undefined,
     timestamp: new Date().toISOString(),
+    status: result.isCompleted ? "completado" : "en_progreso",
+    edgeData: result.finalJson
+      ? {
+          folio: result.finalJson.folio,
+          nivel: result.finalJson.nivel,
+          alerta: result.finalJson.alerta,
+          paciente: result.finalJson.paciente,
+          GAD_7: result.finalJson.GAD_7,
+          PHQ_9: result.finalJson.PHQ_9,
+          recomendaciones: result.finalJson.recomendaciones,
+        }
+      : undefined,
     nextState: result.nextState,
     quickReplies: result.quickReplies,
   };

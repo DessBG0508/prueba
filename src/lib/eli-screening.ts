@@ -1,5 +1,14 @@
 export { ELI_SYSTEM_INSTRUCTIONS } from "@/config/eli-prompt";
 
+export type ScreeningNivel = "verde" | "amarillo" | "rojo";
+
+export interface ScreeningPatientData {
+  iniciales: string;
+  edad: number;
+  sexo: string;
+  semestre: string;
+}
+
 export interface ScreeningState {
   step:
     | "not_started"
@@ -8,19 +17,16 @@ export interface ScreeningState {
     | "waiting_initials"
     | "waiting_age"
     | "waiting_sex"
-    | "waiting_date"
+    | "waiting_semestre"
     | "gad7"
     | "phq9"
     | "completed";
   currentQuestionIndex: number;
-  paciente: {
-    iniciales: string;
-    edad: number;
-    sexo: string;
-    fecha: string;
-  };
+  paciente: ScreeningPatientData;
   gad7Items: number[];
   phq9Items: number[];
+  folio?: string;
+  nivel?: ScreeningNivel;
 }
 
 export const INITIAL_SCREENING_STATE: ScreeningState = {
@@ -30,7 +36,7 @@ export const INITIAL_SCREENING_STATE: ScreeningState = {
     iniciales: "",
     edad: 0,
     sexo: "",
-    fecha: "",
+    semestre: "",
   },
   gad7Items: [],
   phq9Items: [],
@@ -58,13 +64,19 @@ export const PHQ9_QUESTIONS = [
   "9. Ha tenido pensamientos de que estaría mejor muerto(a) o de hacerse daño.",
 ];
 
-export const GAD7_INTRO =
-  "Ahora 7 preguntas sobre ansiedad. Durante las últimas 2 semanas, ¿con qué frecuencia le han molestado los siguientes problemas? Responde con: Nunca / Varios días / Más de la mitad de los días / Casi todos los días.";
+export const GAD7_ANUNCIO =
+  "Listo. Ahora 7 preguntas sobre ansiedad. Durante las últimas 2 semanas, ¿con qué frecuencia le han molestado los siguientes problemas? Responde: Nunca / Varios días / Más de la mitad de los días / Casi todos los días.";
 
-export const PHQ9_INTRO = "Ahora 9 preguntas sobre estado de ánimo, mismas opciones de respuesta.";
+export const PHQ9_ANUNCIO =
+  "Ahora 9 preguntas sobre estado de ánimo, mismas opciones de respuesta.";
 
 export const CRISIS_MESSAGE =
-  "Tu seguridad es importante. Te recomiendo contactar ahora a Línea de la Vida 800 911 2000 / SAPTEL 800 472 7835 o acudir a urgencias. Un profesional revisará tus respuestas.";
+  "Tu seguridad es importante. Te recomiendo contactar ahora a Línea de la Vida 800 911 2000 / SAPTEL 800 472 7835 o acudir a urgencias.";
+
+export function generateFolio(): string {
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  return `EQ-${randomNum}`;
+}
 
 function normalize(text: string): string {
   return text
@@ -75,8 +87,7 @@ function normalize(text: string): string {
 }
 
 /**
- * Mapea una respuesta a un puntaje 0-3 para los reactivos GAD-7 y PHQ-9.
- * Retorna null si no coincide con ninguna opción válida.
+ * Convierte respuestas: Nunca=0, Varios días=1, Más de la mitad de los días=2, Casi todos los días=3.
  */
 export function parseLikertOption(text: string): number | null {
   const norm = normalize(text);
@@ -128,7 +139,7 @@ export interface ScreeningFinalJson {
     iniciales: string;
     edad: number;
     sexo: string;
-    fecha: string;
+    semestre: string;
   };
   GAD_7: {
     total: number;
@@ -139,6 +150,8 @@ export interface ScreeningFinalJson {
     items: number[];
     item9: number;
   };
+  folio: string;
+  nivel: ScreeningNivel;
   alerta: boolean;
   recomendaciones: string;
 }
@@ -150,16 +163,18 @@ export interface EliStepResult {
   isCompleted?: boolean;
   finalJson?: ScreeningFinalJson;
   quickReplies?: string[];
+  folio?: string;
+  nivel?: ScreeningNivel;
 }
 
 export function processEliMessage(userText: string, currentState: ScreeningState): EliStepResult {
   const trimmed = userText.trim();
 
-  // PASO 0 — Sea lo que sea que escriba el usuario en su primer mensaje:
+  // PASO 0 — Mensaje de bienvenida EXACTO
   if (currentState.step === "not_started") {
     return {
       replyText:
-        "Soy Eli, asistente de tamizaje. No doy diagnóstico. Tus respuestas serán confidenciales y un profesional las revisará. ¿Aceptas participar? (Sí/No)",
+        "Hola. Soy Eli, asistente del Área de Psicología. La atención psicológica es un proceso en el que recibes apoyo y orientación profesional; a veces sabemos qué nos pasa y otras veces cuesta más identificarlo. Aquí responderás un tamizaje breve y confidencial. No doy diagnósticos: un profesional revisará tus respuestas. ¿Aceptas participar? (Sí/No)",
       nextState: {
         ...currentState,
         step: "waiting_consent",
@@ -191,7 +206,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       norm === "adelante"
     ) {
       return {
-        replyText: "Perfecto. ¿Cuáles son tus iniciales?",
+        replyText: "Perfecto. ¿Cuáles son tus iniciales? (p. ej. A.P.)",
         nextState: {
           ...currentState,
           step: "waiting_initials",
@@ -207,11 +222,11 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // Si ya había terminado o declinado
+  // Si ya había terminado o declinado, reiniciar
   if (currentState.step === "declined" || currentState.step === "completed") {
     return {
       replyText:
-        "Soy Eli, asistente de tamizaje. No doy diagnóstico. Tus respuestas serán confidenciales y un profesional las revisará. ¿Aceptas participar? (Sí/No)",
+        "Hola. Soy Eli, asistente del Área de Psicología. La atención psicológica es un proceso en el que recibes apoyo y orientación profesional; a veces sabemos qué nos pasa y otras veces cuesta más identificarlo. Aquí responderás un tamizaje breve y confidencial. No doy diagnósticos: un profesional revisará tus respuestas. ¿Aceptas participar? (Sí/No)",
       nextState: {
         ...INITIAL_SCREENING_STATE,
         step: "waiting_consent",
@@ -220,11 +235,11 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // PASO 2 — Iniciales
+  // PASO 1 -> PASO 2: Iniciales
   if (currentState.step === "waiting_initials") {
     if (!trimmed || trimmed.length > 50) {
       return {
-        replyText: "Anotado. ¿Cuáles son tus iniciales?",
+        replyText: "Anotado. ¿Cuáles son tus iniciales? (p. ej. A.P.)",
         nextState: currentState,
       };
     }
@@ -242,7 +257,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // PASO 3 — Edad
+  // PASO 2 -> PASO 3: Edad
   if (currentState.step === "waiting_age") {
     const parsedAge = parseInt(trimmed.replace(/\D/g, ""), 10);
     if (isNaN(parsedAge) || parsedAge < 10 || parsedAge > 115) {
@@ -253,7 +268,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     }
 
     return {
-      replyText: "¿Tu sexo? (Femenino / Masculino / Otro)",
+      replyText: "¿Tu sexo? (Hombre / Mujer / Otro)",
       nextState: {
         ...currentState,
         paciente: {
@@ -262,59 +277,79 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         },
         step: "waiting_sex",
       },
-      quickReplies: ["Femenino", "Masculino", "Otro"],
+      quickReplies: ["Hombre", "Mujer", "Otro"],
     };
   }
 
-  // PASO 4 — Sexo
+  // PASO 3 -> PASO 4: Sexo
   if (currentState.step === "waiting_sex") {
     const norm = normalize(trimmed);
     let resolvedSex = "";
-    if (norm.startsWith("fem") || norm === "f" || norm === "mujer") {
-      resolvedSex = "Femenino";
-    } else if (norm.startsWith("masc") || norm === "m" || norm === "hombre") {
-      resolvedSex = "Masculino";
-    } else if (norm.includes("otro") || norm.includes("no binario") || norm.includes("prefiero")) {
+    if (norm.startsWith("hom") || norm === "h" || norm === "masculino" || norm === "m") {
+      resolvedSex = "Hombre";
+    } else if (norm.startsWith("muj") || norm === "femenino" || norm === "f") {
+      resolvedSex = "Mujer";
+    } else if (
+      norm.includes("otro") ||
+      norm.includes("no binario") ||
+      norm.includes("prefiero") ||
+      norm.includes("nb")
+    ) {
       resolvedSex = "Otro";
     }
 
     if (!resolvedSex) {
       return {
-        replyText: "Anotado. ¿Tu sexo? (Femenino / Masculino / Otro)",
+        replyText: "Anotado. ¿Tu sexo? (Hombre / Mujer / Otro)",
         nextState: currentState,
-        quickReplies: ["Femenino", "Masculino", "Otro"],
+        quickReplies: ["Hombre", "Mujer", "Otro"],
       };
     }
 
     return {
-      replyText: "¿Fecha de hoy?",
+      replyText: "¿Qué semestre cursas actualmente? (responde del 1 al 9, o escribe Otro)",
       nextState: {
         ...currentState,
         paciente: {
           ...currentState.paciente,
           sexo: resolvedSex,
         },
-        step: "waiting_date",
+        step: "waiting_semestre",
       },
-      quickReplies: [
-        new Date().toLocaleDateString("es-MX", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        }),
-      ],
+      quickReplies: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Otro"],
     };
   }
 
-  // PASO 5 — Fecha de hoy
-  if (currentState.step === "waiting_date") {
-    const dateStr = trimmed || new Date().toISOString().split("T")[0];
+  // PASO 4 -> PASO 5: Semestre
+  if (currentState.step === "waiting_semestre") {
+    const norm = normalize(trimmed);
+    let resolvedSemestre = "";
+
+    const matchDigit = norm.match(/\b([1-9])\b/);
+    if (matchDigit && matchDigit[1]) {
+      resolvedSemestre = `${matchDigit[1]}º Semestre`;
+    } else if (norm.includes("otro") || norm.includes("egresad") || norm.includes("posgrado")) {
+      resolvedSemestre = "Otro";
+    } else if (/^[1-9]$/.test(trimmed)) {
+      resolvedSemestre = `${trimmed}º Semestre`;
+    } else if (trimmed.length > 0 && trimmed.length <= 30) {
+      resolvedSemestre = trimmed;
+    }
+
+    if (!resolvedSemestre) {
+      return {
+        replyText:
+          "Anotado. ¿Qué semestre cursas actualmente? (responde del 1 al 9, o escribe Otro)",
+        nextState: currentState,
+        quickReplies: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Otro"],
+      };
+    }
 
     const nextState: ScreeningState = {
       ...currentState,
       paciente: {
         ...currentState.paciente,
-        fecha: dateStr,
+        semestre: resolvedSemestre,
       },
       step: "gad7",
       currentQuestionIndex: 0,
@@ -322,13 +357,13 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
 
     return {
-      replyText: `${GAD7_INTRO}\n\n${GAD7_QUESTIONS[0]}`,
+      replyText: `${GAD7_ANUNCIO}\n\n${GAD7_QUESTIONS[0]}`,
       nextState,
       quickReplies: ["Nunca", "Varios días", "Más de la mitad de los días", "Casi todos los días"],
     };
   }
 
-  // PASO 6 — GAD-7 reactivos (7 preguntas)
+  // PASO 5 — GAD-7 reactivos (7 preguntas)
   if (currentState.step === "gad7") {
     const score = parseLikertOption(trimmed);
     const qIndex = currentState.currentQuestionIndex;
@@ -367,9 +402,9 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // Terminó GAD-7 -> Pasar a PHQ-9
+    // Terminó GAD-7 -> Pasar a PHQ-9 (PASO 6)
     return {
-      replyText: `${PHQ9_INTRO}\n\n${PHQ9_QUESTIONS[0]}`,
+      replyText: `${PHQ9_ANUNCIO}\n\n${PHQ9_QUESTIONS[0]}`,
       nextState: {
         ...currentState,
         step: "phq9",
@@ -381,7 +416,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // PASO 7 — PHQ-9 reactivos (9 preguntas)
+  // PASO 6 — PHQ-9 reactivos (9 preguntas)
   if (currentState.step === "phq9") {
     const score = parseLikertOption(trimmed);
     const qIndex = currentState.currentQuestionIndex;
@@ -420,35 +455,59 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // Terminó ítem 9 de PHQ-9!
+    // PASO 7 — ÁRBOL DE DECISIÓN (calcúlalo internamente, NO muestres cuentas)
     const item9Score = score;
-    const isCrisis = item9Score >= 1; // "Varios días" (1), "Más de la mitad de los días" (2), o "Casi todos los días" (3)
-
     const gadTotal = currentState.gad7Items.reduce((acc, curr) => acc + curr, 0);
     const phqTotal = updatedItems.reduce((acc, curr) => acc + curr, 0);
-    const isAlert = isCrisis || gadTotal >= 15 || phqTotal >= 15;
+
+    // REGLA DE CRISIS (prioridad máxima) -> NIVEL ROJO si CUALQUIERA se cumple:
+    // - Ítem 9 > 0
+    // - PHQ_9 total >= 20
+    // - GAD_7 total >= 15
+    const isRojo = item9Score > 0 || phqTotal >= 20 || gadTotal >= 15;
+
+    // NIVEL AMARILLO (si no hay rojo), si CUALQUIERA se cumple:
+    // - PHQ_9 total entre 10 y 19, O
+    // - GAD_7 total entre 10 y 14
+    const isAmarillo =
+      !isRojo && ((phqTotal >= 10 && phqTotal <= 19) || (gadTotal >= 10 && gadTotal <= 14));
+
+    // NIVEL VERDE (todo lo demás): PHQ_9 < 10 y GAD_7 < 10
+    const nivel: ScreeningNivel = isRojo ? "rojo" : isAmarillo ? "amarillo" : "verde";
+    const alerta = isRojo;
+
+    // Generar folio con formato EQ-####
+    const folio = generateFolio();
 
     let recomendaciones = "";
-    if (isCrisis) {
+    if (nivel === "rojo") {
       recomendaciones =
-        "Atención prioritaria inmediata recomendada por respuesta afirmativa a ideación o autolesión. Canalización prioritaria con psicología o servicios de urgencias.";
-    } else if (phqTotal >= 15 || gadTotal >= 15) {
+        "Atención prioritaria inmediata recomendada. Canalización prioritaria para Terapia Psicológica y servicios de urgencia si se requiere.";
+    } else if (nivel === "amarillo") {
       recomendaciones =
-        "Sintomatología severa detectada en tamizaje. Se sugiere valoración presencial con psicología universitaria.";
-    } else if (phqTotal >= 10 || gadTotal >= 10) {
-      recomendaciones =
-        "Sintomatología moderada detectada. Se recomienda seguimiento y apoyo psicopedagógico.";
+        "Sintomatología moderada detectada. Se recomienda agendar Orientación o Terapia Psicológica.";
     } else {
       recomendaciones =
-        "Sintomatología leve o mínima. Mantener rutinas de autocuidado y monitoreo periódico de bienestar.";
+        "Resultados dentro de parámetros normales sin señales de alerta. Consejería disponible opcionalmente.";
     }
 
-    const finalJson = {
+    // PASO 8 — MENSAJE FINAL SEGÚN NIVEL
+    let mensajeFinal = "";
+    if (nivel === "rojo") {
+      mensajeFinal = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita HOY MISMO en el apartado 'Agenda de Citas' de esta plataforma y elige TERAPIA PSICOLÓGICA. Tu folio de tamizaje es: ${folio}. Escríbelo en el formulario para vincular tus resultados.`;
+    } else if (nivel === "amarillo") {
+      mensajeFinal = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado 'Agenda de Citas' de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA. Tu folio de tamizaje es: ${folio}. Escríbelo en el formulario para vincular tus resultados.`;
+    } else {
+      mensajeFinal = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado 'Agenda de Citas' de esta plataforma. Tu folio de tamizaje es: ${folio} por si deseas vincularlo.`;
+    }
+
+    // JSON FINAL (claves exactas, sin acentos, SIEMPRE al terminar)
+    const finalJson: ScreeningFinalJson = {
       paciente: {
         iniciales: currentState.paciente.iniciales || "",
         edad: currentState.paciente.edad || 0,
         sexo: currentState.paciente.sexo || "",
-        fecha: currentState.paciente.fecha || "",
+        semestre: currentState.paciente.semestre || "",
       },
       GAD_7: {
         total: gadTotal,
@@ -459,18 +518,14 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         items: updatedItems,
         item9: item9Score,
       },
-      alerta: isAlert,
+      folio,
+      nivel,
+      alerta,
       recomendaciones,
     };
 
     const jsonString = JSON.stringify(finalJson);
-
-    let replyText = "";
-    if (isCrisis) {
-      replyText = `${CRISIS_MESSAGE}\n\n${jsonString}\nGracias. Un profesional revisará tus respuestas.`;
-    } else {
-      replyText = `${jsonString}\nGracias. Un profesional revisará tus respuestas.`;
-    }
+    const replyText = `${mensajeFinal}\n\n${jsonString}\nGracias. Un profesional revisará tus respuestas.`;
 
     return {
       replyText,
@@ -479,17 +534,21 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         step: "completed",
         currentQuestionIndex: 8,
         phq9Items: updatedItems,
+        folio,
+        nivel,
       },
-      isCrisis,
+      isCrisis: isRojo,
       isCompleted: true,
       finalJson,
+      folio,
+      nivel,
     };
   }
 
-  // Fallback
+  // Fallback seguro
   return {
     replyText:
-      "Soy Eli, asistente de tamizaje. No doy diagnóstico. Tus respuestas serán confidenciales y un profesional las revisará. ¿Aceptas participar? (Sí/No)",
+      "Hola. Soy Eli, asistente del Área de Psicología. La atención psicológica es un proceso en el que recibes apoyo y orientación profesional; a veces sabemos qué nos pasa y otras veces cuesta más identificarlo. Aquí responderás un tamizaje breve y confidencial. No doy diagnósticos: un profesional revisará tus respuestas. ¿Aceptas participar? (Sí/No)",
     nextState: {
       ...INITIAL_SCREENING_STATE,
       step: "waiting_consent",

@@ -16,7 +16,7 @@ import {
   Trash2,
   AlertTriangle,
 } from "lucide-react";
-import { sendEliMessage, type EliMessage } from "@/lib/api-client";
+import { sendEliMessage, resetBackendScreeningState, type EliMessage } from "@/lib/api-client";
 import {
   INITIAL_SCREENING_STATE,
   type ScreeningState,
@@ -44,8 +44,23 @@ export interface ChatSession {
   screeningState: ScreeningState;
 }
 
-const CHAT_SESSIONS_STORAGE_KEY = "equilibra_eli_screening_sessions_v4";
-const ACTIVE_SESSION_STORAGE_KEY = "equilibra_eli_active_session_id_v4";
+const CHAT_SESSIONS_STORAGE_KEY = "equilibra_eli_screening_sessions_v5";
+const ACTIVE_SESSION_STORAGE_KEY = "equilibra_eli_active_session_id_v5";
+
+// Limpiar versiones obsoletas de almacenamiento para garantizar un reinicio limpio
+if (typeof window !== "undefined") {
+  try {
+    [
+      "equilibra_eli_screening_sessions_v4",
+      "equilibra_eli_active_session_id_v4",
+      "equilibra_eli_screening_sessions_v3",
+      "equilibra_eli_chat_messages_v2",
+      "equilibra_eli_chat_messages_v1",
+    ].forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
 
 function createFreshSession(): ChatSession {
   const id = `session-${Date.now()}`;
@@ -127,12 +142,14 @@ export function ChatPage() {
 
   // REINICIAR CHAT COMPLETAMENTE
   const handleResetChat = () => {
+    resetBackendScreeningState();
+    try {
+      localStorage.removeItem("equilibra_ultimo_folio_tamizaje");
+    } catch {
+      // ignore
+    }
     const freshSession = createFreshSession();
-    const updated = [
-      freshSession,
-      ...sessions.filter((s) => s.id !== activeSession.id || s.messages.length > 0),
-    ];
-    persistSessions(updated, freshSession.id);
+    persistSessions([freshSession], freshSession.id);
     setActiveSessionId(freshSession.id);
     setInputText("");
     setIsTyping(false);
@@ -176,15 +193,10 @@ export function ChatPage() {
       return ["Sí", "No"];
     }
     if (screeningState.step === "waiting_sex") {
-      return ["Femenino", "Masculino", "Otro"];
+      return ["Hombre", "Mujer", "Otro"];
     }
-    if (screeningState.step === "waiting_date") {
-      const today = new Date().toLocaleDateString("es-MX", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-      return [today];
+    if (screeningState.step === "waiting_semestre") {
+      return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Otro"];
     }
     if (screeningState.step === "gad7" || screeningState.step === "phq9") {
       return ["Nunca", "Varios días", "Más de la mitad de los días", "Casi todos los días"];
@@ -230,25 +242,52 @@ export function ChatPage() {
     setIsTyping(true);
 
     try {
-      const response = await sendEliMessage(sanitized, screeningState);
+      // Construir historial en formato compatible con Gemini/Edge Function de Supabase
+      const historial = newMessages.map((m) => ({
+        role: m.sender === "user" ? ("user" as const) : ("model" as const),
+        parts: [{ text: m.text }],
+      }));
+
+      const response = await sendEliMessage(sanitized, screeningState, historial);
       const nextState =
         response.nextState || processEliMessage(sanitized, screeningState).nextState;
+
+      // Si la Edge Function indica que está completado, sincronizar estado final
+      if (response.status === "completado" || response.edgeData?.folio) {
+        nextState.step = "completed";
+        if (response.edgeData?.folio) nextState.folio = response.edgeData.folio;
+        if (response.edgeData?.nivel) nextState.nivel = response.edgeData.nivel;
+      }
 
       const eliTimestamp = new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       });
 
+      const replyText =
+        response.text ||
+        (nextState.step === "completed"
+          ? `Tamizaje finalizado. Tu folio de seguimiento es: ${nextState.folio || "EQ-0000"}. Gracias. Un profesional revisará tus respuestas.`
+          : "");
+
       const eliMsg: EliMessage = {
         id: response.id || crypto.randomUUID(),
         sender: "eli",
-        text: response.text,
+        text: replyText,
         isCrisisProtocol: response.isCrisisProtocol,
         crisisData: response.crisisData,
         timestamp: eliTimestamp,
       };
 
       const finalMessages = [...newMessages, eliMsg];
+
+      if (nextState.folio) {
+        try {
+          localStorage.setItem("equilibra_ultimo_folio_tamizaje", nextState.folio);
+        } catch {
+          // ignore
+        }
+      }
 
       // Título de la sesión si se obtuvieron iniciales
       let sessionTitle = activeSession.title;
@@ -272,6 +311,14 @@ export function ChatPage() {
     } catch {
       // Fallback estricto con el flujo
       const fallbackResult = processEliMessage(sanitized, screeningState);
+      if (fallbackResult.nextState.folio) {
+        try {
+          localStorage.setItem("equilibra_ultimo_folio_tamizaje", fallbackResult.nextState.folio);
+        } catch {
+          // ignore
+        }
+      }
+
       const eliMsg: EliMessage = {
         id: crypto.randomUUID(),
         sender: "eli",
@@ -434,20 +481,21 @@ export function ChatPage() {
                 <Sparkles className="size-5" />
               </div>
               <h2 className="text-sm font-bold text-foreground">
-                Asistente de Tamizaje {BRAND.assistant}
+                Área de Psicología TESH — {BRAND.assistant}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                Este cuestionario evalúa de forma confidencial síntomas de ansiedad (GAD-7) y estado
-                de ánimo (PHQ-9). Un profesional de salud mental revisará tus respuestas.
+                La atención psicológica es un proceso en el que recibes apoyo y orientación
+                profesional. Aquí responderás un tamizaje breve y confidencial (GAD-7 y PHQ-9). Un
+                profesional revisará tus respuestas y obtendrás tu folio para vincularlo a tu cita.
               </p>
               <div className="mt-3.5 flex flex-col gap-2 sm:flex-row sm:justify-center">
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => handleSendMessage("Comenzar")}
+                  onClick={() => handleSendMessage("Hola")}
                   className="rounded-xl bg-primary text-xs font-semibold text-primary-foreground shadow-xs hover:opacity-90"
                 >
-                  Comenzar cuestionario
+                  Comenzar tamizaje
                 </Button>
               </div>
             </motion.div>
@@ -532,34 +580,96 @@ export function ChatPage() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mx-auto w-full max-w-md rounded-2xl border border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-950/20 p-4 text-center shadow-soft"
+              className="mx-auto w-full max-w-md rounded-2xl border border-primary/30 bg-card p-5 text-center shadow-soft"
             >
-              <div className="mx-auto mb-2 grid size-9 place-items-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="size-5" />
+              <div
+                className={`mx-auto mb-2.5 grid size-11 place-items-center rounded-2xl ${
+                  screeningState.nivel === "rojo"
+                    ? "bg-destructive/15 text-destructive"
+                    : screeningState.nivel === "amarillo"
+                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                }`}
+              >
+                {screeningState.nivel === "rojo" ? (
+                  <ShieldAlert className="size-6" />
+                ) : (
+                  <CheckCircle2 className="size-6" />
+                )}
               </div>
-              <h3 className="text-sm font-bold text-foreground">Tamizaje Registrado</h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Tus respuestas han sido procesadas con éxito y serán revisadas por el equipo de
-                salud mental.
+
+              <div className="flex items-center justify-center gap-1.5 mb-1">
+                <Badge
+                  variant="outline"
+                  className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-lg ${
+                    screeningState.nivel === "rojo"
+                      ? "border-destructive/40 bg-destructive/10 text-destructive"
+                      : screeningState.nivel === "amarillo"
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  }`}
+                >
+                  Nivel {screeningState.nivel || "verde"}
+                </Badge>
+              </div>
+
+              <h3 className="text-base font-bold text-foreground">Tamizaje Finalizado</h3>
+
+              {screeningState.folio && (
+                <div className="my-3 rounded-xl border border-primary/30 bg-primary/5 p-3 flex flex-col items-center justify-center gap-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Tu Folio de Tamizaje
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-lg font-bold text-primary tracking-wider">
+                      {screeningState.folio}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(screeningState.folio || "");
+                        toast.success("Folio copiado al portapapeles");
+                      }}
+                      className="h-7 px-2 text-[11px] rounded-lg text-muted-foreground hover:text-foreground"
+                    >
+                      Copiar
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Escríbelo en el formulario de la Agenda para vincular tus resultados.
+                  </p>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {screeningState.nivel === "rojo" &&
+                  "Requieres atención prioritaria. Por favor agenda tu cita hoy mismo en 'Agenda de Citas' y elige TERAPIA PSICOLÓGICA."}
+                {screeningState.nivel === "amarillo" &&
+                  "Sería beneficioso recibir apoyo profesional. Te recomendamos agendar una cita eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA."}
+                {screeningState.nivel === "verde" &&
+                  "Tus resultados no muestran señales de alerta. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA."}
               </p>
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
                 <Button
                   type="button"
                   size="sm"
-                  onClick={handleResetChat}
+                  onClick={() => navigate({ to: "/citas" })}
                   className="rounded-xl bg-primary text-xs font-semibold text-primary-foreground gap-1.5 shadow-xs"
                 >
-                  <RotateCcw className="size-3.5" />
-                  <span>Nuevo tamizaje</span>
+                  <span>Ir a Agenda de Citas</span>
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate({ to: "/" })}
-                  className="rounded-xl border-border bg-card text-xs font-semibold text-foreground hover:bg-muted"
+                  onClick={handleResetChat}
+                  className="rounded-xl border-border bg-card text-xs font-semibold text-foreground hover:bg-muted gap-1"
                 >
-                  Volver al inicio
+                  <RotateCcw className="size-3.5" />
+                  <span>Nuevo tamizaje</span>
                 </Button>
               </div>
             </motion.div>

@@ -222,6 +222,22 @@ export function PsychologistAgenda({
                       <Clock className="size-3" />
                       {apt.timeSlot}
                     </span>
+                    {apt.folioTamizaje && (
+                      <Badge
+                        variant="outline"
+                        className="border-[#6857E4]/40 bg-[#6857E4]/10 text-primary font-mono text-[11px] font-bold"
+                      >
+                        Folio: {apt.folioTamizaje}
+                      </Badge>
+                    )}
+                    {apt.serviceType && (
+                      <Badge
+                        variant="outline"
+                        className="border-indigo-400/30 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold"
+                      >
+                        {apt.serviceType}
+                      </Badge>
+                    )}
                   </div>
 
                   <div>

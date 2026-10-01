@@ -7,6 +7,7 @@ import { mockAppointments } from "@/lib/mock-data";
 import type { Appointment, AppointmentModality } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,11 @@ export function CitasPage() {
   const [selectedSlot, setSelectedSlot] = useState<string>("11:00 - 11:50");
   const [selectedModality, setSelectedModality] = useState<AppointmentModality>("presencial");
   const [selectedPsychologist, setSelectedPsychologist] = useState<string>("Dra. Marta Gómez");
+  const [folioTamizaje, setFolioTamizaje] = useState<string>("");
+  const [selectedServiceType, setSelectedServiceType] = useState<string>("TERAPIA PSICOLÓGICA");
+  const [selectedSex, setSelectedSex] = useState<string>("");
+  const [selectedSemestre, setSelectedSemestre] = useState<string>("");
+  const [savedFolio, setSavedFolio] = useState<string | null>(null);
 
   // Modal de Éxito
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
@@ -107,6 +113,25 @@ export function CitasPage() {
     setSelectedSlot("11:00 - 11:50");
     setSelectedModality("presencial");
     setSelectedPsychologist("Dra. Marta Gómez");
+    setSelectedServiceType("TERAPIA PSICOLÓGICA");
+    setSelectedSex("");
+    setSelectedSemestre("");
+
+    // Detectar si el alumno generó un folio recientemente en el chat de Eli
+    try {
+      const stored = localStorage.getItem("equilibra_ultimo_folio_tamizaje");
+      if (stored) {
+        setSavedFolio(stored);
+        setFolioTamizaje(stored);
+      } else {
+        setSavedFolio(null);
+        setFolioTamizaje("");
+      }
+    } catch {
+      setSavedFolio(null);
+      setFolioTamizaje("");
+    }
+
     setIsFormOpen(true);
   };
 
@@ -116,6 +141,8 @@ export function CitasPage() {
     setSelectedSlot(apt.timeSlot);
     setSelectedModality(apt.modality);
     setSelectedPsychologist(apt.psychologistName);
+    setFolioTamizaje(apt.folioTamizaje || "");
+    setSelectedServiceType(apt.serviceType || "TERAPIA PSICOLÓGICA");
     setIsFormOpen(true);
   };
 
@@ -143,6 +170,8 @@ export function CitasPage() {
         ? psychInfo.office
         : "Enlace de videollamada institucional segura";
 
+    const cleanedFolio = folioTamizaje.trim() ? folioTamizaje.trim().toUpperCase() : undefined;
+
     if (editingAppointment) {
       // Reprogramar
       setAppointments((prev) =>
@@ -157,6 +186,8 @@ export function CitasPage() {
                 psychologistRole: psychInfo.role,
                 locationOrLink: location,
                 status: "confirmada",
+                folioTamizaje: cleanedFolio,
+                serviceType: selectedServiceType,
               }
             : item,
         ),
@@ -175,6 +206,8 @@ export function CitasPage() {
         locationOrLink: location,
         status: "confirmada",
         createdAt: new Date().toISOString(),
+        folioTamizaje: cleanedFolio,
+        serviceType: selectedServiceType,
       };
       setAppointments((prev) => [newApt, ...prev]);
       setIsFormOpen(false);
@@ -295,6 +328,25 @@ export function CitasPage() {
                         <appointmentIcons.clock className="size-3.5" />
                         <span>{apt.timeSlot}</span>
                       </div>
+
+                      {apt.folioTamizaje && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className="border-primary/40 bg-primary/10 text-primary font-mono text-[10px] font-bold py-0.5 px-2 rounded-lg"
+                          >
+                            Folio: {apt.folioTamizaje}
+                          </Badge>
+                          {apt.serviceType && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-semibold bg-lavender-soft text-primary py-0.5 px-2 rounded-lg"
+                            >
+                              {apt.serviceType}
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-1 rounded-xl bg-background/60 p-3 text-xs">
@@ -471,7 +523,127 @@ export function CitasPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-2">
+          <div className="space-y-5 py-2 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Campo prioritario al inicio: Folio de tamizaje de Eli */}
+            <div className="space-y-1.5 rounded-2xl border border-[#6857E4]/30 bg-[#6857E4]/5 p-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label htmlFor="folio-tamizaje-input" className="text-xs font-bold text-foreground">
+                  Folio de tamizaje (si realizaste el chat con Eli)
+                </label>
+                <Badge
+                  variant="outline"
+                  className="text-[9px] font-semibold text-muted-foreground uppercase border-border/70"
+                >
+                  Opcional
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Escríbelo para que la psicóloga vincule directamente tus resultados del tamizaje con
+                tu cita.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  id="folio-tamizaje-input"
+                  type="text"
+                  placeholder="p. ej. EQ-4821"
+                  value={folioTamizaje}
+                  onChange={(e) => setFolioTamizaje(e.target.value.toUpperCase())}
+                  className="h-9 font-mono text-xs uppercase bg-card font-semibold rounded-xl border-border/80"
+                />
+                {savedFolio && folioTamizaje !== savedFolio && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFolioTamizaje(savedFolio)}
+                    className="h-9 text-[11px] font-semibold text-[#6857E4] border-[#6857E4]/40 shrink-0 rounded-xl hover:bg-[#6857E4]/10"
+                    title="Usar el folio de tu último chat con Eli"
+                  >
+                    <span>Usar {savedFolio}</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Tipo de atención sugerida */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">
+                Tipo de atención solicitada
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "TERAPIA PSICOLÓGICA", label: "Terapia", desc: "Prioritaria / Regular" },
+                  { id: "ORIENTACIÓN", label: "Orientación", desc: "Apoyo y seguimiento" },
+                  { id: "CONSEJERÍA", label: "Consejería", desc: "Acompañamiento preventivo" },
+                ].map((srv) => {
+                  const isSelected = selectedServiceType === srv.id;
+                  return (
+                    <button
+                      key={srv.id}
+                      type="button"
+                      onClick={() => setSelectedServiceType(srv.id)}
+                      className={`rounded-xl p-2.5 text-left border transition-all ${
+                        isSelected
+                          ? "border-[#6857E4] bg-lavender-soft text-primary font-bold shadow-xs scale-102"
+                          : "border-border/70 bg-card text-muted-foreground hover:bg-muted/40"
+                      }`}
+                    >
+                      <p className="text-xs font-bold leading-tight">{srv.label}</p>
+                      <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+                        {srv.desc}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Datos complementarios (Sexo y Semestre con opciones Hombre/Mujer/Otro y 1°-9°/Otro) */}
+            <div className="grid grid-cols-2 gap-2.5 pt-0.5">
+              <div className="space-y-1">
+                <label
+                  htmlFor="student-sex-select"
+                  className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider"
+                >
+                  Sexo (opcional)
+                </label>
+                <select
+                  id="student-sex-select"
+                  value={selectedSex}
+                  onChange={(e) => setSelectedSex(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-border/80 bg-card px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-[#6857E4]/30"
+                >
+                  <option value="">Selecciona...</option>
+                  <option value="Mujer">Mujer</option>
+                  <option value="Hombre">Hombre</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="student-semestre-select"
+                  className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider"
+                >
+                  Semestre (opcional)
+                </label>
+                <select
+                  id="student-semestre-select"
+                  value={selectedSemestre}
+                  onChange={(e) => setSelectedSemestre(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-border/80 bg-card px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-[#6857E4]/30"
+                >
+                  <option value="">Selecciona...</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => (
+                    <option key={s} value={`${s}º Semestre`}>
+                      {s}º Semestre
+                    </option>
+                  ))}
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+
             {/* 1. Selector de fecha (Septiembre 2026) */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">

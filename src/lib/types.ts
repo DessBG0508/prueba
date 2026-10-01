@@ -91,6 +91,8 @@ export interface Appointment {
   createdAt: string;
   studentName?: string;
   caseId?: string;
+  folioTamizaje?: string;
+  serviceType?: "TERAPIA PSICOLÓGICA" | "ORIENTACIÓN" | "CONSEJERÍA" | string;
 }
 
 export type ResourceCategory = "Ansiedad" | "Estrés" | "Sueño" | "Ánimo" | "Respiración";
