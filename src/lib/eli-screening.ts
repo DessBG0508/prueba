@@ -165,6 +165,17 @@ export interface EliStepResult {
   quickReplies?: string[];
   folio?: string;
   nivel?: ScreeningNivel;
+  isReadyForSubmission?: boolean;
+  submissionPayload?: {
+    paciente: {
+      iniciales: string;
+      edad: number;
+      sexo: string;
+      semestre: string;
+    };
+    GAD7: number[];
+    PHQ9: number[];
+  };
 }
 
 export function processEliMessage(userText: string, currentState: ScreeningState): EliStepResult {
@@ -455,93 +466,25 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // PASO 7 — ÁRBOL DE DECISIÓN (calcúlalo internamente, NO muestres cuentas)
-    const item9Score = score;
-    const gadTotal = currentState.gad7Items.reduce((acc, curr) => acc + curr, 0);
-    const phqTotal = updatedItems.reduce((acc, curr) => acc + curr, 0);
-
-    // REGLA DE CRISIS (prioridad máxima) -> NIVEL ROJO si CUALQUIERA se cumple:
-    // - Ítem 9 > 0
-    // - PHQ_9 total >= 20
-    // - GAD_7 total >= 15
-    const isRojo = item9Score > 0 || phqTotal >= 20 || gadTotal >= 15;
-
-    // NIVEL AMARILLO (si no hay rojo), si CUALQUIERA se cumple:
-    // - PHQ_9 total entre 10 y 19, O
-    // - GAD_7 total entre 10 y 14
-    const isAmarillo =
-      !isRojo && ((phqTotal >= 10 && phqTotal <= 19) || (gadTotal >= 10 && gadTotal <= 14));
-
-    // NIVEL VERDE (todo lo demás): PHQ_9 < 10 y GAD_7 < 10
-    const nivel: ScreeningNivel = isRojo ? "rojo" : isAmarillo ? "amarillo" : "verde";
-    const alerta = isRojo;
-
-    // Generar folio con formato EQ-####
-    const folio = generateFolio();
-
-    let recomendaciones = "";
-    if (nivel === "rojo") {
-      recomendaciones =
-        "Atención prioritaria inmediata recomendada. Canalización prioritaria para Terapia Psicológica y servicios de urgencia si se requiere.";
-    } else if (nivel === "amarillo") {
-      recomendaciones =
-        "Sintomatología moderada detectada. Se recomienda agendar Orientación o Terapia Psicológica.";
-    } else {
-      recomendaciones =
-        "Resultados dentro de parámetros normales sin señales de alerta. Consejería disponible opcionalmente.";
-    }
-
-    // PASO 8 — MENSAJE FINAL SEGÚN NIVEL
-    let mensajeFinal = "";
-    if (nivel === "rojo") {
-      mensajeFinal = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita HOY MISMO en el apartado 'Agenda de Citas' de esta plataforma y elige TERAPIA PSICOLÓGICA. Tu folio de tamizaje es: ${folio}. Escríbelo en el formulario para vincular tus resultados.`;
-    } else if (nivel === "amarillo") {
-      mensajeFinal = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado 'Agenda de Citas' de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA. Tu folio de tamizaje es: ${folio}. Escríbelo en el formulario para vincular tus resultados.`;
-    } else {
-      mensajeFinal = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado 'Agenda de Citas' de esta plataforma. Tu folio de tamizaje es: ${folio} por si deseas vincularlo.`;
-    }
-
-    // JSON FINAL (claves exactas, sin acentos, SIEMPRE al terminar)
-    const finalJson: ScreeningFinalJson = {
-      paciente: {
-        iniciales: currentState.paciente.iniciales || "",
-        edad: currentState.paciente.edad || 0,
-        sexo: currentState.paciente.sexo || "",
-        semestre: currentState.paciente.semestre || "",
-      },
-      GAD_7: {
-        total: gadTotal,
-        items: currentState.gad7Items,
-      },
-      PHQ_9: {
-        total: phqTotal,
-        items: updatedItems,
-        item9: item9Score,
-      },
-      folio,
-      nivel,
-      alerta,
-      recomendaciones,
-    };
-
-    const jsonString = JSON.stringify(finalJson);
-    const replyText = `${mensajeFinal}\n\n${jsonString}\nGracias. Un profesional revisará tus respuestas.`;
-
+    // Reactivo 9 de PHQ-9 respondido: listo para llamada a la Edge Function de Supabase `tamizaje`
     return {
-      replyText,
+      replyText: "",
       nextState: {
         ...currentState,
-        step: "completed",
         currentQuestionIndex: 8,
         phq9Items: updatedItems,
-        folio,
-        nivel,
       },
-      isCrisis: isRojo,
-      isCompleted: true,
-      finalJson,
-      folio,
-      nivel,
+      isReadyForSubmission: true,
+      submissionPayload: {
+        paciente: {
+          iniciales: currentState.paciente.iniciales || "",
+          edad: currentState.paciente.edad || 0,
+          sexo: currentState.paciente.sexo || "",
+          semestre: currentState.paciente.semestre || "",
+        },
+        GAD7: currentState.gad7Items,
+        PHQ9: updatedItems,
+      },
     };
   }
 

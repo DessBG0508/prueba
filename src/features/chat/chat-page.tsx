@@ -16,7 +16,8 @@ import {
   Trash2,
   AlertTriangle,
 } from "lucide-react";
-import { sendEliMessage, resetBackendScreeningState, type EliMessage } from "@/lib/api-client";
+import { resetBackendScreeningState, type EliMessage } from "@/lib/api-client";
+import { supabase } from "@/integrations/supabase/client";
 import {
   INITIAL_SCREENING_STATE,
   type ScreeningState,
@@ -109,6 +110,12 @@ export function ChatPage() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [pendingSubmissionPayload, setPendingSubmissionPayload] = useState<{
+    paciente: { iniciales: string; edad: number; sexo: string; semestre: string };
+    GAD7: number[];
+    PHQ9: number[];
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -143,6 +150,8 @@ export function ChatPage() {
   // REINICIAR CHAT COMPLETAMENTE
   const handleResetChat = () => {
     resetBackendScreeningState();
+    setSubmissionError(null);
+    setPendingSubmissionPayload(null);
     try {
       localStorage.removeItem("equilibra_ultimo_folio_tamizaje");
     } catch {
@@ -154,6 +163,93 @@ export function ChatPage() {
     setInputText("");
     setIsTyping(false);
     toast.success("Chat reiniciado. Puedes comenzar un nuevo tamizaje.");
+  };
+
+  // REINTENTAR ENVÍO TRAS ERROR DE CONEXIÓN
+  const handleRetrySubmission = async () => {
+    if (!pendingSubmissionPayload || isTyping) return;
+    setIsTyping(true);
+    setSubmissionError(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("tamizaje", {
+        body: pendingSubmissionPayload,
+      });
+
+      if (error || data?.status === "error" || !data) {
+        setSubmissionError(
+          error?.message ||
+            data?.error ||
+            "Error al conectar con la función de tamizaje en Supabase. Por favor reintenta.",
+        );
+        return;
+      }
+
+      if (data.status === "completado" && data.data) {
+        setPendingSubmissionPayload(null);
+        setSubmissionError(null);
+
+        const eliTimestamp = new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        const isCrisis = Boolean(data.data.alerta || data.data.nivel === "rojo");
+
+        const eliMsg: EliMessage = {
+          id: crypto.randomUUID(),
+          sender: "eli",
+          text: data.mensaje || "Tamizaje completado. Un profesional revisará tus respuestas.",
+          isCrisisProtocol: isCrisis,
+          crisisData: isCrisis
+            ? {
+                actionLabel: "Contactar a Línea de la Vida ahora",
+                actionRoute: "/alerta",
+                helplineName: "Línea de la Vida",
+                helphoneNumber: "800 911 2000",
+              }
+            : undefined,
+          timestamp: eliTimestamp,
+        };
+
+        const finalMessages = [...messages, eliMsg];
+
+        try {
+          localStorage.setItem("equilibra_ultimo_folio_tamizaje", data.data.folio);
+        } catch {
+          // ignore
+        }
+
+        const updatedState: ScreeningState = {
+          ...screeningState,
+          step: "completed",
+          folio: data.data.folio,
+          nivel: data.data.nivel,
+        };
+
+        const updatedSessionFinal: ChatSession = {
+          ...activeSession,
+          updatedAt: "Ahora",
+          messages: finalMessages,
+          preview: eliMsg.text.slice(0, 60),
+          screeningState: updatedState,
+        };
+
+        const finalSessions = sessions.map((s) =>
+          s.id === activeSession.id ? updatedSessionFinal : s,
+        );
+        persistSessions(finalSessions);
+        toast.success("Tamizaje registrado correctamente");
+      }
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Error al conectar con la función de tamizaje en Supabase.";
+      setSubmissionError(msg);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   // NUEVA CONVERSACIÓN
@@ -240,109 +336,136 @@ export function ChatPage() {
 
     setInputText("");
     setIsTyping(true);
+    setSubmissionError(null);
 
-    try {
-      // Construir historial en formato compatible con Gemini/Edge Function de Supabase
-      const historial = newMessages.map((m) => ({
-        role: m.sender === "user" ? ("user" as const) : ("model" as const),
-        parts: [{ text: m.text }],
-      }));
+    // Procesar localmente la pregunta/respuesta actual
+    const stepResult = processEliMessage(sanitized, screeningState);
 
-      const response = await sendEliMessage(sanitized, screeningState, historial);
-      const nextState =
-        response.nextState || processEliMessage(sanitized, screeningState).nextState;
+    // Si respondió la pregunta 9 de PHQ-9, hacer UNA sola llamada a la función de Supabase 'tamizaje':
+    if (stepResult.isReadyForSubmission && stepResult.submissionPayload) {
+      setPendingSubmissionPayload(stepResult.submissionPayload);
 
-      // Si la Edge Function indica que está completado, sincronizar estado final
-      if (response.status === "completado" || response.edgeData?.folio) {
-        nextState.step = "completed";
-        if (response.edgeData?.folio) nextState.folio = response.edgeData.folio;
-        if (response.edgeData?.nivel) nextState.nivel = response.edgeData.nivel;
-      }
+      try {
+        const { data, error } = await supabase.functions.invoke("tamizaje", {
+          body: stepResult.submissionPayload,
+        });
 
-      const eliTimestamp = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      const replyText =
-        response.text ||
-        (nextState.step === "completed"
-          ? `Tamizaje finalizado. Tu folio de seguimiento es: ${nextState.folio || "EQ-0000"}. Gracias. Un profesional revisará tus respuestas.`
-          : "");
-
-      const eliMsg: EliMessage = {
-        id: response.id || crypto.randomUUID(),
-        sender: "eli",
-        text: replyText,
-        isCrisisProtocol: response.isCrisisProtocol,
-        crisisData: response.crisisData,
-        timestamp: eliTimestamp,
-      };
-
-      const finalMessages = [...newMessages, eliMsg];
-
-      if (nextState.folio) {
-        try {
-          localStorage.setItem("equilibra_ultimo_folio_tamizaje", nextState.folio);
-        } catch {
-          // ignore
+        if (error || data?.status === "error" || !data) {
+          setSubmissionError(
+            error?.message ||
+              data?.error ||
+              "Error al registrar el tamizaje en el servidor de Supabase.",
+          );
+          setIsTyping(false);
+          return;
         }
-      }
 
-      // Título de la sesión si se obtuvieron iniciales
-      let sessionTitle = activeSession.title;
-      if (nextState.paciente.iniciales && sessionTitle === "Nuevo tamizaje") {
-        sessionTitle = `Tamizaje — ${nextState.paciente.iniciales}`;
-      }
+        if (data.status === "completado" && data.data) {
+          setPendingSubmissionPayload(null);
+          setSubmissionError(null);
 
-      const updatedSessionFinal: ChatSession = {
-        ...activeSession,
-        title: sessionTitle,
-        updatedAt: "Ahora",
-        messages: finalMessages,
-        preview: eliMsg.text.slice(0, 60),
-        screeningState: nextState,
-      };
+          const eliTimestamp = new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
 
-      const finalSessions = sessions.map((s) =>
-        s.id === activeSession.id ? updatedSessionFinal : s,
-      );
-      persistSessions(finalSessions);
-    } catch {
-      // Fallback estricto con el flujo
-      const fallbackResult = processEliMessage(sanitized, screeningState);
-      if (fallbackResult.nextState.folio) {
-        try {
-          localStorage.setItem("equilibra_ultimo_folio_tamizaje", fallbackResult.nextState.folio);
-        } catch {
-          // ignore
+          const isCrisis = Boolean(data.data.alerta || data.data.nivel === "rojo");
+
+          const eliMsg: EliMessage = {
+            id: crypto.randomUUID(),
+            sender: "eli",
+            text:
+              data.mensaje ||
+              "Tamizaje completado con éxito. Un profesional revisará tus respuestas.",
+            isCrisisProtocol: isCrisis,
+            crisisData: isCrisis
+              ? {
+                  actionLabel: "Contactar a Línea de la Vida ahora",
+                  actionRoute: "/alerta",
+                  helplineName: "Línea de la Vida",
+                  helphoneNumber: "800 911 2000",
+                }
+              : undefined,
+            timestamp: eliTimestamp,
+          };
+
+          const finalMessages = [...newMessages, eliMsg];
+
+          try {
+            localStorage.setItem("equilibra_ultimo_folio_tamizaje", data.data.folio);
+          } catch {
+            // ignore
+          }
+
+          const updatedState: ScreeningState = {
+            ...stepResult.nextState,
+            step: "completed",
+            folio: data.data.folio,
+            nivel: data.data.nivel,
+          };
+
+          const updatedSessionFinal: ChatSession = {
+            ...activeSession,
+            updatedAt: "Ahora",
+            messages: finalMessages,
+            preview: eliMsg.text.slice(0, 60),
+            screeningState: updatedState,
+          };
+
+          const finalSessions = sessions.map((s) =>
+            s.id === activeSession.id ? updatedSessionFinal : s,
+          );
+          persistSessions(finalSessions);
         }
+      } catch (err: unknown) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Error al conectar con la función de tamizaje en Supabase.";
+        setSubmissionError(msg);
+      } finally {
+        setIsTyping(false);
+        setTimeout(() => inputRef.current?.focus(), 50);
       }
-
-      const eliMsg: EliMessage = {
-        id: crypto.randomUUID(),
-        sender: "eli",
-        text: fallbackResult.replyText,
-        isCrisisProtocol: fallbackResult.isCrisis,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      const updatedSessionFallback: ChatSession = {
-        ...activeSession,
-        updatedAt: "Ahora",
-        messages: [...newMessages, eliMsg],
-        preview: eliMsg.text.slice(0, 60),
-        screeningState: fallbackResult.nextState,
-      };
-
-      const finalSessions = sessions.map((s) =>
-        s.id === activeSession.id ? updatedSessionFallback : s,
-      );
-      persistSessions(finalSessions);
-    } finally {
-      setIsTyping(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      return;
     }
+
+    // Flujo normal de preguntas
+    const eliTimestamp = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const eliMsg: EliMessage = {
+      id: crypto.randomUUID(),
+      sender: "eli",
+      text: stepResult.replyText,
+      timestamp: eliTimestamp,
+    };
+
+    const finalMessages = [...newMessages, eliMsg];
+
+    // Título de la sesión si se obtuvieron iniciales
+    let sessionTitle = activeSession.title;
+    if (stepResult.nextState.paciente.iniciales && sessionTitle === "Nuevo tamizaje") {
+      sessionTitle = `Tamizaje — ${stepResult.nextState.paciente.iniciales}`;
+    }
+
+    const updatedSessionFinal: ChatSession = {
+      ...activeSession,
+      title: sessionTitle,
+      updatedAt: "Ahora",
+      messages: finalMessages,
+      preview: eliMsg.text.slice(0, 60),
+      screeningState: stepResult.nextState,
+    };
+
+    const finalSessions = sessions.map((s) =>
+      s.id === activeSession.id ? updatedSessionFinal : s,
+    );
+    persistSessions(finalSessions);
+    setIsTyping(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -574,6 +697,41 @@ export function ChatPage() {
               </motion.div>
             );
           })}
+
+          {/* Mensaje de error visible con botón Reintentar si falla la función tamizaje de Supabase */}
+          {submissionError && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mx-auto w-full max-w-md rounded-2xl border-2 border-destructive/40 bg-destructive/10 p-4 text-center shadow-md space-y-2.5"
+            >
+              <div className="mx-auto grid size-10 place-items-center rounded-xl bg-destructive/20 text-destructive">
+                <AlertTriangle className="size-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-destructive uppercase tracking-wider">
+                  Error al registrar el tamizaje
+                </h4>
+                <p className="mt-1 text-xs text-foreground font-medium leading-relaxed">
+                  {submissionError}
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Tus respuestas están guardadas. Pulsa reintentar para volver a enviar.
+                </p>
+              </div>
+              <div className="pt-1 flex justify-center">
+                <Button
+                  type="button"
+                  onClick={handleRetrySubmission}
+                  disabled={isTyping}
+                  className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-semibold gap-1.5 shadow-xs"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reintentar</span>
+                </Button>
+              </div>
+            </motion.div>
+          )}
 
           {/* Tarjeta de conclusión cuando el tamizaje está completo */}
           {screeningState.step === "completed" && (

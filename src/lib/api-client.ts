@@ -1,5 +1,5 @@
 import { DEMO_MODE } from "./mock-data";
-import { supabase, isSupabaseConfigured } from "./supabase";
+import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./supabase";
 import type { CheckIn } from "./types";
 
 export interface EliMessage {
@@ -174,12 +174,87 @@ import {
   type ScreeningState,
   type ScreeningNivel,
 } from "./eli-screening";
-import { supabaseUrl, supabaseAnonKey } from "./supabase";
 
 let currentBackendState: ScreeningState = { ...INITIAL_SCREENING_STATE };
 
 export function resetBackendScreeningState() {
   currentBackendState = { ...INITIAL_SCREENING_STATE };
+}
+
+export interface TamizajeSubmissionPayload {
+  paciente: {
+    iniciales: string;
+    edad: number;
+    sexo: string;
+    semestre: string;
+  };
+  GAD7: number[]; // number[7], valores 0-3
+  PHQ9: number[]; // number[9], valores 0-3
+}
+
+export interface TamizajeEdgeResultData {
+  folio: string;
+  nivel: ScreeningNivel;
+  alerta: boolean;
+  resultados?: Array<{
+    instrumento: string;
+    total: number;
+    interpretacion: string;
+    item9?: number;
+    nivel: string;
+  }>;
+}
+
+export interface TamizajeEdgeResponse {
+  status: "completado" | "error";
+  data?: TamizajeEdgeResultData;
+  mensaje?: string;
+  fuente_mensaje?: string;
+  error?: string;
+}
+
+/**
+ * Invoca la Edge Function `tamizaje` en Supabase al concluir el reactivo 9 de PHQ-9.
+ * Utiliza supabase.functions.invoke inyectando automáticamente la URL y clave pública anónima.
+ */
+export async function invokeTamizajeEdgeFunction(
+  payload: TamizajeSubmissionPayload,
+): Promise<{ data: TamizajeEdgeResponse | null; error: string | null }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("tamizaje", {
+      body: payload,
+    });
+
+    if (error) {
+      return {
+        data: null,
+        error: error.message || "Error al invocar la función de tamizaje en Supabase",
+      };
+    }
+
+    if (!data) {
+      return {
+        data: null,
+        error: "No se recibió respuesta de la función de tamizaje",
+      };
+    }
+
+    if (data.status === "error" || data.error) {
+      return {
+        data: null,
+        error: data.error || data.mensaje || "Error al procesar el tamizaje en el servidor",
+      };
+    }
+
+    return { data: data as TamizajeEdgeResponse, error: null };
+  } catch (err: unknown) {
+    const errorMsg =
+      err instanceof Error ? err.message : "Error de red al conectar con la función de tamizaje";
+    return {
+      data: null,
+      error: errorMsg,
+    };
+  }
 }
 
 export interface EdgeTamizajeData {
