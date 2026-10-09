@@ -1,14 +1,17 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
+import { supabase, isSupabaseConfigured } from "./supabase";
 import { DEMO_MODE } from "./mock-data";
 import type { User, UserRole } from "./types";
 
-interface RegisterInput {
+export interface RegisterInput {
   name: string;
   matricula: string;
   email: string;
   password: string;
-  role: UserRole;
+  carrera?: string;
+  semestre?: string;
+  grupo?: string;
 }
 
 interface AuthContextType {
@@ -16,7 +19,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
   register: (input: RegisterInput) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AUTH_STORAGE_KEY = "equilibra_auth_session";
@@ -33,6 +36,9 @@ const MOCK_USERS: Array<User & { passwordHash: string }> = [
     matricula: "202310452",
     email: "dess@tesh.mx",
     role: "estudiante",
+    carrera: "Ing. en Sistemas Computacionales",
+    semestre: "5",
+    grupo: "501",
     passwordHash: "password123",
     createdAt: "2026-09-01T00:00:00.000Z",
   },
@@ -42,6 +48,9 @@ const MOCK_USERS: Array<User & { passwordHash: string }> = [
     matricula: "PSI-88410",
     email: "dra.marta@tesh.mx",
     role: "psicologo",
+    carrera: "Área de Psicología",
+    semestre: "",
+    grupo: "",
     passwordHash: "password123",
     createdAt: "2026-09-01T00:00:00.000Z",
   },
@@ -50,7 +59,10 @@ const MOCK_USERS: Array<User & { passwordHash: string }> = [
     name: "Mtro. Roberto Albarrán",
     matricula: "DIR-33201",
     email: "jefatura@tesh.mx",
-    role: "directivo",
+    role: "jefatura",
+    carrera: "Dirección Académica",
+    semestre: "",
+    grupo: "",
     passwordHash: "password123",
     createdAt: "2026-09-01T00:00:00.000Z",
   },
@@ -79,72 +91,189 @@ function saveRegisteredUser(user: User & { passwordHash: string }) {
   }
 }
 
+/**
+ * Consulta la tabla 'profiles' de Supabase para obtener el rol y datos institucionales
+ */
+async function fetchUserProfile(userId: string): Promise<{
+  nombre?: string;
+  matricula?: string;
+  carrera?: string;
+  semestre?: string;
+  grupo?: string;
+  rol?: UserRole;
+} | null> {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, nombre, matricula, carrera, semestre, grupo, rol")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return {
+      nombre: data.nombre,
+      matricula: data.matricula,
+      carrera: data.carrera,
+      semestre: data.semestre,
+      grupo: data.grupo,
+      rol: data.rol as UserRole,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const lastRecordedActivityRef = useRef<number>(Date.now());
 
-  const logout = () => {
-    /* TODO(Supabase): reemplazar por supabase.auth.signOut() */
+  const logout = async () => {
+    try {
+      if (isSupabaseConfigured) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      console.error("Error al cerrar sesión en Supabase:", e);
+    }
+
     setUser(null);
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(LAST_ACTIVITY_KEY);
       localStorage.setItem("equilibra_logged_out", "true");
     } catch (e) {
-      console.error("Error al eliminar la sesión", e);
+      console.error("Error al eliminar la sesión local", e);
     }
   };
 
-  // Inicialización de sesión y verificación de expiración por inactividad previa
+  // Inicialización de sesión y sincronización con Supabase Auth
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-      const lastActivityStr = localStorage.getItem(LAST_ACTIVITY_KEY);
-      const lastActivity = lastActivityStr ? parseInt(lastActivityStr, 10) : 0;
-      const now = Date.now();
+    let isMounted = true;
 
-      // Si existía sesión pero ya transcurrieron más de 30 minutos de inactividad
-      if (raw && lastActivity > 0 && now - lastActivity > INACTIVITY_TIMEOUT_MS) {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-        localStorage.removeItem(LAST_ACTIVITY_KEY);
-        localStorage.setItem("equilibra_logged_out", "true");
-        toast.info("Sesión cerrada por inactividad", {
-          description:
-            "Por seguridad de tus datos de salud mental y bienestar, la sesión se cerró tras 30 minutos de inactividad.",
-        });
-      } else if (raw) {
-        setUser(JSON.parse(raw));
-        localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
-      } else if (DEMO_MODE) {
-        // En DEMO_MODE, inicializamos con el usuario estudiante Dess Bautista si no se ha cerrado sesión manualmente
-        const hasLoggedOut = localStorage.getItem("equilibra_logged_out") === "true";
-        if (!hasLoggedOut) {
-          const defaultStudent: User = {
-            id: "demo-student-dess",
-            name: "Dess Bautista",
-            matricula: "202310452",
-            email: "dess@tesh.mx",
-            role: "estudiante",
-            createdAt: "2026-09-01T00:00:00.000Z",
-          };
-          setUser(defaultStudent);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(defaultStudent));
+    async function initSession() {
+      try {
+        // 1. Verificar si hay sesión activa en Supabase Auth
+        if (isSupabaseConfigured) {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (session?.user && isMounted) {
+            const profile = await fetchUserProfile(session.user.id);
+            const activeRole: UserRole = (profile?.rol as UserRole) ?? "estudiante";
+
+            const activeUser: User = {
+              id: session.user.id,
+              name:
+                profile?.nombre ||
+                session.user.user_metadata?.nombre ||
+                session.user.email?.split("@")[0] ||
+                "Usuario",
+              matricula: profile?.matricula || session.user.user_metadata?.matricula || "",
+              email: session.user.email || "",
+              role: activeRole,
+              carrera: profile?.carrera || session.user.user_metadata?.carrera,
+              semestre: profile?.semestre || session.user.user_metadata?.semestre,
+              grupo: profile?.grupo || session.user.user_metadata?.grupo,
+              createdAt: session.user.created_at || new Date().toISOString(),
+            };
+
+            setUser(activeUser);
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser));
+            localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // 2. Si no hay sesión de Supabase, verificar almacenamiento local o DEMO_MODE
+        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+        const lastActivityStr = localStorage.getItem(LAST_ACTIVITY_KEY);
+        const lastActivity = lastActivityStr ? parseInt(lastActivityStr, 10) : 0;
+        const now = Date.now();
+
+        if (raw && lastActivity > 0 && now - lastActivity > INACTIVITY_TIMEOUT_MS) {
+          localStorage.removeItem(AUTH_STORAGE_KEY);
+          localStorage.removeItem(LAST_ACTIVITY_KEY);
+          localStorage.setItem("equilibra_logged_out", "true");
+        } else if (raw) {
+          setUser(JSON.parse(raw));
           localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+        } else if (DEMO_MODE) {
+          const hasLoggedOut = localStorage.getItem("equilibra_logged_out") === "true";
+          if (!hasLoggedOut) {
+            const defaultStudent: User = {
+              id: "demo-student-dess",
+              name: "Dess Bautista",
+              matricula: "202310452",
+              email: "dess@tesh.mx",
+              role: "estudiante",
+              carrera: "Ing. en Sistemas Computacionales",
+              semestre: "5",
+              grupo: "501",
+              createdAt: "2026-09-01T00:00:00.000Z",
+            };
+            setUser(defaultStudent);
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(defaultStudent));
+            localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+          }
+        }
+      } catch (e) {
+        console.error("Error al inicializar la sesión:", e);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
-    } catch (e) {
-      console.error("Error al recuperar la sesión local", e);
-    } finally {
-      setIsLoading(false);
     }
+
+    initSession();
+
+    // 3. Suscripción a cambios de estado de Supabase Auth
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      if (event === "SIGNED_OUT" || !session) {
+        const hasManualLogout = localStorage.getItem("equilibra_logged_out") === "true";
+        if (hasManualLogout) {
+          setUser(null);
+        }
+      } else if (session?.user) {
+        const profile = await fetchUserProfile(session.user.id);
+        const activeRole: UserRole = (profile?.rol as UserRole) ?? "estudiante";
+
+        const activeUser: User = {
+          id: session.user.id,
+          name:
+            profile?.nombre ||
+            session.user.user_metadata?.nombre ||
+            session.user.email?.split("@")[0] ||
+            "Usuario",
+          matricula: profile?.matricula || session.user.user_metadata?.matricula || "",
+          email: session.user.email || "",
+          role: activeRole,
+          carrera: profile?.carrera || session.user.user_metadata?.carrera,
+          semestre: profile?.semestre || session.user.user_metadata?.semestre,
+          grupo: profile?.grupo || session.user.user_metadata?.grupo,
+          createdAt: session.user.created_at || new Date().toISOString(),
+        };
+
+        setUser(activeUser);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser));
+        localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   // Monitor continuo de inactividad (30 minutos) mientras el usuario tiene sesión activa
   useEffect(() => {
     if (!user) return;
 
-    // Actualiza la marca de tiempo de actividad con limitación (máx 1 vez cada 10 segundos)
     const handleUserActivity = () => {
       const now = Date.now();
       if (now - lastRecordedActivityRef.current > 10000) {
@@ -152,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
         } catch {
-          // Ignorar cuota o storage deshabilitado
+          // Ignorar cuota
         }
       }
     };
@@ -162,7 +291,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.addEventListener(evt, handleUserActivity, { passive: true });
     });
 
-    // Verificación periódica cada 20 segundos
     const checkInterval = setInterval(() => {
       try {
         const lastStr = localStorage.getItem(LAST_ACTIVITY_KEY);
@@ -190,12 +318,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string): Promise<User> => {
     const normalizedEmail = email.trim().toLowerCase();
 
-    /* TODO(Supabase): reemplazar por supabase.auth.signInWithPassword() y asignar rol desde profiles */
-    if (DEMO_MODE) {
-      // 1. Buscar en usuarios mock predeterminados
-      const mockMatch = MOCK_USERS.find((u) => u.email.toLowerCase() === normalizedEmail);
+    // 1. Intento oficial con Supabase Auth: signInWithPassword
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        });
 
-      // 2. Buscar en usuarios registrados localmente
+        if (error) {
+          // Si falla en Supabase pero es una cuenta mock de prueba predefinida, continúa al fallback
+          const isMockAccount = MOCK_USERS.some(
+            (u) => u.email.toLowerCase() === normalizedEmail && u.passwordHash === password,
+          );
+          if (!isMockAccount) {
+            let errorMsg = error.message;
+            if (errorMsg.includes("Invalid login credentials")) {
+              errorMsg = "Credenciales incorrectas. Verifica tu correo y contraseña.";
+            } else if (errorMsg.includes("Email not confirmed")) {
+              errorMsg = "Por favor confirma tu correo electrónico antes de ingresar.";
+            }
+            throw new Error(errorMsg);
+          }
+        } else if (data.user) {
+          // Leer el rol desde la tabla 'profiles'
+          const profile = await fetchUserProfile(data.user.id);
+          const activeRole: UserRole = (profile?.rol as UserRole) ?? "estudiante";
+
+          const activeUser: User = {
+            id: data.user.id,
+            name:
+              profile?.nombre ||
+              data.user.user_metadata?.nombre ||
+              normalizedEmail.split("@")[0] ||
+              "Usuario",
+            matricula: profile?.matricula || data.user.user_metadata?.matricula || "",
+            email: data.user.email || normalizedEmail,
+            role: activeRole,
+            carrera: profile?.carrera || data.user.user_metadata?.carrera,
+            semestre: profile?.semestre || data.user.user_metadata?.semestre,
+            grupo: profile?.grupo || data.user.user_metadata?.grupo,
+            createdAt: data.user.created_at || new Date().toISOString(),
+          };
+
+          setUser(activeUser);
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser));
+          localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+          localStorage.removeItem("equilibra_logged_out");
+          return activeUser;
+        }
+      } catch (err: unknown) {
+        const isMockAccount = MOCK_USERS.some(
+          (u) => u.email.toLowerCase() === normalizedEmail && u.passwordHash === password,
+        );
+        if (!isMockAccount) {
+          throw err;
+        }
+      }
+    }
+
+    // 2. Fallback de usuarios DEMO en desarrollo local
+    if (DEMO_MODE) {
+      const mockMatch = MOCK_USERS.find((u) => u.email.toLowerCase() === normalizedEmail);
       const registeredMatch = getRegisteredUsers().find(
         (u) => u.email.toLowerCase() === normalizedEmail,
       );
@@ -206,7 +390,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("El correo electrónico no coincide con ningún usuario registrado.");
       }
 
-      // Validar contraseña
       if (password.length < 8 && found.passwordHash !== password) {
         throw new Error("La contraseña debe tener al menos 8 caracteres.");
       }
@@ -217,6 +400,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         matricula: found.matricula,
         email: found.email,
         role: found.role,
+        carrera: found.carrera,
+        semestre: found.semestre,
+        grupo: found.grupo,
         createdAt: found.createdAt,
       };
 
@@ -233,7 +419,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (input: RegisterInput): Promise<User> => {
     const normalizedEmail = input.email.trim().toLowerCase();
 
-    /* TODO(Supabase): reemplazar por supabase.auth.signUp() y guardar profile en tabla profiles */
+    // 1. Registro oficial en Supabase Auth: signUp con options.data (nombre, matricula, carrera, semestre, grupo)
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: input.password,
+        options: {
+          data: {
+            nombre: input.name,
+            matricula: input.matricula,
+            carrera: input.carrera || "",
+            semestre: input.semestre || "",
+            grupo: input.grupo || "",
+          },
+        },
+      });
+
+      if (error) {
+        let msg = error.message;
+        if (msg.includes("User already registered")) {
+          msg = "Este correo electrónico ya está registrado.";
+        } else if (msg.includes("Password should be at least")) {
+          msg = "La contraseña debe tener al menos 8 caracteres.";
+        }
+        throw new Error(msg);
+      }
+
+      if (data.user) {
+        const activeUser: User = {
+          id: data.user.id,
+          name: input.name,
+          matricula: input.matricula,
+          email: normalizedEmail,
+          role: "estudiante",
+          carrera: input.carrera,
+          semestre: input.semestre,
+          grupo: input.grupo,
+          createdAt: data.user.created_at || new Date().toISOString(),
+        };
+
+        setUser(activeUser);
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser));
+        localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+        localStorage.removeItem("equilibra_logged_out");
+        return activeUser;
+      }
+    }
+
+    // 2. Fallback DEMO_MODE local
     if (DEMO_MODE) {
       const mockExists = MOCK_USERS.some((u) => u.email.toLowerCase() === normalizedEmail);
       const registeredExists = getRegisteredUsers().some(
@@ -249,7 +482,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: input.name.trim(),
         matricula: input.matricula.trim(),
         email: normalizedEmail,
-        role: input.role,
+        role: "estudiante",
+        carrera: input.carrera,
+        semestre: input.semestre,
+        grupo: input.grupo,
         passwordHash: input.password,
         createdAt: new Date().toISOString(),
       };
@@ -261,7 +497,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: newUser.name,
         matricula: newUser.matricula,
         email: newUser.email,
-        role: newUser.role,
+        role: "estudiante",
+        carrera: newUser.carrera,
+        semestre: newUser.semestre,
+        grupo: newUser.grupo,
         createdAt: newUser.createdAt,
       };
 

@@ -4,6 +4,7 @@ import { GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { authIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
+import { rutaPorRol } from "@/lib/roles";
 import { DEMO_MODE } from "@/lib/mock-data";
 import {
   sanitizeText,
@@ -89,13 +90,7 @@ export function LoginPage() {
       resetLoginAttempts();
       toast.success(`Bienvenido/a de nuevo, ${user.name}`);
 
-      if (user.role === "psicologo") {
-        navigate({ to: "/psicologo", replace: true });
-      } else if (user.role === "directivo") {
-        navigate({ to: "/directivo", replace: true });
-      } else {
-        navigate({ to: "/", replace: true });
-      }
+      navigate({ to: rutaPorRol(user.role), replace: true });
     } catch (err: unknown) {
       /* TODO(Supabase): rate limiting real en Edge Functions */
       const rateState = recordFailedLoginAttempt(5, 30);

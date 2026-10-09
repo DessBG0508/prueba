@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { GraduationCap, BookOpen, Users } from "lucide-react";
 import { toast } from "sonner";
 import { authIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
 import { sanitizeText, isValidEmail, isValidMatricula } from "@/lib/security";
-import type { UserRole } from "@/lib/types";
+import { rutaPorRol } from "@/lib/roles";
+import { TESH_CAREERS } from "@/lib/directivo-data";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { BRAND } from "@/lib/branding";
@@ -17,7 +19,9 @@ interface FormErrors {
   matricula?: string;
   email?: string;
   password?: string;
-  role?: string;
+  carrera?: string;
+  semestre?: string;
+  grupo?: string;
   form?: string;
 }
 
@@ -29,7 +33,9 @@ export function RegistroPage() {
   const [matricula, setMatricula] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("estudiante");
+  const [carrera, setCarrera] = useState<string>("Ing. en Sistemas Computacionales");
+  const [semestre, setSemestre] = useState<string>("1");
+  const [grupo, setGrupo] = useState<string>("101");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -48,9 +54,14 @@ export function RegistroPage() {
     }
 
     if (!cleanMatricula) {
-      newErrors.matricula = "La matrícula o cédula institucional es obligatoria.";
+      newErrors.matricula = "La matrícula institucional es obligatoria.";
     } else if (!isValidMatricula(cleanMatricula)) {
       newErrors.matricula = "Ingresa una matrícula válida (solo números, letras y guiones).";
+    }
+
+    const cleanGrupo = sanitizeText(grupo, 10);
+    if (!cleanGrupo) {
+      newErrors.grupo = "El grupo es obligatorio (ej. 101, 302).";
     }
 
     if (!cleanEmail) {
@@ -67,10 +78,6 @@ export function RegistroPage() {
       newErrors.password = "La contraseña excede el límite seguro de 100 caracteres.";
     }
 
-    if (!role) {
-      newErrors.role = "Por favor selecciona tu rol.";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -82,6 +89,7 @@ export function RegistroPage() {
     const cleanName = sanitizeText(name, 100);
     const cleanMatricula = sanitizeText(matricula, 30);
     const cleanEmail = sanitizeText(email, 120).toLowerCase();
+    const cleanGrupo = sanitizeText(grupo, 10);
 
     try {
       setIsSubmitting(true);
@@ -90,16 +98,13 @@ export function RegistroPage() {
         matricula: cleanMatricula,
         email: cleanEmail,
         password,
-        role,
+        carrera,
+        semestre,
+        grupo: cleanGrupo,
       });
 
       toast.success(`Cuenta creada con éxito. ¡Bienvenido/a, ${user.name}!`);
-
-      if (user.role === "psicologo") {
-        navigate({ to: "/psicologo", replace: true });
-      } else {
-        navigate({ to: "/", replace: true });
-      }
+      navigate({ to: rutaPorRol(user.role), replace: true });
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -143,87 +148,6 @@ export function RegistroPage() {
               </div>
             )}
 
-            {/* Selector de Rol como Cards/Chips */}
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold text-foreground">
-                Selecciona tu rol en la comunidad TESH:
-              </Label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRole("estudiante");
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.role;
-                      return next;
-                    });
-                  }}
-                  className={`relative flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition-all ${
-                    role === "estudiante"
-                      ? "border-accent bg-accent/15 ring-2 ring-accent/30 shadow-sm"
-                      : "border-border/60 bg-background/60 hover:border-accent/40 hover:bg-background/80"
-                  }`}
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <authIcons.roleStudent
-                      className={`size-5 ${
-                        role === "estudiante" ? "text-accent" : "text-muted-foreground"
-                      }`}
-                    />
-                    {role === "estudiante" && (
-                      <span className="flex size-4 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                        <authIcons.check className="size-2.5" />
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="block text-sm font-bold text-foreground">Estudiante</span>
-                    <span className="block text-[11px] leading-tight text-muted-foreground">
-                      Check-in y recursos
-                    </span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRole("psicologo");
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.role;
-                      return next;
-                    });
-                  }}
-                  className={`relative flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition-all ${
-                    role === "psicologo"
-                      ? "border-accent bg-accent/15 ring-2 ring-accent/30 shadow-sm"
-                      : "border-border/60 bg-background/60 hover:border-accent/40 hover:bg-background/80"
-                  }`}
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <authIcons.rolePsychologist
-                      className={`size-5 ${
-                        role === "psicologo" ? "text-accent" : "text-muted-foreground"
-                      }`}
-                    />
-                    {role === "psicologo" && (
-                      <span className="flex size-4 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                        <authIcons.check className="size-2.5" />
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="block text-sm font-bold text-foreground">Psicólogo/a</span>
-                    <span className="block text-[11px] leading-tight text-muted-foreground">
-                      Panel clínico
-                    </span>
-                  </div>
-                </button>
-              </div>
-              {errors.role && <p className="text-[11px] text-destructive">{errors.role}</p>}
-            </div>
-
             {/* Nombre completo */}
             <div className="space-y-1.5">
               <Label htmlFor="reg-name" className="text-xs font-medium text-foreground">
@@ -254,19 +178,17 @@ export function RegistroPage() {
               {errors.name && <p className="text-[11px] text-destructive">{errors.name}</p>}
             </div>
 
-            {/* Matrícula o Cédula */}
+            {/* Matrícula institucional */}
             <div className="space-y-1.5">
               <Label htmlFor="reg-matricula" className="text-xs font-medium text-foreground">
-                {role === "psicologo"
-                  ? "Cédula profesional / ID de personal"
-                  : "Matrícula institucional"}
+                Matrícula institucional
               </Label>
               <div className="relative">
                 <authIcons.matricula className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="reg-matricula"
                   type="text"
-                  placeholder={role === "psicologo" ? "ej. PSI-88410" : "ej. 202310452"}
+                  placeholder="ej. 202310452"
                   value={matricula}
                   onChange={(e) => {
                     setMatricula(e.target.value);
@@ -285,6 +207,87 @@ export function RegistroPage() {
               {errors.matricula && (
                 <p className="text-[11px] text-destructive">{errors.matricula}</p>
               )}
+            </div>
+
+            {/* Campos Académicos (Carrera, Semestre, Grupo) */}
+            {/* Carrera */}
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-carrera" className="text-xs font-medium text-foreground">
+                Carrera
+              </Label>
+              <div className="relative">
+                <GraduationCap className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <select
+                  id="reg-carrera"
+                  value={carrera}
+                  onChange={(e) => setCarrera(e.target.value)}
+                  className="h-10 w-full rounded-xl border border-border/70 bg-background/70 pl-10 pr-3 text-sm text-foreground focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                  required
+                >
+                  {TESH_CAREERS.map((c) => (
+                    <option key={c} value={c} className="bg-background text-foreground">
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Semestre y Grupo en grid de 2 columnas */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="reg-semestre" className="text-xs font-medium text-foreground">
+                  Semestre
+                </Label>
+                <div className="relative">
+                  <BookOpen className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <select
+                    id="reg-semestre"
+                    value={semestre}
+                    onChange={(e) => setSemestre(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-border/70 bg-background/70 pl-10 pr-3 text-sm text-foreground focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                    required
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => (
+                      <option
+                        key={s}
+                        value={s.toString()}
+                        className="bg-background text-foreground"
+                      >
+                        {s}° Semestre
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="reg-grupo" className="text-xs font-medium text-foreground">
+                  Grupo
+                </Label>
+                <div className="relative">
+                  <Users className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="reg-grupo"
+                    type="text"
+                    placeholder="ej. 501"
+                    value={grupo}
+                    onChange={(e) => {
+                      setGrupo(e.target.value);
+                      if (errors.grupo) {
+                        setErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.grupo;
+                          return next;
+                        });
+                      }
+                    }}
+                    className="rounded-xl border-border/70 bg-background/70 pl-10 text-sm focus-visible:border-accent focus-visible:ring-accent/30"
+                    required
+                  />
+                </div>
+                {errors.grupo && <p className="text-[11px] text-destructive">{errors.grupo}</p>}
+              </div>
             </div>
 
             {/* Correo Electrónico */}

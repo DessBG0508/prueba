@@ -1,10 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
-export const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL || "https://olnhxzsrhtnoyderzqce.supabase.co";
-export const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9sbmh4enNyaHRub3lkZXJ6cWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzM4NDIsImV4cCI6MjEwNTYwOTg0Mn0.YFce9GxxEFe8yB-PGmWluzbXdAbJcIfcEZvXVEXwU6E";
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY en el archivo .env");
+}
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -18,8 +19,5 @@ export const isSupabaseConfigured = Boolean(
  * Gestiona autenticación, base de datos y políticas de seguridad (RLS).
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
+  auth: { persistSession: true, autoRefreshToken: true },
 });

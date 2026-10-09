@@ -2,11 +2,18 @@ import { useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { rutaPorRol } from "@/lib/roles";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 
 const PUBLIC_ROUTES = ["/login", "/registro"];
 
+/**
+ * DECISIÓN DE ARQUITECTURA:
+ * El rol directivo/jefatura de carrera se representa con el valor "jefatura" (y "coordinador")
+ * del enum app_role en la BD; la ruta de UI es "/directivo".
+ * La rama rol === "directivo" se eliminó por ser un rol inexistente en la BD.
+ */
 export function RouteGuard({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
   const location = useLocation();
@@ -26,15 +33,11 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
+    const destinoAutorizado = rutaPorRol(user.role);
+
     // 2. Con sesión activa en ruta pública -> Redirigir según rol
     if (isPublic) {
-      if (user.role === "psicologo") {
-        navigate({ to: "/psicologo", replace: true });
-      } else if (user.role === "directivo") {
-        navigate({ to: "/directivo", replace: true });
-      } else {
-        navigate({ to: "/", replace: true });
-      }
+      navigate({ to: destinoAutorizado, replace: true });
       return;
     }
 
@@ -47,9 +50,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 4. Rol Directivo: solo puede ver /directivo
-    if (user.role === "directivo") {
-      if (!pathname.startsWith("/directivo")) {
+    // 4. Roles Jefatura / Coordinador: solo pueden ver /directivo y /auditoria
+    if (user.role === "jefatura" || user.role === "coordinador" || user.role === "directivo") {
+      if (!pathname.startsWith("/directivo") && !pathname.startsWith("/auditoria")) {
         toast.info("Redirigido al panel directivo correspondiente a tu rol.");
         navigate({ to: "/directivo", replace: true });
       }
@@ -61,7 +64,8 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       if (
         pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
-        pathname.startsWith("/expedientes")
+        pathname.startsWith("/expedientes") ||
+        pathname.startsWith("/auditoria")
       ) {
         toast.info("Esta sección es de acceso institucional.");
         navigate({ to: "/", replace: true });
@@ -97,12 +101,18 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       !pathname.startsWith("/expedientes")
     )
       return null;
-    if (user.role === "directivo" && !pathname.startsWith("/directivo")) return null;
+    if (
+      (user.role === "jefatura" || user.role === "coordinador" || user.role === "directivo") &&
+      !pathname.startsWith("/directivo") &&
+      !pathname.startsWith("/auditoria")
+    )
+      return null;
     if (
       user.role === "estudiante" &&
       (pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
-        pathname.startsWith("/expedientes"))
+        pathname.startsWith("/expedientes") ||
+        pathname.startsWith("/auditoria"))
     )
       return null;
   }
