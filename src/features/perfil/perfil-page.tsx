@@ -81,12 +81,12 @@ export function PerfilPage() {
     }
   });
 
-  // Campos de edición visual (Mock en DEMO_MODE)
-  const [nombre, setNombre] = useState(user?.name || "Dess Bautista");
-  const [email] = useState(user?.email || "dess@tesh.mx");
+  // Campos de edición visual (Mock en DEMO_MODE o sincronizados con usuario activo)
+  const [nombre, setNombre] = useState(user?.name || "Estudiante");
+  const [email] = useState(user?.email || "estudiante@tesh.mx");
   const [matricula] = useState(user?.matricula || "202310452");
-  const [carrera, setCarrera] = useState("Ingeniería en Sistemas Computacionales");
-  const [semestre, setSemestre] = useState("6to Semestre");
+  const [carrera, setCarrera] = useState(user?.carrera || "Ingeniería en Sistemas Computacionales");
+  const [semestre, setSemestre] = useState(user?.semestre || "6to Semestre");
 
   const handleToggleAcompanamiento = (checked: boolean) => {
     setModoAcompanamiento(checked);
@@ -169,7 +169,7 @@ export function PerfilPage() {
                 </span>
                 <span className="flex items-center gap-1.5">
                   <profileIcons.email className="size-3.5 text-accent" />
-                  <span>{user?.email || "dess@tesh.mx"}</span>
+                  <span>{user?.email || "estudiante@tesh.mx"}</span>
                 </span>
               </div>
             </div>

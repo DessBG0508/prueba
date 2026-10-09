@@ -23,6 +23,7 @@ import { moods } from "@/lib/mock-data";
 import type { MoodId } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 import { useMoodStats, getTodayMoodCheckIn } from "@/lib/mood-store";
+import { useAuth } from "@/lib/auth-context";
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -62,6 +63,8 @@ const statIcons = [Brain, BedDouble, CircleGauge, BatteryMedium];
 
 export function HomePage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const nombre = user?.name ?? "Estudiante";
   const { todayMood, saveTodayMood } = useMoodStats();
   const [selectedMood, setSelectedMood] = useState<MoodId>(() => {
     const today = getTodayMoodCheckIn();
@@ -96,7 +99,7 @@ export function HomePage() {
         <section className="mb-7 max-w-2xl animate-fade-in sm:mb-9">
           <p className="mb-1 text-sm font-semibold text-accent">Sábado, 19 de septiembre</p>
           <h1 className="font-display text-4xl leading-tight text-primary sm:text-5xl">
-            Hola, Dess
+            Hola, {nombre}
           </h1>
           <p className="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             Qué bueno verte por aquí. Siempre es un buen momento para cuidar de ti.

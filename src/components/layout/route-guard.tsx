@@ -6,7 +6,7 @@ import { rutaPorRol } from "@/lib/roles";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 
-const PUBLIC_ROUTES = ["/login", "/registro"];
+const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/restablecer"];
 
 /**
  * DECISIÓN DE ARQUITECTURA:
@@ -51,7 +51,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     }
 
     // 4. Roles Jefatura / Coordinador: solo pueden ver /directivo y /auditoria
-    if (user.role === "jefatura" || user.role === "coordinador" || user.role === "directivo") {
+    if (user.role === "jefatura" || user.role === "coordinador") {
       if (!pathname.startsWith("/directivo") && !pathname.startsWith("/auditoria")) {
         toast.info("Redirigido al panel directivo correspondiente a tu rol.");
         navigate({ to: "/directivo", replace: true });
@@ -102,7 +102,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     )
       return null;
     if (
-      (user.role === "jefatura" || user.role === "coordinador" || user.role === "directivo") &&
+      (user.role === "jefatura" || user.role === "coordinador") &&
       !pathname.startsWith("/directivo") &&
       !pathname.startsWith("/auditoria")
     )

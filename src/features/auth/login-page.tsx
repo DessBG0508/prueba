@@ -235,6 +235,12 @@ export function LoginPage() {
                 <Label htmlFor="login-password" className="text-xs font-medium text-foreground">
                   Contraseña
                 </Label>
+                <Link
+                  to="/recuperar"
+                  className="text-xs font-medium text-accent hover:underline focus:outline-none"
+                >
+                  ¿Olvidaste tu contraseña?
+                </Link>
               </div>
               <div className="relative">
                 <authIcons.password className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

@@ -149,6 +149,20 @@ export function evaluateMoodRule(internalValue: number): MetricSuggestion | null
 }
 
 /**
+ * Regla de Decisión RD02:
+ * Mapeo de escala de check-in (1-5) a nivel de riesgo:
+ * - escala 1 a 3: 'verde'
+ * - escala 4 a 5: 'rojo' (activa comportamiento de alerta)
+ * NOTA CRÍTICA: NO usar 'amarillo' en el check-in diario; está reservado
+ * exclusivamente al tamizaje clínico de Eli (GAD-7 / PHQ-9).
+ */
+export function mapCheckInRiskRD02(escala: number): "verde" | "rojo" {
+  return escala >= 4 ? "rojo" : "verde";
+}
+
+export const evaluateCheckInRiskRD02 = mapCheckInRiskRD02;
+
+/**
  * Resuelve la sugerencia más prioritaria entre una nueva y la existente:
  * Prioridad: ánimo/estrés (4) > sueño (3) > energía (2) > óptimo (1)
  */

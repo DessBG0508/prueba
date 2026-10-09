@@ -1,5 +1,7 @@
+import { toast } from "sonner";
 import { DEMO_MODE } from "./mock-data";
 import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./supabase";
+import { mapCheckInRiskRD02 } from "./metric-rules";
 import type { CheckIn } from "./types";
 
 export interface EliMessage {
@@ -16,53 +18,213 @@ export interface EliMessage {
   timestamp: string;
 }
 
-export async function saveCheckIn(checkIn: CheckIn): Promise<CheckIn> {
-  // Si Supabase está configurado, intentamos guardar en la tabla check_ins
-  if (isSupabaseConfigured) {
+/**
+ * Analiza un error de Supabase/PostgREST o error de red y devuelve la causa real identificable
+ * (nombre de tabla incorrecto/esquema, permisos RLS, error de conexión, etc.).
+ */
+export function parseSupabaseError(error: unknown): string {
+  if (!error) return "Error desconocido al procesar la solicitud.";
+
+  const msg =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message: string }).message)
+      : String(error);
+
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: string }).code)
+      : "";
+
+  const lower = msg.toLowerCase();
+
+  if (
+    code === "42P01" ||
+    code === "PGRST200" ||
+    lower.includes("schema cache") ||
+    lower.includes("could not find the table") ||
+    (lower.includes("relation") && lower.includes("does not exist"))
+  ) {
+    return `Nombre de tabla incorrecto o no existe en el esquema de la base de datos (${msg})`;
+  }
+
+  if (
+    code === "42501" ||
+    lower.includes("row-level security") ||
+    lower.includes("rls") ||
+    lower.includes("violates") ||
+    lower.includes("policy") ||
+    lower.includes("permission denied")
+  ) {
+    return `Permisos insuficientes o violación de políticas RLS (${msg})`;
+  }
+
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("network") ||
+    lower.includes("timeout") ||
+    lower.includes("abort") ||
+    lower.includes("connection")
+  ) {
+    return `Error de conexión de red con Supabase (${msg})`;
+  }
+
+  return msg;
+}
+
+export async function saveCheckIn(
+  checkIn: CheckIn,
+  explicitUserId?: string,
+  options?: { silentNotice?: boolean },
+): Promise<CheckIn> {
+  // 1. Obtener el user_id de la sesión activa de Supabase sin hardcodear
+  let activeUserId = explicitUserId;
+
+  if (!activeUserId && isSupabaseConfigured) {
     try {
-      const { error } = await supabase.from("check_ins").insert([
-        {
-          id: checkIn.id,
-          student_id: checkIn.studentId,
-          academic_load: checkIn.academicLoad,
-          emotions: checkIn.emotions,
-          risk_level: checkIn.riskLevel,
-          created_at: checkIn.createdAt,
-        },
-      ]);
-      if (error) {
-        console.warn(
-          "Supabase check_ins insert (tabla pendiente de migración o permisos RLS):",
-          error.message,
-        );
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        activeUserId = session.user.id;
       }
-    } catch (err) {
-      console.warn("Aviso al guardar check-in en Supabase:", err);
+    } catch (sessionErr) {
+      console.warn("No se pudo obtener la sesión activa de Supabase:", sessionErr);
     }
   }
 
-  return Promise.resolve(checkIn);
+  if (!activeUserId && checkIn.studentId && checkIn.studentId !== "demo-student-dess") {
+    activeUserId = checkIn.studentId;
+  }
+
+  // 2. Si Supabase está configurado y hay un usuario de sesión activa, registrar en tabla 'checkins'
+  if (isSupabaseConfigured && activeUserId) {
+    try {
+      // Mapeo EXACTO a las columnas reales de la tabla 'checkins':
+      // - user_id: uuid (usuario de sesión activa useAuth, nunca hardcodeado)
+      // - escala: integer (1-5)
+      // - emociones: array de texto (los chips)
+      // - riesgo: enum nivel_riesgo ('verde' | 'amarillo' | 'rojo' - RD02: escala 1-3 -> 'verde', 4-5 -> 'rojo', sin 'amarillo')
+      // NOTA: 'id' y 'creado_en' son generados automáticamente por la base de datos.
+      const riesgoCalculado = mapCheckInRiskRD02(checkIn.academicLoad);
+      const { data, error } = await supabase
+        .from("checkins")
+        .insert([
+          {
+            user_id: activeUserId,
+            escala: checkIn.academicLoad,
+            emociones: checkIn.emotions,
+            riesgo: riesgoCalculado,
+          },
+        ])
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        const causaReal = parseSupabaseError(error);
+        console.error("Error al registrar check-in en Supabase (tabla 'checkins'):", causaReal);
+
+        // El respaldo silencioso está prohibido: advertir en DEMO_MODE o lanzar error fuera de él
+        if (DEMO_MODE) {
+          if (!options?.silentNotice) {
+            toast.warning(
+              `Aviso (Modo Demo): El check-in se guardó localmente. El dato NO se guardó en la nube (${causaReal}).`,
+            );
+          }
+          return {
+            ...checkIn,
+            riskLevel: riesgoCalculado,
+          };
+        } else {
+          throw new Error(`Error al registrar el check-in en la base de datos: ${causaReal}`);
+        }
+      }
+
+      // Inserción exitosa en la nube
+      if (data?.id) {
+        return {
+          ...checkIn,
+          id: data.id,
+          studentId: activeUserId,
+          createdAt: data.creado_en || data.created_at || checkIn.createdAt,
+          riskLevel: (data.riesgo as CheckIn["riskLevel"]) || riesgoCalculado,
+        };
+      }
+
+      return {
+        ...checkIn,
+        riskLevel: riesgoCalculado,
+      };
+    } catch (err: unknown) {
+      const causaReal = parseSupabaseError(err);
+      console.error("Excepción al guardar check-in en Supabase (tabla 'checkins'):", causaReal);
+
+      if (DEMO_MODE) {
+        if (!options?.silentNotice) {
+          toast.warning(
+            `Aviso (Modo Demo): El check-in se guardó localmente. El dato NO se guardó en la nube (${causaReal}).`,
+          );
+        }
+        return checkIn;
+      } else {
+        throw err instanceof Error ? err : new Error(`Error al guardar check-in: ${causaReal}`);
+      }
+    }
+  }
+
+  // 3. Fallback local: SOLO aplica en DEMO_MODE con advertencia explícita al usuario
+  if (DEMO_MODE) {
+    if (!options?.silentNotice) {
+      toast.warning(
+        "Aviso (Modo Demo): El check-in se registró solo de manera local. El dato NO se guardó en la nube.",
+      );
+    }
+    return checkIn;
+  }
+
+  // Fuera de DEMO_MODE, el respaldo silencioso está estrictamente prohibido
+  throw new Error(
+    "No hay una sesión activa de Supabase para guardar el check-in en la nube. Inicia sesión con tus credenciales institucionales.",
+  );
 }
 
-export async function triggerRedAlert(checkInId: string): Promise<{ alertId: string }> {
+export async function triggerRedAlert(
+  checkInId: string,
+  explicitStudentId?: string,
+): Promise<{ alertId: string }> {
   const alertId = `alert-${crypto.randomUUID()}`;
 
   // Si Supabase está configurado, guardamos la alerta en crisis_alerts
   if (isSupabaseConfigured) {
     try {
+      let studentId = explicitStudentId;
+      if (!studentId) {
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            studentId = session.user.id;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const { error } = await supabase.from("crisis_alerts").insert([
         {
           check_in_id: checkInId,
-          student_id: "demo-student-dess",
+          student_id: studentId || (DEMO_MODE ? "demo-student-dess" : ""),
           status: "pendiente",
           created_at: new Date().toISOString(),
         },
       ]);
       if (error) {
-        console.warn("Supabase crisis_alerts insert:", error.message);
+        const causaReal = parseSupabaseError(error);
+        console.warn("Supabase crisis_alerts insert:", causaReal);
       }
     } catch (err) {
-      console.warn("Aviso al registrar alerta en Supabase:", err);
+      const causaReal = parseSupabaseError(err);
+      console.warn("Aviso al registrar alerta en Supabase:", causaReal);
     }
   }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { MoodCheckIn, MoodId } from "./types";
 import { saveCheckIn } from "./api-client";
+import { mapCheckInRiskRD02 } from "./metric-rules";
 
 export const MOOD_STORAGE_KEY = "equilibra_mood_checkins_v1";
 export const DEFAULT_MOCK_MOOD_DISPLAY = 3.4;
@@ -176,14 +177,18 @@ export function saveMoodCheckInToday(moodIdOrScore: MoodId | number): MoodCheckI
 
   // Notificar al triaje / saveCheckIn en mock sin alterar lógica
   try {
-    saveCheckIn({
-      id: `mood-${todayStr}`,
-      studentId: "demo-student-dess",
-      academicLoad: internalValue,
-      emotions: [moodId],
-      createdAt: new Date().toISOString(),
-      riskLevel: internalValue >= 4 ? "amarillo" : "verde",
-    }).catch(() => {});
+    saveCheckIn(
+      {
+        id: `mood-${todayStr}`,
+        studentId: "demo-student-dess",
+        academicLoad: internalValue,
+        emotions: [moodId],
+        createdAt: new Date().toISOString(),
+        riskLevel: mapCheckInRiskRD02(internalValue),
+      },
+      undefined,
+      { silentNotice: true },
+    ).catch(() => {});
   } catch {
     // Demo fallback
   }

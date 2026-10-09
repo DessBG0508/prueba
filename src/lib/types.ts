@@ -1,6 +1,6 @@
 export type RiskLevel = "verde" | "amarillo" | "rojo";
 
-export type UserRole = "estudiante" | "psicologo" | "jefatura" | "coordinador" | "directivo";
+export type UserRole = "estudiante" | "psicologo" | "jefatura" | "coordinador";
 
 export interface User {
   id: string;

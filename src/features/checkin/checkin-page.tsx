@@ -8,6 +8,8 @@ import { SelectableChip } from "@/components/ui/selectable-chip";
 import { saveCheckIn, triggerRedAlert } from "@/lib/api-client";
 import { recordCheckInSuccess } from "@/lib/streak-store";
 import { DEMO_MODE } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth-context";
+import { mapCheckInRiskRD02 } from "@/lib/metric-rules";
 import type { CheckIn, RiskLevel } from "@/lib/types";
 
 const SCALE_VALUES = [1, 2, 3, 4, 5] as const;
@@ -15,6 +17,7 @@ const EMOTIONS = ["Tranquila", "Estrés leve", "Buen sueño", "Ansiedad", "Insom
 
 export function CheckInPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [academicLoad, setAcademicLoad] = useState<CheckIn["academicLoad"] | null>(null);
   const [emotions, setEmotions] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "saving" | "success">("idle");
@@ -43,11 +46,12 @@ export function CheckInPage() {
 
     setValidationMessage("");
     setStatus("saving");
-    const riskLevel: RiskLevel =
-      academicLoad >= 4 ? "rojo" : academicLoad === 3 ? "amarillo" : "verde";
+    const riskLevel: RiskLevel = mapCheckInRiskRD02(academicLoad);
+
+    const activeUserId = user?.id;
     const checkIn: CheckIn = {
       id: crypto.randomUUID(),
-      studentId: "demo-student-dess",
+      studentId: activeUserId || (DEMO_MODE ? "demo-student-dess" : ""),
       academicLoad,
       emotions,
       createdAt: new Date().toISOString(),
@@ -55,19 +59,23 @@ export function CheckInPage() {
     };
 
     try {
-      const savedCheckIn = await saveCheckIn(checkIn);
+      const savedCheckIn = await saveCheckIn(checkIn, activeUserId);
       recordCheckInSuccess();
       const shouldOfferSupport = DEMO_MODE && riskLevel === "rojo";
       if (shouldOfferSupport) {
-        await triggerRedAlert(savedCheckIn.id);
+        await triggerRedAlert(savedCheckIn.id, activeUserId);
         await navigate({ to: "/alerta" });
         return;
       }
       setNeedsSupport(shouldOfferSupport);
       setStatus("success");
-    } catch {
+    } catch (err: unknown) {
       setStatus("idle");
-      setValidationMessage("No pudimos guardar tu check-in. Inténtalo de nuevo en un momento.");
+      const errorMsg =
+        err instanceof Error
+          ? err.message
+          : "No pudimos guardar tu check-in. Inténtalo de nuevo en un momento.";
+      setValidationMessage(errorMsg);
     }
   };
 
