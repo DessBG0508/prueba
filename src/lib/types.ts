@@ -95,6 +95,8 @@ export interface Appointment {
   studentName?: string;
   caseId?: string;
   folioTamizaje?: string;
+  // TODO(Supabase): mapear a solicitudes_cita.folio_tamizaje
+  folio_tamizaje?: string;
   serviceType?: "TERAPIA PSICOLÓGICA" | "ORIENTACIÓN" | "CONSEJERÍA" | string;
 }
 

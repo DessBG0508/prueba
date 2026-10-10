@@ -301,6 +301,9 @@ export const mockAppointments: Appointment[] = [
     status: "confirmada",
     notes: "Seguimiento de estrategias de afrontamiento y descanso.",
     createdAt: "2026-09-22T14:30:00Z",
+    // TODO(Supabase): mapear a solicitudes_cita.folio_tamizaje
+    folio_tamizaje: "EQ-1234",
+    folioTamizaje: "EQ-1234",
   },
   {
     id: "apt-04",

@@ -8,6 +8,7 @@ import type { Appointment, AppointmentModality } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -64,7 +65,17 @@ export function CitasPage() {
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Asegurar que la cita inicial de prueba tenga folio EQ-1234 visible si aún no tenía
+          if (!parsed.some((a: Appointment) => a.folio_tamizaje || a.folioTamizaje)) {
+            parsed[0].folio_tamizaje = "EQ-1234";
+            parsed[0].folioTamizaje = "EQ-1234";
+          }
+          return parsed;
+        }
+      }
     } catch {
       // Fallback
     }
@@ -141,7 +152,7 @@ export function CitasPage() {
     setSelectedSlot(apt.timeSlot);
     setSelectedModality(apt.modality);
     setSelectedPsychologist(apt.psychologistName);
-    setFolioTamizaje(apt.folioTamizaje || "");
+    setFolioTamizaje(apt.folio_tamizaje || apt.folioTamizaje || "");
     setSelectedServiceType(apt.serviceType || "TERAPIA PSICOLÓGICA");
     setIsFormOpen(true);
   };
@@ -186,6 +197,8 @@ export function CitasPage() {
                 psychologistRole: psychInfo.role,
                 locationOrLink: location,
                 status: "confirmada",
+                // TODO(Supabase): mapear a solicitudes_cita.folio_tamizaje
+                folio_tamizaje: cleanedFolio,
                 folioTamizaje: cleanedFolio,
                 serviceType: selectedServiceType,
               }
@@ -206,6 +219,8 @@ export function CitasPage() {
         locationOrLink: location,
         status: "confirmada",
         createdAt: new Date().toISOString(),
+        // TODO(Supabase): mapear a solicitudes_cita.folio_tamizaje
+        folio_tamizaje: cleanedFolio,
         folioTamizaje: cleanedFolio,
         serviceType: selectedServiceType,
       };
@@ -329,13 +344,13 @@ export function CitasPage() {
                         <span>{apt.timeSlot}</span>
                       </div>
 
-                      {apt.folioTamizaje && (
+                      {(apt.folio_tamizaje || apt.folioTamizaje) && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <Badge
                             variant="outline"
                             className="border-primary/40 bg-primary/10 text-primary font-mono text-[10px] font-bold py-0.5 px-2 rounded-lg"
                           >
-                            Folio: {apt.folioTamizaje}
+                            Folio: {apt.folio_tamizaje || apt.folioTamizaje}
                           </Badge>
                           {apt.serviceType && (
                             <Badge
@@ -524,47 +539,6 @@ export function CitasPage() {
           </DialogHeader>
 
           <div className="space-y-5 py-2 max-h-[70vh] overflow-y-auto pr-1">
-            {/* Campo prioritario al inicio: Folio de tamizaje de Eli */}
-            <div className="space-y-1.5 rounded-2xl border border-[#6857E4]/30 bg-[#6857E4]/5 p-3.5 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <label htmlFor="folio-tamizaje-input" className="text-xs font-bold text-foreground">
-                  Folio de tamizaje (si realizaste el chat con Eli)
-                </label>
-                <Badge
-                  variant="outline"
-                  className="text-[9px] font-semibold text-muted-foreground uppercase border-border/70"
-                >
-                  Opcional
-                </Badge>
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                Escríbelo para que la psicóloga vincule directamente tus resultados del tamizaje con
-                tu cita.
-              </p>
-              <div className="flex items-center gap-2 pt-1">
-                <Input
-                  id="folio-tamizaje-input"
-                  type="text"
-                  placeholder="p. ej. EQ-4821"
-                  value={folioTamizaje}
-                  onChange={(e) => setFolioTamizaje(e.target.value.toUpperCase())}
-                  className="h-9 font-mono text-xs uppercase bg-card font-semibold rounded-xl border-border/80"
-                />
-                {savedFolio && folioTamizaje !== savedFolio && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setFolioTamizaje(savedFolio)}
-                    className="h-9 text-[11px] font-semibold text-[#6857E4] border-[#6857E4]/40 shrink-0 rounded-xl hover:bg-[#6857E4]/10"
-                    title="Usar el folio de tu último chat con Eli"
-                  >
-                    <span>Usar {savedFolio}</span>
-                  </Button>
-                )}
-              </div>
-            </div>
-
             {/* Tipo de atención sugerida */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">
@@ -773,6 +747,42 @@ export function CitasPage() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Campo opcional: Folio de tamizaje (opcional) ubicado bajo el paso de especialista */}
+            <div className="space-y-1.5 pt-3 border-t border-border/60">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="folio-tamizaje-input" className="text-xs font-bold text-foreground">
+                  Folio de tamizaje (opcional)
+                </Label>
+                {savedFolio && folioTamizaje !== savedFolio && (
+                  <button
+                    type="button"
+                    onClick={() => setFolioTamizaje(savedFolio)}
+                    className="text-[11px] font-semibold text-[#6857E4] hover:underline"
+                  >
+                    Usar último folio ({savedFolio})
+                  </button>
+                )}
+              </div>
+              <Input
+                id="folio-tamizaje-input"
+                type="text"
+                placeholder="EQ-1234"
+                value={folioTamizaje}
+                onChange={(e) => setFolioTamizaje(e.target.value.toUpperCase())}
+                className="h-9 font-mono text-xs uppercase bg-card font-semibold rounded-xl border-border/80"
+              />
+              {folioTamizaje.trim() !== "" && !/^EQ-\d{4}$/.test(folioTamizaje.trim()) && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  Aviso: El formato habitual es EQ- seguido de 4 dígitos (ej. EQ-1234). Puedes
+                  guardar de todos modos.
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Si completaste el tamizaje con Eli, escribe aquí tu folio para vincular tus
+                resultados con la cita.
+              </p>
             </div>
           </div>
 

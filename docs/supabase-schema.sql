@@ -66,25 +66,23 @@ CREATE POLICY "Psicología tiene acceso a triaje de check-ins"
     )
   );
 
--- 4. Tabla de Alertas Prioritarias (Nivel Rojo)
-CREATE TABLE IF NOT EXISTS public.crisis_alerts (
+-- 4. Tabla de Alertas Prioritarias (Nivel Rojo / Emergencia)
+CREATE TABLE IF NOT EXISTS public.alertas (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  check_in_id TEXT,
-  student_id TEXT NOT NULL,
-  status TEXT DEFAULT 'pendiente' CHECK (status IN ('pendiente', 'atendida', 'canalizada')),
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-  attended_at TIMESTAMPTZ
+  tipo TEXT NOT NULL,
+  mensaje TEXT NOT NULL,
+  atendida BOOLEAN DEFAULT false NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
-ALTER TABLE public.crisis_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.alertas ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Permitir inserción de alertas de crisis"
-  ON public.crisis_alerts FOR INSERT
+CREATE POLICY "Permitir inserción de alertas de emergencia"
+  ON public.alertas FOR INSERT
   WITH CHECK (true);
 
 CREATE POLICY "Personal de psicología atiende alertas"
-  ON public.crisis_alerts FOR ALL
+  ON public.alertas FOR ALL
   USING (true);
 
 -- 5. Tabla de Citas Psicológicas

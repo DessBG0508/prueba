@@ -819,16 +819,24 @@ export function ChatPage() {
                 >
                   <span>Ir a Agenda de Citas</span>
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetChat}
-                  className="rounded-xl border-border bg-card text-xs font-semibold text-foreground hover:bg-muted gap-1"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Nuevo tamizaje</span>
-                </Button>
+                {screeningState.nivel === "amarillo" || screeningState.nivel === "rojo" ? (
+                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed sm:max-w-xs">
+                    Tu tamizaje está en revisión. Un profesional revisará tus respuestas antes de
+                    permitir uno nuevo. Si necesitas apoyo inmediato, las líneas de ayuda siguen
+                    disponibles abajo.
+                  </p>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetChat}
+                    className="rounded-xl border-border bg-card text-xs font-semibold text-foreground hover:bg-muted gap-1"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    <span>Nuevo tamizaje</span>
+                  </Button>
+                )}
               </div>
             </motion.div>
           )}

@@ -193,7 +193,7 @@ export async function triggerRedAlert(
 ): Promise<{ alertId: string }> {
   const alertId = `alert-${crypto.randomUUID()}`;
 
-  // Si Supabase está configurado, guardamos la alerta en crisis_alerts
+  // Si Supabase está configurado, guardamos la alerta en 'alertas'
   if (isSupabaseConfigured) {
     try {
       let studentId = explicitStudentId;
@@ -210,17 +210,23 @@ export async function triggerRedAlert(
         }
       }
 
-      const { error } = await supabase.from("crisis_alerts").insert([
-        {
-          check_in_id: checkInId,
-          student_id: studentId || (DEMO_MODE ? "demo-student-dess" : ""),
-          status: "pendiente",
-          created_at: new Date().toISOString(),
-        },
-      ]);
-      if (error) {
-        const causaReal = parseSupabaseError(error);
-        console.warn("Supabase crisis_alerts insert:", causaReal);
+      // Si la sesión es de demostración (id no-UUID o id ausente/inválido), no intentes guardar
+      const UUID_REGEX =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const isDemoSession = !studentId || !UUID_REGEX.test(studentId);
+
+      if (!isDemoSession) {
+        const { error } = await supabase.from("alertas").insert([
+          {
+            tipo: "emergencia",
+            mensaje: "Botón de auxilio presionado por el usuario",
+            atendida: false,
+          },
+        ]);
+        if (error) {
+          const causaReal = parseSupabaseError(error);
+          console.warn("Supabase alertas insert:", causaReal);
+        }
       }
     } catch (err) {
       const causaReal = parseSupabaseError(err);
