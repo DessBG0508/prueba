@@ -18,6 +18,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<User>;
+  loginAsDemo: (role: UserRole) => User;
   register: (input: RegisterInput) => Promise<User>;
   logout: () => Promise<void>;
 }
@@ -514,12 +515,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     throw new Error("Autenticación externa no configurada.");
   };
 
+  /**
+   * Activación exclusiva del modo demostración en el cliente.
+   * Establece el usuario y rol localmente SIN llamar a Supabase Auth.
+   */
+  const loginAsDemo = (role: UserRole): User => {
+    const mock = MOCK_USERS.find((u) => u.role === role) || MOCK_USERS[0];
+
+    const activeUser: User = {
+      id: mock.id,
+      name: mock.name,
+      matricula: mock.matricula,
+      email: mock.email,
+      role: mock.role,
+      carrera: mock.carrera,
+      semestre: mock.semestre,
+      grupo: mock.grupo,
+      createdAt: mock.createdAt,
+    };
+
+    setUser(activeUser);
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(activeUser));
+      localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+      localStorage.removeItem("equilibra_logged_out");
+    } catch {
+      // ignore storage error
+    }
+    return activeUser;
+  };
+
   return (
     <AuthContext.Provider
       value={{
         user,
         isLoading,
         login,
+        loginAsDemo,
         register,
         logout,
       }}

@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginAsDemo } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -117,10 +117,14 @@ export function LoginPage() {
     }
   };
 
-  const handleSelectDemoUser = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
+  // Activación directa de modo demostración en cliente (SIN llamar a Supabase Auth)
+  const handleActivateDemo = (role: "estudiante" | "psicologo" | "jefatura") => {
     setErrorMessage(null);
+    const demoUser = loginAsDemo(role);
+    resetLoginAttempts();
+    toast.success(`Modo demostración activado: ${demoUser.name}`);
+    const destination = rutaPorRol(demoUser.role);
+    navigate({ to: destination, replace: true });
   };
 
   return (
@@ -145,52 +149,60 @@ export function LoginPage() {
             </div>
           </div>
 
-          {/* Accesos rápidos DEMO */}
+          {/* Accesos rápidos DEMO: activación en cliente sin tocar Supabase Auth */}
           {DEMO_MODE && (
             <div className="space-y-2 rounded-2xl border border-accent/25 bg-accent/5 p-3.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-                <authIcons.sparkles className="size-3.5" />
-                <span>Accesos rápidos DEMO_MODE</span>
+              <div className="flex items-center justify-between text-xs font-semibold text-accent">
+                <div className="flex items-center gap-1.5">
+                  <authIcons.sparkles className="size-3.5" />
+                  <span>Accesos rápidos (Modo demostración)</span>
+                </div>
+                <span className="text-[10px] font-normal text-muted-foreground">
+                  Sin llamar a Supabase
+                </span>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
                   type="button"
-                  onClick={() => handleSelectDemoUser("dess@tesh.mx", "password123")}
-                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
+                  onClick={() => handleActivateDemo("estudiante")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  title="Acceso directo de prueba como Estudiante (Dess) hacia /"
                 >
                   <authIcons.roleStudent className="size-3.5 shrink-0 text-accent" />
                   <div className="min-w-0 flex-1 truncate">
                     <span className="block font-semibold truncate">Dess (Estudiante)</span>
                     <span className="block truncate text-[10px] text-muted-foreground">
-                      dess@tesh.mx
+                      Modo demo • /
                     </span>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleSelectDemoUser("dra.marta@tesh.mx", "password123")}
-                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
+                  onClick={() => handleActivateDemo("psicologo")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  title="Acceso directo de prueba como Psicóloga (Dra. Marta) hacia /psicologo"
                 >
                   <authIcons.rolePsychologist className="size-3.5 shrink-0 text-accent" />
                   <div className="min-w-0 flex-1 truncate">
                     <span className="block font-semibold truncate">Dra. Marta (Psicóloga)</span>
                     <span className="block truncate text-[10px] text-muted-foreground">
-                      dra.marta@tesh.mx
+                      Modo demo • /psicologo
                     </span>
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleSelectDemoUser("jefatura@tesh.mx", "password123")}
-                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10"
+                  onClick={() => handleActivateDemo("jefatura")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  title="Acceso directo de prueba como Jefatura hacia /directivo"
                 >
                   <GraduationCap className="size-3.5 shrink-0 text-accent" />
                   <div className="min-w-0 flex-1 truncate">
                     <span className="block font-semibold truncate">Jefatura de Carrera</span>
                     <span className="block truncate text-[10px] text-muted-foreground">
-                      jefatura@tesh.mx
+                      Modo demo • /directivo
                     </span>
                   </div>
                 </button>

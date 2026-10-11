@@ -24,6 +24,7 @@ import {
   processEliMessage,
 } from "@/lib/eli-screening";
 import { sanitizeText } from "@/lib/security";
+import { useAuth } from "@/lib/auth-context";
 import { BRAND } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,6 +79,10 @@ function createFreshSession(): ChatSession {
 export function ChatPage() {
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
+  const { user } = useAuth();
+
+  // RD-07: Bloqueo persistente desde la base de datos (Supabase)
+  const [isBlockedByBackend, setIsBlockedByBackend] = useState(false);
 
   // Inicializar sesiones
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -125,6 +130,12 @@ export function ChatPage() {
   const messages = activeSession.messages;
   const screeningState = activeSession.screeningState || INITIAL_SCREENING_STATE;
 
+  // Tamizaje bloqueado: si la base de datos lo marca como bloqueado o si culminó en amarillo/rojo
+  const isScreeningLocked =
+    isBlockedByBackend ||
+    (screeningState.step === "completed" &&
+      (screeningState.nivel === "amarillo" || screeningState.nivel === "rojo"));
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -147,8 +158,62 @@ export function ChatPage() {
     }
   };
 
-  // REINICIAR CHAT COMPLETAMENTE
+  // RD-07: Al montar el chat con sesión real: consultar pacientes donde user_id = sesión actual
+  useEffect(() => {
+    let isMounted = true;
+    async function checkBlockedStatus() {
+      // Solo sesión real con UUID (no sesión de demostración)
+      const UUID_REGEX =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!user?.id || !UUID_REGEX.test(user.id)) {
+        return;
+      }
+
+      try {
+        let query = await supabase
+          .from("pacientes")
+          .select("id, bloqueado, fecha_registro")
+          .eq("user_id", user.id)
+          .order("fecha_registro", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (query.error && query.error.message.includes("does not exist")) {
+          query = await supabase
+            .from("pacientes")
+            .select("id, bloqueado, fecha")
+            .eq("user_id", user.id)
+            .order("fecha", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        }
+
+        if (!query.error && query.data && isMounted) {
+          if (query.data.bloqueado === true) {
+            setIsBlockedByBackend(true);
+          } else if (query.data.bloqueado === false) {
+            setIsBlockedByBackend(false);
+          }
+        }
+      } catch (err) {
+        console.warn("Aviso al consultar estado de bloqueo de paciente:", err);
+      }
+    }
+
+    checkBlockedStatus();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
+
+  // REINICIAR CHAT COMPLETAMENTE (Bloqueado para estudiantes con tamizaje en revisión)
   const handleResetChat = () => {
+    if (isBlockedByBackend || screeningState.step === "completed") {
+      toast.warning(
+        "Tu tamizaje está en resguardo. Solo el psicólogo del TESH puede reactivar o autorizar una nueva evaluación.",
+      );
+      return;
+    }
     resetBackendScreeningState();
     setSubmissionError(null);
     setPendingSubmissionPayload(null);
@@ -239,6 +304,9 @@ export function ChatPage() {
           s.id === activeSession.id ? updatedSessionFinal : s,
         );
         persistSessions(finalSessions);
+        if (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado) {
+          setIsBlockedByBackend(true);
+        }
         toast.success("Tamizaje registrado correctamente");
       }
     } catch (err: unknown) {
@@ -252,8 +320,14 @@ export function ChatPage() {
     }
   };
 
-  // NUEVA CONVERSACIÓN
+  // NUEVA CONVERSACIÓN (Solo permitida si no hay evaluación previa en revisión)
   const handleNewConversation = () => {
+    if (isBlockedByBackend || screeningState.step === "completed") {
+      toast.warning(
+        "Tu tamizaje está en revisión. Solo el psicólogo del TESH puede autorizar uno nuevo tras revisar tus respuestas.",
+      );
+      return;
+    }
     const freshSession = createFreshSession();
     const updated = [freshSession, ...sessions];
     persistSessions(updated, freshSession.id);
@@ -304,7 +378,7 @@ export function ChatPage() {
   const handleSendMessage = async (textToSend?: string) => {
     const raw = textToSend !== undefined ? textToSend : inputText;
     const trimmed = raw.trim();
-    if (!trimmed || isTyping) return;
+    if (!trimmed || isTyping || isBlockedByBackend) return;
 
     const sanitized = sanitizeText(trimmed, 300);
     const userTimestamp = new Date().toLocaleTimeString([], {
@@ -416,6 +490,9 @@ export function ChatPage() {
             s.id === activeSession.id ? updatedSessionFinal : s,
           );
           persistSessions(finalSessions);
+          if (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado) {
+            setIsBlockedByBackend(true);
+          }
         }
       } catch (err: unknown) {
         const msg =
@@ -534,21 +611,8 @@ export function ChatPage() {
             </div>
           </div>
 
-          {/* Lado derecho: Reiniciar + Historial + Tema */}
+          {/* Lado derecho: Historial + Tema */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleResetChat}
-              className="h-8.5 gap-1 rounded-xl border-border/80 bg-card/80 px-2.5 text-xs font-semibold text-foreground shadow-xs transition-colors hover:bg-muted active:scale-95 sm:gap-1.5"
-              title="Reiniciar chat y comenzar nuevo tamizaje"
-              aria-label="Reiniciar chat"
-            >
-              <RotateCcw className="size-3.5 text-amber-500 dark:text-amber-400" />
-              <span className="text-xs">Reiniciar</span>
-            </Button>
-
             <Button
               type="button"
               variant="outline"
@@ -566,6 +630,40 @@ export function ChatPage() {
           </div>
         </div>
       </header>
+
+      {/* Banner de estado bloqueado (RD-07) */}
+      {isBlockedByBackend && (
+        <div className="flex-none border-b border-amber-300 bg-amber-50/95 dark:border-amber-700 dark:bg-amber-950/80 px-4 py-3 text-amber-900 dark:text-amber-100 shadow-xs backdrop-blur-md">
+          <div className="mx-auto flex max-w-3xl items-start gap-3">
+            <div className="grid size-8 shrink-0 place-items-center rounded-xl bg-amber-200/80 dark:bg-amber-800/80 text-amber-900 dark:text-amber-100">
+              <ShieldAlert className="size-4.5" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <p className="text-xs font-semibold leading-relaxed">
+                Tu tamizaje está en revisión. Un profesional lo revisará antes de permitir uno
+                nuevo. Si necesitas apoyo inmediato, las líneas de ayuda siguen disponibles.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] font-bold">
+                <a
+                  href="tel:8009112000"
+                  className="inline-flex items-center gap-1 text-teal hover:underline"
+                >
+                  <Phone className="size-3" />
+                  Línea de la Vida 800 911 2000
+                </a>
+                <span className="text-amber-400 dark:text-amber-600">•</span>
+                <a
+                  href="tel:8004727835"
+                  className="inline-flex items-center gap-1 text-teal hover:underline"
+                >
+                  <Phone className="size-3" />
+                  SAPTEL 800 472 7835
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Banner discreto de confidencialidad y aviso de crisis */}
       <div className="flex-none border-b border-border/60 bg-muted/40 px-3 py-1.5 text-center backdrop-blur-xs">
@@ -819,24 +917,11 @@ export function ChatPage() {
                 >
                   <span>Ir a Agenda de Citas</span>
                 </Button>
-                {screeningState.nivel === "amarillo" || screeningState.nivel === "rojo" ? (
-                  <p className="mt-1 text-xs text-muted-foreground leading-relaxed sm:max-w-xs">
-                    Tu tamizaje está en revisión. Un profesional revisará tus respuestas antes de
-                    permitir uno nuevo. Si necesitas apoyo inmediato, las líneas de ayuda siguen
-                    disponibles abajo.
-                  </p>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetChat}
-                    className="rounded-xl border-border bg-card text-xs font-semibold text-foreground hover:bg-muted gap-1"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    <span>Nuevo tamizaje</span>
-                  </Button>
-                )}
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed sm:max-w-sm">
+                  {screeningState.nivel === "amarillo" || screeningState.nivel === "rojo"
+                    ? "Tu tamizaje ha quedado registrado y en resguardo clínico. Un profesional del TESH revisará tus respuestas. Para evitar alterar resultados, solo el área de psicología puede habilitar un nuevo tamizaje."
+                    : "Tu evaluación ha sido registrada de forma confidencial. Un profesional del TESH revisará tus resultados."}
+                </p>
               </div>
             </motion.div>
           )}
@@ -873,23 +958,26 @@ export function ChatPage() {
       <footer className="sticky bottom-0 z-40 flex-none border-t border-border/80 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-3xl space-y-2">
           {/* Botones de respuesta rápida cuando aplican al paso actual */}
-          {quickReplies.length > 0 && !isTyping && screeningState.step !== "completed" && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">
-                Selecciona:
-              </span>
-              {quickReplies.map((reply) => (
-                <button
-                  key={reply}
-                  type="button"
-                  onClick={() => handleSendMessage(reply)}
-                  className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-foreground shadow-2xs transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
-                >
-                  {reply}
-                </button>
-              ))}
-            </div>
-          )}
+          {quickReplies.length > 0 &&
+            !isTyping &&
+            !isBlockedByBackend &&
+            screeningState.step !== "completed" && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">
+                  Selecciona:
+                </span>
+                {quickReplies.map((reply) => (
+                  <button
+                    key={reply}
+                    type="button"
+                    onClick={() => handleSendMessage(reply)}
+                    className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-foreground shadow-2xs transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
+                  >
+                    {reply}
+                  </button>
+                ))}
+              </div>
+            )}
 
           {/* Formulario de entrada */}
           <form
@@ -905,19 +993,25 @@ export function ChatPage() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                disabled={isBlockedByBackend || screeningState.step === "completed"}
                 placeholder={
-                  screeningState.step === "completed"
-                    ? "Tamizaje finalizado. Pulsa 'Reiniciar' para uno nuevo."
+                  isBlockedByBackend || screeningState.step === "completed"
+                    ? "Tamizaje finalizado. Un profesional del TESH revisará tus respuestas."
                     : `Escribe tu respuesta para ${BRAND.assistant}...`
                 }
                 rows={1}
-                className="max-h-24 min-h-[42px] w-full resize-none rounded-2xl border border-border/80 bg-background px-3.5 py-2.5 text-xs sm:text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="max-h-24 min-h-[42px] w-full resize-none rounded-2xl border border-border/80 bg-background px-3.5 py-2.5 text-xs sm:text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
             <Button
               type="submit"
-              disabled={!inputText.trim() || isTyping}
+              disabled={
+                !inputText.trim() ||
+                isTyping ||
+                isBlockedByBackend ||
+                screeningState.step === "completed"
+              }
               aria-label="Enviar respuesta"
               className="size-10.5 shrink-0 rounded-2xl bg-primary text-primary-foreground shadow-xs hover:opacity-90 disabled:opacity-40"
             >
@@ -927,13 +1021,9 @@ export function ChatPage() {
 
           <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
             <span>Enter para enviar • Shift + Enter para salto de línea</span>
-            <button
-              type="button"
-              onClick={handleResetChat}
-              className="font-medium text-amber-600 dark:text-amber-400 hover:underline"
-            >
-              Reiniciar tamizaje
-            </button>
+            <span className="font-medium text-muted-foreground/80">
+              Tamizaje orientativo confidencial TESH
+            </span>
           </div>
         </div>
       </footer>
@@ -958,14 +1048,27 @@ export function ChatPage() {
           </SheetHeader>
 
           <div className="mt-4 space-y-4">
-            <Button
-              type="button"
-              onClick={handleNewConversation}
-              className="w-full rounded-xl bg-primary text-primary-foreground font-semibold text-xs h-10 gap-2 shadow-xs transition-transform active:scale-98"
-            >
-              <Plus className="size-4" />
-              <span>+ Nuevo tamizaje con {BRAND.assistant}</span>
-            </Button>
+            {!(isBlockedByBackend || screeningState.step === "completed") ? (
+              <Button
+                type="button"
+                onClick={handleNewConversation}
+                className="w-full rounded-xl bg-primary text-primary-foreground font-semibold text-xs h-10 gap-2 shadow-xs transition-transform active:scale-98"
+              >
+                <Plus className="size-4" />
+                <span>+ Nuevo tamizaje con {BRAND.assistant}</span>
+              </Button>
+            ) : (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/80 dark:bg-amber-950/40 p-3 text-xs text-amber-900 dark:text-amber-200">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <ShieldAlert className="size-4 text-amber-600 shrink-0" />
+                  Tamizaje en resguardo clínico
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Solo el psicólogo del TESH puede autorizar una nueva evaluación tras revisar tus
+                  resultados para evitar alteraciones.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2 pt-2">
               <div className="flex items-center justify-between">

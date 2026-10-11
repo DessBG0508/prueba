@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { rutaPorRol } from "@/lib/roles";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { AuroraBackground } from "@/components/effects/aurora-background";
+import { PersistentSosButton } from "@/components/common/persistent-sos-button";
 
 const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/restablecer"];
 
@@ -117,5 +118,10 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <PersistentSosButton />
+    </>
+  );
 }

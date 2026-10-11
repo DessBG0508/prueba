@@ -108,7 +108,11 @@ const chipClass = (isActive: boolean) =>
       : "bg-white dark:bg-card text-foreground border-[#D8D2FF] hover:border-[#6857E4]/60 hover:bg-[#6857E4]/5"
   }`;
 
-export function ExpedientesPage() {
+export interface ExpedientesPageProps {
+  embedded?: boolean;
+}
+
+export function ExpedientesPage({ embedded = false }: ExpedientesPageProps = {}) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -224,32 +228,34 @@ export function ExpedientesPage() {
     }, 250);
   };
 
-  return (
-    <PageShell showAppHeader={false} showBottomNav={false}>
+  const content = (
+    <>
       {/* ============================================================ */}
       {/* VISTA EN PANTALLA (Se oculta durante @media print) */}
       {/* ============================================================ */}
       <div className="print:hidden space-y-6">
         {/* Encabezado Institucional del Panel Psicólogo */}
-        <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-5 sm:py-7 border-b border-border/60">
+        <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-4 sm:py-6 border-b border-border/60">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate({ to: "/psicologo" })}
-                className="h-7 px-2 text-xs font-semibold text-[#6857E4] hover:bg-[#6857E4]/10 -ml-2 gap-1 rounded-lg"
-              >
-                <ArrowLeft className="size-3.5" />
-                <span>Volver al panel</span>
-              </Button>
-              <span className="text-muted-foreground/40">•</span>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-teal flex items-center gap-1.5">
-                <span className="inline-block size-2 rounded-full bg-teal animate-pulse" />
-                Servicio de Acompañamiento Psicológico TESH
-              </p>
-            </div>
+            {!embedded && (
+              <div className="flex items-center gap-2 mb-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate({ to: "/psicologo" })}
+                  className="h-7 px-2 text-xs font-semibold text-[#6857E4] hover:bg-[#6857E4]/10 -ml-2 gap-1 rounded-lg"
+                >
+                  <ArrowLeft className="size-3.5" />
+                  <span>Volver al panel</span>
+                </Button>
+                <span className="text-muted-foreground/40">•</span>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-teal flex items-center gap-1.5">
+                  <span className="inline-block size-2 rounded-full bg-teal animate-pulse" />
+                  Servicio de Acompañamiento Psicológico TESH
+                </p>
+              </div>
+            )}
             <h1 className="font-display text-2xl sm:text-3xl text-primary font-bold">
               Expedientes Clínicos de Acompañamiento
             </h1>
@@ -878,6 +884,16 @@ export function ExpedientesPage() {
         onOpenChange={(open) => !open && setCrisisCase(null)}
         onSuccess={refreshCases}
       />
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-6">{content}</div>;
+  }
+
+  return (
+    <PageShell showAppHeader={false} showBottomNav={false}>
+      {content}
     </PageShell>
   );
 }

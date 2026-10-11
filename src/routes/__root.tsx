@@ -13,6 +13,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { RouteGuard } from "@/components/layout/route-guard";
+import { PersistentSosButton } from "@/components/layout/persistent-sos-button";
 import { useTheme } from "@/lib/theme";
 
 import appCss from "../styles.css?url";
@@ -164,6 +165,7 @@ function RootComponent() {
         <RouteGuard>
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <AnimatedRouteOutlet />
+          <PersistentSosButton />
         </RouteGuard>
         <Toaster position="bottom-center" />
       </AuthProvider>

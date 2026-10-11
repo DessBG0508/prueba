@@ -76,6 +76,7 @@ export interface CaseSummary {
   lastContactDate?: string;
   notesCount?: number;
   modo_acompanamiento?: boolean;
+  bloqueado?: boolean;
 }
 
 export type AppointmentModality = "presencial" | "en-linea";
