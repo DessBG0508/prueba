@@ -83,6 +83,8 @@ export function ChatPage() {
 
   // RD-07: Bloqueo persistente desde la base de datos (Supabase)
   const [isBlockedByBackend, setIsBlockedByBackend] = useState(false);
+  // Gating intra-sesión: nivel amarillo/rojo de la conversación ACTUAL (solo durante la sesión en curso)
+  const [intraSessionRiskBlocked, setIntraSessionRiskBlocked] = useState(false);
 
   // Inicializar sesiones
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
@@ -130,11 +132,16 @@ export function ChatPage() {
   const messages = activeSession.messages;
   const screeningState = activeSession.screeningState || INITIAL_SCREENING_STATE;
 
-  // Tamizaje bloqueado: si la base de datos lo marca como bloqueado o si culminó en amarillo/rojo
-  const isScreeningLocked =
+  // RD-07: Evaluación de nivel de riesgo (amarillo o rojo)
+  const isRiskNivel = screeningState.nivel === "amarillo" || screeningState.nivel === "rojo";
+
+  // Fuente única de verdad del bloqueo de reinicio (gated si el tamizaje es amarillo o rojo, o bloqueado en BD)
+  const isGatedByRisk =
     isBlockedByBackend ||
-    (screeningState.step === "completed" &&
-      (screeningState.nivel === "amarillo" || screeningState.nivel === "rojo"));
+    intraSessionRiskBlocked ||
+    (screeningState.step === "completed" && isRiskNivel);
+
+  const isEffectiveBlocked = isGatedByRisk;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -158,41 +165,117 @@ export function ChatPage() {
     }
   };
 
-  // RD-07: Al montar el chat con sesión real: consultar pacientes donde user_id = sesión actual
+  // RD-07: Al montar el chat con sesión real: consultar pacientes por user_id (última fila).
+  // Fuente única de verdad del bloqueo: Si bloqueado=false, NO debe existir ningún gating:
+  // habilitar reinicios y placeholder normal, IGNORANDO y LIMPIANDO cualquier estado local
+  // de "tamizaje completado" persistido del navegador.
   useEffect(() => {
     let isMounted = true;
     async function checkBlockedStatus() {
+      let authUserId = user?.id;
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.id) {
+          authUserId = authData.user.id;
+        }
+      } catch {
+        // usar id de contexto si existe
+      }
+
       // Solo sesión real con UUID (no sesión de demostración)
       const UUID_REGEX =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      if (!user?.id || !UUID_REGEX.test(user.id)) {
+      if (!authUserId || !UUID_REGEX.test(authUserId)) {
         return;
       }
 
       try {
-        let query = await supabase
+        let patientRow: { id?: string | number; bloqueado?: boolean | null } | null = null;
+        let queryCompleted = false;
+
+        // Intentar consultar ordenando por fecha_registro, created_at, o id
+        const q1 = await supabase
           .from("pacientes")
           .select("id, bloqueado, fecha_registro")
-          .eq("user_id", user.id)
+          .eq("user_id", authUserId)
           .order("fecha_registro", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (query.error && query.error.message.includes("does not exist")) {
-          query = await supabase
+        if (!q1.error) {
+          patientRow = q1.data;
+          queryCompleted = true;
+        } else {
+          const q2 = await supabase
             .from("pacientes")
-            .select("id, bloqueado, fecha")
-            .eq("user_id", user.id)
-            .order("fecha", { ascending: false })
+            .select("id, bloqueado, created_at")
+            .eq("user_id", authUserId)
+            .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle();
+
+          if (!q2.error) {
+            patientRow = q2.data;
+            queryCompleted = true;
+          } else {
+            const q3 = await supabase
+              .from("pacientes")
+              .select("id, bloqueado, fecha")
+              .eq("user_id", authUserId)
+              .order("fecha", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (!q3.error) {
+              patientRow = q3.data;
+              queryCompleted = true;
+            } else {
+              const q4 = await supabase
+                .from("pacientes")
+                .select("id, bloqueado")
+                .eq("user_id", authUserId)
+                .order("id", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (!q4.error) {
+                patientRow = q4.data;
+                queryCompleted = true;
+              }
+            }
+          }
         }
 
-        if (!query.error && query.data && isMounted) {
-          if (query.data.bloqueado === true) {
+        if (queryCompleted && isMounted) {
+          if (patientRow && patientRow.bloqueado === true) {
             setIsBlockedByBackend(true);
-          } else if (query.data.bloqueado === false) {
+          } else if (!patientRow || patientRow.bloqueado === false) {
+            // FUENTE ÚNICA DE VERDAD: Si bloqueado=false en BD, ningún gating.
             setIsBlockedByBackend(false);
+            setIntraSessionRiskBlocked(false);
+
+            // Ignorar y limpiar cualquier estado local de "tamizaje completado" persistido del navegador
+            try {
+              localStorage.removeItem("equilibra_ultimo_folio_tamizaje");
+            } catch {
+              // ignore
+            }
+
+            setSessions((prevSessions) => {
+              const hasCompleted = prevSessions.some((s) => s.screeningState?.step === "completed");
+              if (hasCompleted || prevSessions.length === 0) {
+                const fresh = createFreshSession();
+                try {
+                  localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify([fresh]));
+                  localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, fresh.id);
+                } catch {
+                  // ignore
+                }
+                setActiveSessionId(fresh.id);
+                return [fresh];
+              }
+              return prevSessions;
+            });
           }
         }
       } catch (err) {
@@ -206,9 +289,9 @@ export function ChatPage() {
     };
   }, [user?.id]);
 
-  // REINICIAR CHAT COMPLETAMENTE (Bloqueado para estudiantes con tamizaje en revisión)
+  // REINICIAR CHAT COMPLETAMENTE (Bloqueado solo si hay gating efectivo)
   const handleResetChat = () => {
-    if (isBlockedByBackend || screeningState.step === "completed") {
+    if (isEffectiveBlocked) {
       toast.warning(
         "Tu tamizaje está en resguardo. Solo el psicólogo del TESH puede reactivar o autorizar una nueva evaluación.",
       );
@@ -237,9 +320,40 @@ export function ChatPage() {
     setSubmissionError(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("tamizaje", {
-        body: pendingSubmissionPayload,
+      let finalPayload = pendingSubmissionPayload;
+      if (finalPayload.user_id === undefined) {
+        let currentUserId: string | null = null;
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          const UUID_REGEX =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (authData?.user?.id && UUID_REGEX.test(authData.user.id)) {
+            currentUserId = authData.user.id;
+          }
+        } catch {
+          currentUserId = null;
+        }
+        finalPayload = { ...finalPayload, user_id: currentUserId };
+      }
+
+      let { data, error } = await supabase.functions.invoke("tamizajes", {
+        body: finalPayload,
       });
+
+      if (
+        error &&
+        (error.message?.includes("404") ||
+          error.message?.includes("not found") ||
+          error.message?.includes("Failed to send"))
+      ) {
+        const alt = await supabase.functions.invoke("tamizaje", {
+          body: finalPayload,
+        });
+        if (!alt.error) {
+          data = alt.data;
+          error = null;
+        }
+      }
 
       if (error || data?.status === "error" || !data) {
         setSubmissionError(
@@ -306,6 +420,7 @@ export function ChatPage() {
         persistSessions(finalSessions);
         if (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado) {
           setIsBlockedByBackend(true);
+          setIntraSessionRiskBlocked(true);
         }
         toast.success("Tamizaje registrado correctamente");
       }
@@ -320,9 +435,9 @@ export function ChatPage() {
     }
   };
 
-  // NUEVA CONVERSACIÓN (Solo permitida si no hay evaluación previa en revisión)
+  // NUEVA CONVERSACIÓN (Restringido solo si el bloqueo está activo)
   const handleNewConversation = () => {
-    if (isBlockedByBackend || screeningState.step === "completed") {
+    if (isEffectiveBlocked) {
       toast.warning(
         "Tu tamizaje está en revisión. Solo el psicólogo del TESH puede autorizar uno nuevo tras revisar tus respuestas.",
       );
@@ -350,6 +465,12 @@ export function ChatPage() {
 
   // BORRAR HISTORIAL COMPLETO
   const handleClearAllHistory = () => {
+    if (isGatedByRisk) {
+      toast.warning(
+        "Tu tamizaje está en resguardo clínico. No se puede reiniciar mientras esté en revisión.",
+      );
+      return;
+    }
     const freshSession = createFreshSession();
     persistSessions([freshSession], freshSession.id);
     setActiveSessionId(freshSession.id);
@@ -378,7 +499,7 @@ export function ChatPage() {
   const handleSendMessage = async (textToSend?: string) => {
     const raw = textToSend !== undefined ? textToSend : inputText;
     const trimmed = raw.trim();
-    if (!trimmed || isTyping || isBlockedByBackend) return;
+    if (!trimmed || isTyping || isEffectiveBlocked) return;
 
     const sanitized = sanitizeText(trimmed, 300);
     const userTimestamp = new Date().toLocaleTimeString([], {
@@ -417,12 +538,45 @@ export function ChatPage() {
 
     // Si respondió la pregunta 9 de PHQ-9, hacer UNA sola llamada a la función de Supabase 'tamizaje':
     if (stepResult.isReadyForSubmission && stepResult.submissionPayload) {
-      setPendingSubmissionPayload(stepResult.submissionPayload);
+      // TAREA 1: Incluir en el body el id del usuario de Supabase Auth (o null si es sesión demo)
+      let currentUserId: string | null = null;
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const UUID_REGEX =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (authData?.user?.id && UUID_REGEX.test(authData.user.id)) {
+          currentUserId = authData.user.id;
+        }
+      } catch {
+        currentUserId = null;
+      }
+
+      const payloadWithUser: TamizajeSubmissionPayload = {
+        ...stepResult.submissionPayload,
+        user_id: currentUserId,
+      };
+
+      setPendingSubmissionPayload(payloadWithUser);
 
       try {
-        const { data, error } = await supabase.functions.invoke("tamizaje", {
-          body: stepResult.submissionPayload,
+        let { data, error } = await supabase.functions.invoke("tamizajes", {
+          body: payloadWithUser,
         });
+
+        if (
+          error &&
+          (error.message?.includes("404") ||
+            error.message?.includes("not found") ||
+            error.message?.includes("Failed to send"))
+        ) {
+          const alt = await supabase.functions.invoke("tamizaje", {
+            body: payloadWithUser,
+          });
+          if (!alt.error) {
+            data = alt.data;
+            error = null;
+          }
+        }
 
         if (error || data?.status === "error" || !data) {
           setSubmissionError(
@@ -492,6 +646,7 @@ export function ChatPage() {
           persistSessions(finalSessions);
           if (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado) {
             setIsBlockedByBackend(true);
+            setIntraSessionRiskBlocked(true);
           }
         }
       } catch (err: unknown) {
@@ -611,8 +766,23 @@ export function ChatPage() {
             </div>
           </div>
 
-          {/* Lado derecho: Historial + Tema */}
+          {/* Lado derecho: Reiniciar (oculto en riesgo) + Historial + Tema */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {!isGatedByRisk && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetChat}
+                className="h-8.5 gap-1 rounded-xl border-border/80 bg-card/80 px-2.5 text-xs font-semibold text-foreground shadow-xs transition-colors hover:bg-muted active:scale-95 sm:gap-1.5"
+                aria-label="Reiniciar tamizaje"
+                title="Reiniciar tamizaje"
+              >
+                <RotateCcw className="size-3.5 text-muted-foreground" />
+                <span className="hidden xs:inline text-xs">Reiniciar</span>
+              </Button>
+            )}
+
             <Button
               type="button"
               variant="outline"
@@ -632,7 +802,7 @@ export function ChatPage() {
       </header>
 
       {/* Banner de estado bloqueado (RD-07) */}
-      {isBlockedByBackend && (
+      {isEffectiveBlocked && (
         <div className="flex-none border-b border-amber-300 bg-amber-50/95 dark:border-amber-700 dark:bg-amber-950/80 px-4 py-3 text-amber-900 dark:text-amber-100 shadow-xs backdrop-blur-md">
           <div className="mx-auto flex max-w-3xl items-start gap-3">
             <div className="grid size-8 shrink-0 place-items-center rounded-xl bg-amber-200/80 dark:bg-amber-800/80 text-amber-900 dark:text-amber-100">
@@ -917,8 +1087,20 @@ export function ChatPage() {
                 >
                   <span>Ir a Agenda de Citas</span>
                 </Button>
+                {!isGatedByRisk && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetChat}
+                    className="rounded-xl border-border bg-card text-xs font-semibold text-foreground gap-1.5 shadow-xs hover:bg-muted"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    <span>Nuevo tamizaje</span>
+                  </Button>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground leading-relaxed sm:max-w-sm">
-                  {screeningState.nivel === "amarillo" || screeningState.nivel === "rojo"
+                  {isGatedByRisk
                     ? "Tu tamizaje ha quedado registrado y en resguardo clínico. Un profesional del TESH revisará tus respuestas. Para evitar alterar resultados, solo el área de psicología puede habilitar un nuevo tamizaje."
                     : "Tu evaluación ha sido registrada de forma confidencial. Un profesional del TESH revisará tus resultados."}
                 </p>
@@ -960,7 +1142,7 @@ export function ChatPage() {
           {/* Botones de respuesta rápida cuando aplican al paso actual */}
           {quickReplies.length > 0 &&
             !isTyping &&
-            !isBlockedByBackend &&
+            !isEffectiveBlocked &&
             screeningState.step !== "completed" && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">
@@ -993,10 +1175,10 @@ export function ChatPage() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isBlockedByBackend || screeningState.step === "completed"}
+                disabled={isEffectiveBlocked}
                 placeholder={
-                  isBlockedByBackend || screeningState.step === "completed"
-                    ? "Tamizaje finalizado. Un profesional del TESH revisará tus respuestas."
+                  isEffectiveBlocked
+                    ? "El chat está finalizado. Tu tamizaje está en revisión."
                     : `Escribe tu respuesta para ${BRAND.assistant}...`
                 }
                 rows={1}
@@ -1006,12 +1188,7 @@ export function ChatPage() {
 
             <Button
               type="submit"
-              disabled={
-                !inputText.trim() ||
-                isTyping ||
-                isBlockedByBackend ||
-                screeningState.step === "completed"
-              }
+              disabled={!inputText.trim() || isTyping || isEffectiveBlocked}
               aria-label="Enviar respuesta"
               className="size-10.5 shrink-0 rounded-2xl bg-primary text-primary-foreground shadow-xs hover:opacity-90 disabled:opacity-40"
             >
@@ -1021,9 +1198,19 @@ export function ChatPage() {
 
           <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
             <span>Enter para enviar • Shift + Enter para salto de línea</span>
-            <span className="font-medium text-muted-foreground/80">
-              Tamizaje orientativo confidencial TESH
-            </span>
+            {!isGatedByRisk ? (
+              <button
+                type="button"
+                onClick={handleResetChat}
+                className="hover:text-primary transition-colors underline cursor-pointer"
+              >
+                Reiniciar tamizaje
+              </button>
+            ) : (
+              <span className="font-medium text-muted-foreground/80">
+                Tamizaje orientativo confidencial TESH
+              </span>
+            )}
           </div>
         </div>
       </footer>
@@ -1048,7 +1235,7 @@ export function ChatPage() {
           </SheetHeader>
 
           <div className="mt-4 space-y-4">
-            {!(isBlockedByBackend || screeningState.step === "completed") ? (
+            {!isEffectiveBlocked ? (
               <Button
                 type="button"
                 onClick={handleNewConversation}
@@ -1075,7 +1262,7 @@ export function ChatPage() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   Sesiones Guardadas ({sessions.length})
                 </p>
-                {sessions.length > 1 && (
+                {sessions.length > 1 && !isGatedByRisk && (
                   <button
                     type="button"
                     onClick={handleClearAllHistory}

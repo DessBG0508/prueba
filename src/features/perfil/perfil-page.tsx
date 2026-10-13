@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
 import { PageShell } from "@/components/layout/page-shell";
 import { profileIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
@@ -13,6 +14,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,7 +80,7 @@ export function PerfilPage() {
   const navigate = useNavigate();
 
   // Modo Acompañamiento (Consentimiento de supervisión psicológica)
-  // /* TODO(Supabase): sincronizar con columna 'modo_acompanamiento' boolean en tabla 'profiles' con RLS */
+  // Sincronizado con tabla 'profiles' en Supabase (columna modo_acompaniamiento)
   const [modoAcompanamiento, setModoAcompanamiento] = useState<boolean>(() => {
     try {
       return localStorage.getItem("equilibra_modo_acompanamiento") === "true";
@@ -80,40 +88,279 @@ export function PerfilPage() {
       return false;
     }
   });
+  const [isSavingAcompanamiento, setIsSavingAcompanamiento] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
 
-  // Campos de edición visual (Mock en DEMO_MODE o sincronizados con usuario activo)
+  // Campos de perfil: matrícula y correo SOLO LECTURA (fuente autoritativa institucional).
+  // Editables: nombre, semestre, grupo, carrera.
   const [nombre, setNombre] = useState(user?.name || "Estudiante");
-  const [email] = useState(user?.email || "estudiante@tesh.mx");
-  const [matricula] = useState(user?.matricula || "202310452");
+  const [email, setEmail] = useState(user?.email || "estudiante@tesh.mx");
+  const [matricula, setMatricula] = useState(user?.matricula || "202310452");
   const [carrera, setCarrera] = useState(user?.carrera || "Ingeniería en Sistemas Computacionales");
   const [semestre, setSemestre] = useState(user?.semestre || "6to Semestre");
+  const [grupo, setGrupo] = useState(user?.grupo || "501");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [lastSavedProfile, setLastSavedProfile] = useState({
+    nombre: user?.name || "Estudiante",
+    semestre: user?.semestre || "6to Semestre",
+    grupo: user?.grupo || "501",
+    carrera: user?.carrera || "Ingeniería en Sistemas Computacionales",
+  });
 
-  const handleToggleAcompanamiento = (checked: boolean) => {
-    setModoAcompanamiento(checked);
-    try {
-      localStorage.setItem("equilibra_modo_acompanamiento", checked ? "true" : "false");
-    } catch (e) {
-      console.error("Error al guardar preferencia de acompañamiento", e);
+  // 3. Al montar, leer los valores reales desde profiles (fuente única de verdad)
+  useEffect(() => {
+    let isMounted = true;
+    async function loadProfileData() {
+      let uid = user?.id;
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.id) {
+          uid = authData.user.id;
+          if (authData.user.email) {
+            setEmail(authData.user.email);
+          }
+        }
+      } catch {
+        // fallback a user context
+      }
+
+      const UUID_REGEX =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uid || !UUID_REGEX.test(uid)) {
+        return;
+      }
+
+      try {
+        let res = await supabase
+          .from("profiles")
+          .select(
+            "id, nombre, matricula, email, carrera, semestre, grupo, modo_acompaniamiento, modo_acompanamiento",
+          )
+          .eq("id", uid)
+          .maybeSingle();
+
+        if (res.error && res.error.message.includes("does not exist")) {
+          res = await supabase
+            .from("profiles")
+            .select("id, nombre, matricula, carrera, semestre, grupo, modo_acompaniamiento")
+            .eq("id", uid)
+            .maybeSingle();
+        }
+
+        if (!res.error && res.data && isMounted) {
+          const loadedNombre = res.data.nombre || user?.name || "";
+          const loadedSemestre = res.data.semestre || user?.semestre || "";
+          const loadedGrupo = res.data.grupo || user?.grupo || "";
+          const loadedCarrera = res.data.carrera || user?.carrera || "";
+          const loadedMatricula = res.data.matricula || user?.matricula || "";
+          const loadedEmail = res.data.email || user?.email || "";
+
+          if (loadedNombre) setNombre(loadedNombre);
+          if (loadedSemestre) setSemestre(loadedSemestre);
+          if (loadedGrupo) setGrupo(loadedGrupo);
+          if (loadedCarrera) setCarrera(loadedCarrera);
+          if (loadedMatricula) setMatricula(loadedMatricula);
+          if (loadedEmail) setEmail(loadedEmail);
+
+          setLastSavedProfile({
+            nombre: loadedNombre || "Estudiante",
+            semestre: loadedSemestre || "",
+            grupo: loadedGrupo || "",
+            carrera: loadedCarrera || "",
+          });
+
+          const remoteVal =
+            res.data.modo_acompaniamiento !== undefined && res.data.modo_acompaniamiento !== null
+              ? Boolean(res.data.modo_acompaniamiento)
+              : res.data.modo_acompanamiento !== undefined && res.data.modo_acompanamiento !== null
+                ? Boolean(res.data.modo_acompanamiento)
+                : false;
+          setModoAcompanamiento(remoteVal);
+          try {
+            localStorage.setItem("equilibra_modo_acompanamiento", remoteVal ? "true" : "false");
+          } catch {
+            // ignore
+          }
+        }
+      } catch (err) {
+        console.warn("Aviso al consultar perfil desde Supabase:", err);
+      }
     }
 
-    if (checked) {
-      toast.success("Modo Acompañamiento activado", {
-        description:
-          "El equipo de Bienestar podrá ver tus tamizajes para brindarte orientación oportuna.",
-      });
-    } else {
-      toast.info("Modo Privado activado", {
-        description: "Tus registros y check-ins son ahora 100% confidenciales en tu dispositivo.",
-      });
+    loadProfileData();
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    user?.id,
+    user?.name,
+    user?.email,
+    user?.matricula,
+    user?.carrera,
+    user?.semestre,
+    user?.grupo,
+  ]);
+
+  // 1. Al cambiar el toggle: UPDATE public.profiles SET modo_acompaniamiento = <valor> WHERE id = <uid de la sesión>
+  // 3. Feedback discreto de éxito/error; si falla el guardado, el toggle NO cambia de estado.
+  const handleToggleAcompanamiento = async (checked: boolean) => {
+    if (isSavingAcompanamiento) return;
+
+    let uid = user?.id;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        uid = authData.user.id;
+      }
+    } catch {
+      // fallback
+    }
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    // Si es demo o no hay UUID de sesión real
+    if (!uid || !UUID_REGEX.test(uid)) {
+      setModoAcompanamiento(checked);
+      try {
+        localStorage.setItem("equilibra_modo_acompanamiento", checked ? "true" : "false");
+      } catch {
+        // ignore
+      }
+      if (checked) {
+        toast.success("Modo Acompañamiento activado", {
+          description:
+            "El equipo de Bienestar podrá ver tus tamizajes para brindarte orientación oportuna.",
+        });
+      } else {
+        toast.info("Modo Privado activado", {
+          description: "Tus registros y check-ins son confidenciales en tu dispositivo.",
+        });
+      }
+      return;
+    }
+
+    setIsSavingAcompanamiento(true);
+    try {
+      let updateRes = await supabase
+        .from("profiles")
+        .update({ modo_acompaniamiento: checked })
+        .eq("id", uid);
+
+      if (updateRes.error && updateRes.error.message.includes("does not exist")) {
+        updateRes = await supabase
+          .from("profiles")
+          .update({ modo_acompanamiento: checked })
+          .eq("id", uid);
+      }
+
+      if (updateRes.error) {
+        // Si falla el guardado, el toggle NO cambia de estado (nunca mostrar activado algo que no se guardó)
+        toast.error("No se pudo actualizar tu preferencia en el servidor. Intenta de nuevo.");
+        return;
+      }
+
+      // Éxito confirmado en BD
+      setModoAcompanamiento(checked);
+      try {
+        localStorage.setItem("equilibra_modo_acompanamiento", checked ? "true" : "false");
+      } catch {
+        // ignore
+      }
+
+      if (checked) {
+        toast.success("Preferencia guardada", {
+          description:
+            "Modo Acompañamiento activado. El equipo de Bienestar podrá ver tus tamizajes.",
+        });
+      } else {
+        toast.info("Preferencia guardada", {
+          description: "Modo Privado activado. Tus tamizajes no son compartidos con Bienestar.",
+        });
+      }
+    } catch {
+      // Si falla, el toggle NO cambia de estado
+      toast.error("Error de conexión. Tu preferencia no se pudo guardar.");
+    } finally {
+      setIsSavingAcompanamiento(false);
     }
   };
 
-  const handleSaveAccount = (e: React.FormEvent) => {
+  // 2. "Guardar cambios" persiste en public.profiles (nombre, semestre, grupo, carrera) vía Supabase
+  // 4. Si un guardado falla por permisos, mostrar aviso discreto y no cambiar el estado de los campos.
+  const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Datos guardados en vista previa", {
-      description:
-        "En esta versión de demostración los datos de tu cuenta institucional están preconfigurados.",
-    });
+    if (isSavingProfile) return;
+
+    let uid = user?.id;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id) {
+        uid = authData.user.id;
+      }
+    } catch {
+      // fallback
+    }
+
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    if (!uid || !UUID_REGEX.test(uid)) {
+      setLastSavedProfile({
+        nombre: nombre.trim(),
+        semestre: semestre.trim(),
+        grupo: grupo.trim(),
+        carrera: carrera.trim(),
+      });
+      toast.success("Datos guardados en vista previa", {
+        description:
+          "En esta versión de demostración los datos de tu cuenta institucional están preconfigurados.",
+      });
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          nombre: nombre.trim(),
+          semestre: semestre.trim(),
+          grupo: grupo.trim(),
+          carrera: carrera.trim(),
+        })
+        .eq("id", uid);
+
+      if (error) {
+        // 4. Si un guardado falla por permisos, mostrar aviso discreto y no cambiar el estado de los campos
+        toast.error("No se pudieron guardar los cambios por permisos.", {
+          description: "Se restauró el estado anterior de tus datos institucionales.",
+        });
+        setNombre(lastSavedProfile.nombre);
+        setSemestre(lastSavedProfile.semestre);
+        setGrupo(lastSavedProfile.grupo);
+        setCarrera(lastSavedProfile.carrera);
+        return;
+      }
+
+      setLastSavedProfile({
+        nombre: nombre.trim(),
+        semestre: semestre.trim(),
+        grupo: grupo.trim(),
+        carrera: carrera.trim(),
+      });
+      toast.success("Perfil actualizado con éxito", {
+        description: "Tus datos institucionales editables se han guardado en el sistema.",
+      });
+    } catch {
+      toast.error("Error de conexión al guardar los datos.", {
+        description: "Se restauró el estado anterior de tus datos.",
+      });
+      setNombre(lastSavedProfile.nombre);
+      setSemestre(lastSavedProfile.semestre);
+      setGrupo(lastSavedProfile.grupo);
+      setCarrera(lastSavedProfile.carrera);
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleConfirmLogout = () => {
@@ -261,27 +508,39 @@ export function PerfilPage() {
                 </Badge>
               </div>
 
-              {/* Control de Toggle */}
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-card/60 p-4">
-                <div className="space-y-0.5">
-                  <Label
-                    htmlFor="toggle-acompanamiento"
-                    className="text-sm font-bold text-foreground cursor-pointer"
-                  >
-                    Compartir tamizajes con Bienestar
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {modoAcompanamiento
-                      ? "El equipo de psicología puede contactarte si detecta riesgo"
-                      : "Tus respuestas no son compartidas con nadie"}
-                  </p>
+              {/* Control de Toggle y Enlace al Aviso de Privacidad */}
+              <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/60 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label
+                        htmlFor="toggle-acompanamiento"
+                        className="text-sm font-bold text-foreground cursor-pointer"
+                      >
+                        Compartir tamizajes con Bienestar
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setIsPrivacyModalOpen(true)}
+                        className="text-xs font-semibold text-teal hover:underline focus:outline-none"
+                      >
+                        Ver aviso de privacidad
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {modoAcompanamiento
+                        ? "El equipo de psicología puede contactarte si detecta riesgo"
+                        : "Tus respuestas no son compartidas con nadie"}
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-acompanamiento"
+                    checked={modoAcompanamiento}
+                    disabled={isSavingAcompanamiento}
+                    onCheckedChange={handleToggleAcompanamiento}
+                    className="data-[state=checked]:bg-teal"
+                  />
                 </div>
-                <Switch
-                  id="toggle-acompanamiento"
-                  checked={modoAcompanamiento}
-                  onCheckedChange={handleToggleAcompanamiento}
-                  className="data-[state=checked]:bg-teal"
-                />
               </div>
 
               {/* Explicación en lenguaje claro */}
@@ -351,53 +610,83 @@ export function PerfilPage() {
                 <Input
                   id="cuenta-nombre"
                   value={nombre}
+                  disabled={isSavingProfile}
                   onChange={(e) => setNombre(e.target.value)}
                   className="h-10 rounded-xl bg-card/80 text-xs"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Matrícula y Correo: SOLO LECTURA INSTITUCIONAL */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label
-                    htmlFor="cuenta-matricula"
-                    className="text-xs font-semibold text-foreground"
-                  >
-                    Matrícula TESH
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="cuenta-matricula"
+                      className="text-xs font-semibold text-foreground flex items-center gap-1.5"
+                    >
+                      <profileIcons.matricula className="size-3.5 text-muted-foreground" />
+                      <span>Matrícula TESH</span>
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground/85 font-medium flex items-center gap-1">
+                      <profileIcons.lock className="size-2.5 text-muted-foreground/80" />
+                      Solo lectura
+                    </span>
+                  </div>
                   <Input
                     id="cuenta-matricula"
                     value={matricula}
                     disabled
-                    className="h-10 rounded-xl bg-muted/50 text-xs text-muted-foreground cursor-not-allowed"
+                    readOnly
+                    className="h-10 rounded-xl bg-muted/70 text-xs text-muted-foreground font-mono cursor-not-allowed select-none opacity-85 border-border/70"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="cuenta-email" className="text-xs font-semibold text-foreground">
-                    Correo institucional
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label
+                      htmlFor="cuenta-email"
+                      className="text-xs font-semibold text-foreground flex items-center gap-1.5"
+                    >
+                      <profileIcons.email className="size-3.5 text-muted-foreground" />
+                      <span>Correo institucional</span>
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground/85 font-medium flex items-center gap-1">
+                      <profileIcons.lock className="size-2.5 text-muted-foreground/80" />
+                      Solo lectura
+                    </span>
+                  </div>
                   <Input
                     id="cuenta-email"
                     value={email}
                     disabled
-                    className="h-10 rounded-xl bg-muted/50 text-xs text-muted-foreground cursor-not-allowed"
+                    readOnly
+                    className="h-10 rounded-xl bg-muted/70 text-xs text-muted-foreground font-mono cursor-not-allowed select-none opacity-85 border-border/70"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="cuenta-carrera" className="text-xs font-semibold text-foreground">
-                    Carrera / Programa
-                  </Label>
-                  <Input
-                    id="cuenta-carrera"
-                    value={carrera}
-                    onChange={(e) => setCarrera(e.target.value)}
-                    className="h-10 rounded-xl bg-card/80 text-xs"
-                  />
-                </div>
+              {/* Nota al pie institucional */}
+              <p className="text-[11px] text-muted-foreground/80 flex items-center gap-1.5 pt-0.5">
+                <profileIcons.lock className="size-3 shrink-0 text-muted-foreground/70" />
+                <span>Datos institucionales — solo lectura</span>
+              </p>
 
+              {/* Carrera / Programa (editable) */}
+              <div className="space-y-1">
+                <Label htmlFor="cuenta-carrera" className="text-xs font-semibold text-foreground">
+                  Carrera / Programa
+                </Label>
+                <Input
+                  id="cuenta-carrera"
+                  value={carrera}
+                  disabled={isSavingProfile}
+                  onChange={(e) => setCarrera(e.target.value)}
+                  className="h-10 rounded-xl bg-card/80 text-xs"
+                />
+              </div>
+
+              {/* Semestre y Grupo (editables) */}
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label
                     htmlFor="cuenta-semestre"
@@ -408,7 +697,22 @@ export function PerfilPage() {
                   <Input
                     id="cuenta-semestre"
                     value={semestre}
+                    disabled={isSavingProfile}
                     onChange={(e) => setSemestre(e.target.value)}
+                    className="h-10 rounded-xl bg-card/80 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="cuenta-grupo" className="text-xs font-semibold text-foreground">
+                    Grupo
+                  </Label>
+                  <Input
+                    id="cuenta-grupo"
+                    value={grupo}
+                    disabled={isSavingProfile}
+                    placeholder="ej. 501"
+                    onChange={(e) => setGrupo(e.target.value)}
                     className="h-10 rounded-xl bg-card/80 text-xs"
                   />
                 </div>
@@ -417,10 +721,11 @@ export function PerfilPage() {
               <div className="pt-2 flex justify-end">
                 <Button
                   type="submit"
-                  className="h-9 rounded-xl bg-[#6857E4] px-4 text-xs font-semibold text-white hover:bg-[#5847d5]"
+                  disabled={isSavingProfile}
+                  className="h-9 rounded-xl bg-[#6857E4] px-4 text-xs font-semibold text-white hover:bg-[#5847d5] disabled:opacity-60"
                 >
                   <profileIcons.edit className="mr-1.5 size-3.5" />
-                  <span>Guardar cambios</span>
+                  <span>{isSavingProfile ? "Guardando cambios..." : "Guardar cambios"}</span>
                 </Button>
               </div>
             </form>
@@ -506,6 +811,95 @@ export function PerfilPage() {
             </AlertDialogContent>
           </AlertDialog>
         </section>
+
+        {/* Modal de Aviso de Privacidad y Consentimiento Informado */}
+        <Dialog open={isPrivacyModalOpen} onOpenChange={setIsPrivacyModalOpen}>
+          <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto rounded-3xl p-6 sm:p-8 border-border">
+            <DialogHeader className="text-left space-y-1.5 pb-2 border-b border-border/50">
+              <div className="flex items-center gap-2 text-teal font-semibold text-xs tracking-wider uppercase">
+                <profileIcons.shield className="size-4" />
+                <span>Consentimiento Informado TESH</span>
+              </div>
+              <DialogTitle className="font-display text-xl font-bold text-primary">
+                Aviso de Privacidad — Modo Acompañamiento
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Tecnológico de Estudios Superiores de Huixquilucan • Departamento de Bienestar y
+                Salud Mental
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-2 text-xs leading-relaxed text-foreground/90">
+              <div className="rounded-xl bg-teal-soft/60 p-3.5 border border-teal/20 text-teal-900 dark:text-teal-200">
+                <p className="font-semibold text-xs">
+                  Tu bienestar y privacidad son nuestra prioridad institucional
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed">
+                  El Modo Acompañamiento te permite decidir libremente si deseas que el equipo de
+                  psicología universitaria pueda revisar los resultados de tus tamizajes clínicos
+                  (PHQ-9 y GAD-7) para ofrecerte orientación oportuna.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-foreground uppercase tracking-wider">
+                  1. Finalidad del tratamiento de datos
+                </h4>
+                <p className="text-muted-foreground">
+                  La información recabada se utiliza exclusivamente para fines de evaluación
+                  preventiva, detección de riesgos emocionales y canalización profesional a
+                  servicios de consejería y terapia psicológica dentro del TESH o servicios de
+                  emergencia externa (Línea de la Vida).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-foreground uppercase tracking-wider">
+                  2. Garantía de no repercusión académica
+                </h4>
+                <p className="text-muted-foreground">
+                  El TESH garantiza formalmente que las respuestas a los cuestionarios y el estado
+                  de tu salud mental nunca serán utilizados con fines punitivos, académicos,
+                  disciplinarios ni para condicionar materias, calificaciones, becas o trámites
+                  escolares.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-foreground uppercase tracking-wider">
+                  3. Revocación del consentimiento en cualquier momento
+                </h4>
+                <p className="text-muted-foreground">
+                  Puedes desactivar este consentimiento cuando lo desees activando el "Modo
+                  Privado". Al desactivarlo, tus futuros registros emocionales permanecerán
+                  estrictamente privados en tu dispositivo y no serán visibles para el equipo de
+                  Bienestar.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-xs text-foreground uppercase tracking-wider">
+                  4. Confidencialidad y Secreto Profesional
+                </h4>
+                <p className="text-muted-foreground">
+                  Todo el personal de psicología se rige por el Código Ético profesional y la Ley
+                  General de Protección de Datos Personales en Posesión de Sujetos Obligados. Tu
+                  información se mantiene bajo estricto secreto profesional.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t border-border/50 pt-4">
+              <Button
+                type="button"
+                onClick={() => setIsPrivacyModalOpen(false)}
+                className="rounded-xl bg-teal text-white hover:bg-teal/90 text-xs font-semibold px-4 h-9"
+              >
+                Entendido y cerrar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </PageShell>
   );

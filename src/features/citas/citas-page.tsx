@@ -68,12 +68,21 @@ export function CitasPage() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          // Normalizar modalidad a presencial según decisión clínica
+          const normalized = parsed.map((a: Appointment) => ({
+            ...a,
+            modality: "presencial" as const,
+            locationOrLink:
+              a.locationOrLink && a.locationOrLink.toLowerCase().includes("videollamada")
+                ? "Consultorio 3, Edificio de Bienestar Integral TESH"
+                : a.locationOrLink || "Consultorio 3, Edificio de Bienestar Integral TESH",
+          }));
           // Asegurar que la cita inicial de prueba tenga folio EQ-1234 visible si aún no tenía
-          if (!parsed.some((a: Appointment) => a.folio_tamizaje || a.folioTamizaje)) {
-            parsed[0].folio_tamizaje = "EQ-1234";
-            parsed[0].folioTamizaje = "EQ-1234";
+          if (!normalized.some((a: Appointment) => a.folio_tamizaje || a.folioTamizaje)) {
+            normalized[0].folio_tamizaje = "EQ-1234";
+            normalized[0].folioTamizaje = "EQ-1234";
           }
-          return parsed;
+          return normalized;
         }
       }
     } catch {
@@ -150,7 +159,7 @@ export function CitasPage() {
     setEditingAppointment(apt);
     setSelectedDate(apt.date);
     setSelectedSlot(apt.timeSlot);
-    setSelectedModality(apt.modality);
+    setSelectedModality("presencial");
     setSelectedPsychologist(apt.psychologistName);
     setFolioTamizaje(apt.folio_tamizaje || apt.folioTamizaje || "");
     setSelectedServiceType(apt.serviceType || "TERAPIA PSICOLÓGICA");
@@ -169,17 +178,9 @@ export function CitasPage() {
       return;
     }
 
-    if (selectedModality !== "presencial" && selectedModality !== "en-linea") {
-      toast.error("Por favor selecciona una modalidad válida (presencial o en línea).");
-      return;
-    }
-
     const defaultPsych = PSYCHOLOGISTS[0]!;
     const psychInfo = PSYCHOLOGISTS.find((p) => p.name === selectedPsychologist) ?? defaultPsych;
-    const location =
-      selectedModality === "presencial"
-        ? psychInfo.office
-        : "Enlace de videollamada institucional segura";
+    const location = psychInfo.office;
 
     const cleanedFolio = folioTamizaje.trim() ? folioTamizaje.trim().toUpperCase() : undefined;
 
@@ -192,7 +193,7 @@ export function CitasPage() {
                 ...item,
                 date: selectedDate,
                 timeSlot: selectedSlot,
-                modality: selectedModality,
+                modality: "presencial",
                 psychologistName: psychInfo.name,
                 psychologistRole: psychInfo.role,
                 locationOrLink: location,
@@ -213,7 +214,7 @@ export function CitasPage() {
         id: `apt-${Date.now()}`,
         date: selectedDate,
         timeSlot: selectedSlot,
-        modality: selectedModality,
+        modality: "presencial",
         psychologistName: psychInfo.name,
         psychologistRole: psychInfo.role,
         locationOrLink: location,
@@ -321,17 +322,8 @@ export function CitasPage() {
                         variant="secondary"
                         className="gap-1 rounded-xl bg-muted/80 text-[11px] font-medium text-muted-foreground"
                       >
-                        {apt.modality === "presencial" ? (
-                          <>
-                            <appointmentIcons.mapPin className="size-3 text-accent" />
-                            <span>Presencial</span>
-                          </>
-                        ) : (
-                          <>
-                            <appointmentIcons.video className="size-3 text-accent" />
-                            <span>En línea</span>
-                          </>
-                        )}
+                        <appointmentIcons.mapPin className="size-3 text-accent" />
+                        <span>Presencial</span>
                       </Badge>
                     </div>
 
@@ -494,8 +486,7 @@ export function CitasPage() {
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {apt.timeSlot} • Con {apt.psychologistName} (
-                        {apt.modality === "presencial" ? "Presencial" : "En línea"})
+                        {apt.timeSlot} • Con {apt.psychologistName} (Presencial)
                       </p>
                     </div>
                   </div>
@@ -679,43 +670,25 @@ export function CitasPage() {
               </div>
             </div>
 
-            {/* 3. Selector de Modalidad */}
+            {/* 3. Modalidad fija en Presencial */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase text-muted-foreground tracking-wider">
                 3. Modalidad
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedModality("presencial")}
-                  className={`flex items-center gap-2 rounded-xl p-3 text-xs font-semibold transition-all ${
-                    selectedModality === "presencial"
-                      ? "border-2 border-[#6857E4] bg-lavender-soft text-primary font-bold"
-                      : "border border-border/70 bg-card text-muted-foreground hover:bg-muted/40"
-                  }`}
+              <div className="flex items-center gap-2.5 rounded-xl border border-accent/40 bg-lavender-soft/60 p-3 text-xs">
+                <appointmentIcons.mapPin className="size-4 text-accent shrink-0" />
+                <div className="flex-1 text-left">
+                  <p className="text-xs font-bold text-foreground">Presencial</p>
+                  <p className="text-[10px] text-muted-foreground font-normal">
+                    Campus TESH • Consultorio de Bienestar Integral
+                  </p>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] font-semibold bg-background/80 text-muted-foreground border border-border/50"
                 >
-                  <appointmentIcons.mapPin className="size-4 text-accent" />
-                  <div className="text-left">
-                    <p className="text-xs">Presencial</p>
-                    <p className="text-[10px] text-muted-foreground font-normal">Campus TESH</p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedModality("en-linea")}
-                  className={`flex items-center gap-2 rounded-xl p-3 text-xs font-semibold transition-all ${
-                    selectedModality === "en-linea"
-                      ? "border-2 border-[#6857E4] bg-lavender-soft text-primary font-bold"
-                      : "border border-border/70 bg-card text-muted-foreground hover:bg-muted/40"
-                  }`}
-                >
-                  <appointmentIcons.video className="size-4 text-accent" />
-                  <div className="text-left">
-                    <p className="text-xs">En línea</p>
-                    <p className="text-[10px] text-muted-foreground font-normal">Videollamada</p>
-                  </div>
-                </button>
+                  Modalidad única
+                </Badge>
               </div>
             </div>
 

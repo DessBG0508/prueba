@@ -220,7 +220,7 @@ export function PsychologistOverview({
               <span className="text-xs font-medium text-muted-foreground">sesiones</span>
             </div>
             <p className="text-[11px] text-muted-foreground mt-1">
-              En cubículo 3 y modalidad virtual
+              En cubículo 3 (modalidad presencial)
             </p>
           </div>
           <Button

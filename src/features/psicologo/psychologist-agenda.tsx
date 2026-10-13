@@ -126,7 +126,7 @@ export function PsychologistAgenda({
         <div>
           <h2 className="font-display text-2xl sm:text-3xl text-primary">Agenda de Citas</h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Gestiona tus sesiones de acompañamiento psicológico presenciales y en línea.
+            Gestiona tus sesiones de acompañamiento psicológico presenciales en campus.
           </p>
         </div>
 
@@ -208,15 +208,9 @@ export function PsychologistAgenda({
                       variant="outline"
                       className="bg-card text-muted-foreground border-border text-xs"
                     >
-                      {apt.modality === "presencial" ? (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="size-3 text-rose-500" /> Presencial
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1">
-                          <Video className="size-3 text-teal" /> En Línea
-                        </span>
-                      )}
+                      <span className="flex items-center gap-1">
+                        <MapPin className="size-3 text-rose-500" /> Presencial
+                      </span>
                     </Badge>
                     <span className="text-xs text-muted-foreground flex items-center gap-1 font-semibold">
                       <Clock className="size-3" />

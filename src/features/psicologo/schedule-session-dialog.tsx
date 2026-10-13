@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Calendar, Clock, MapPin, Video, CheckCircle } from "lucide-react";
+import { Calendar, Clock, MapPin, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -140,38 +140,17 @@ export function ScheduleSessionDialog({
             {/* Modalidad */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-foreground">Modalidad de atención</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModality("presencial")}
-                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${
-                    modality === "presencial"
-                      ? "border-accent bg-accent/10 font-semibold text-accent shadow-sm"
-                      : "border-border/70 bg-card hover:bg-muted/30 text-muted-foreground"
-                  }`}
-                >
-                  <MapPin className="size-4 shrink-0" />
-                  <div>
-                    <p className="text-xs font-bold text-foreground">Presencial</p>
-                    <p className="text-[10px] text-muted-foreground">Consultorio 3, TESH</p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setModality("en-linea")}
-                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${
-                    modality === "en-linea"
-                      ? "border-accent bg-accent/10 font-semibold text-accent shadow-sm"
-                      : "border-border/70 bg-card hover:bg-muted/30 text-muted-foreground"
-                  }`}
-                >
-                  <Video className="size-4 shrink-0" />
-                  <div>
-                    <p className="text-xs font-bold text-foreground">En Línea</p>
-                    <p className="text-[10px] text-muted-foreground">Google Meet institucional</p>
-                  </div>
-                </button>
+              <div className="flex items-center gap-2.5 rounded-xl border border-accent/40 bg-accent/5 p-3 text-left">
+                <MapPin className="size-4 text-accent shrink-0" />
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-foreground">Presencial</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Consultorio 3, Edificio de Bienestar Integral TESH
+                  </p>
+                </div>
+                <span className="text-[10px] font-semibold bg-accent/15 text-accent px-2 py-0.5 rounded-md">
+                  Presencial
+                </span>
               </div>
             </div>
 

@@ -220,23 +220,28 @@ export function getStoredAppointments(): Appointment[] {
       const parsed: Appointment[] = JSON.parse(raw);
       // Ensure studentName fallback if missing
       return parsed.map((apt, idx) => {
-        if (!apt.studentName) {
-          const matchingMock = mockAppointments.find((m) => m.id === apt.id);
-          const fallbackNames = [
-            "Mireya González",
-            "Luis Ramírez",
-            "Carlos Paredes",
-            "Andrea Valdés",
-            "Jimena Soto",
-          ];
-          const studentName =
-            matchingMock?.studentName ?? fallbackNames[idx % fallbackNames.length] ?? "Estudiante";
-          return {
-            ...apt,
-            studentName,
-          };
-        }
-        return apt;
+        const matchingMock = mockAppointments.find((m) => m.id === apt.id);
+        const fallbackNames = [
+          "Mireya González",
+          "Luis Ramírez",
+          "Carlos Paredes",
+          "Andrea Valdés",
+          "Jimena Soto",
+        ];
+        const studentName =
+          apt.studentName ??
+          matchingMock?.studentName ??
+          fallbackNames[idx % fallbackNames.length] ??
+          "Estudiante";
+        return {
+          ...apt,
+          studentName,
+          modality: "presencial" as const,
+          locationOrLink:
+            apt.locationOrLink && apt.locationOrLink.toLowerCase().includes("videollamada")
+              ? "Consultorio 3, Edificio de Bienestar Integral TESH"
+              : apt.locationOrLink || "Consultorio 3, Edificio de Bienestar Integral TESH",
+        };
       });
     }
   } catch (e) {
@@ -292,9 +297,7 @@ export function completeAppointment(appointmentId: string): {
     author: target.psychologistName || "Dra. Marta Gómez",
     title: `Sesión clínica completada — ${patientName}`,
     category: "sesion",
-    content: `Sesión de acompañamiento completada satisfactoriamente con ${patientName}.\nFecha: ${target.date} | Horario: ${target.timeSlot}\nModalidad: ${
-      target.modality === "presencial" ? "Presencial (Consultorio 3)" : "En línea (Google Meet)"
-    }\nObservaciones: ${target.notes || "Sesión realizada según plan de intervención."}`,
+    content: `Sesión de acompañamiento completada satisfactoriamente con ${patientName}.\nFecha: ${target.date} | Horario: ${target.timeSlot}\nModalidad: Presencial (Consultorio 3)\nObservaciones: ${target.notes || "Sesión realizada según plan de intervención."}`,
   });
 
   // Actualizar caso a atendido o en seguimiento
@@ -329,10 +332,7 @@ export function scheduleSessionFromPsychologist(data: {
 }): Appointment {
   const appointments = getStoredAppointments();
 
-  const locationOrLink =
-    data.modality === "presencial"
-      ? "Consultorio 3, Edificio de Bienestar Integral TESH"
-      : "Enlace de videollamada institucional segura (Google Meet TESH)";
+  const locationOrLink = "Consultorio 3, Edificio de Bienestar Integral TESH";
 
   const newAppointment: Appointment = {
     id: `apt-${Date.now()}`,
@@ -340,7 +340,7 @@ export function scheduleSessionFromPsychologist(data: {
     caseId: data.caseId,
     date: data.date,
     timeSlot: data.timeSlot,
-    modality: data.modality,
+    modality: "presencial",
     psychologistName: data.psychologistName,
     psychologistRole: "Psicóloga clínica y bienestar estudiantil",
     locationOrLink,
@@ -359,7 +359,7 @@ export function scheduleSessionFromPsychologist(data: {
   addClinicalNote({
     caseId: data.caseId,
     author: data.psychologistName,
-    title: `Cita programada (${data.modality === "presencial" ? "Presencial" : "En línea"})`,
+    title: "Cita programada (Presencial)",
     category: "sesion",
     content: `Fecha: ${data.date} | Horario: ${data.timeSlot}\nTema: ${data.sessionTopic}\nUbicación: ${locationOrLink}`,
   });
@@ -369,7 +369,7 @@ export function scheduleSessionFromPsychologist(data: {
     recipientRole: "psicologo",
     type: "cita_nueva",
     title: `Nueva cita agendada: Caso ${data.studentInitials}`,
-    message: `Sesión ${data.modality} programada para el ${data.date} a las ${data.timeSlot}.`,
+    message: `Sesión presencial programada para el ${data.date} a las ${data.timeSlot}.`,
     priority: "media",
     caseId: data.caseId,
   });

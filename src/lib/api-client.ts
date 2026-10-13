@@ -350,6 +350,7 @@ export function resetBackendScreeningState() {
 }
 
 export interface TamizajeSubmissionPayload {
+  user_id?: string | null;
   paciente: {
     iniciales: string;
     edad: number;
@@ -384,13 +385,30 @@ export interface TamizajeEdgeResponse {
 /**
  * Invoca la Edge Function `tamizaje` en Supabase al concluir el reactivo 9 de PHQ-9.
  * Utiliza supabase.functions.invoke inyectando automáticamente la URL y clave pública anónima.
+ * Incluye en el body el id del usuario de Supabase Auth (o null si es sesión demo).
  */
 export async function invokeTamizajeEdgeFunction(
   payload: TamizajeSubmissionPayload,
 ): Promise<{ data: TamizajeEdgeResponse | null; error: string | null }> {
   try {
+    let finalPayload = payload;
+    if (finalPayload.user_id === undefined) {
+      let currentUserId: string | null = null;
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const UUID_REGEX =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (authData?.user?.id && UUID_REGEX.test(authData.user.id)) {
+          currentUserId = authData.user.id;
+        }
+      } catch {
+        currentUserId = null;
+      }
+      finalPayload = { ...finalPayload, user_id: currentUserId };
+    }
+
     const { data, error } = await supabase.functions.invoke("tamizaje", {
-      body: payload,
+      body: finalPayload,
     });
 
     if (error) {
