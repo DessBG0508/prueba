@@ -40,76 +40,38 @@ export function ResetPage() {
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Detectar si la URL contiene errores de Supabase Auth (ej. link expirado o inválido)
-    if (typeof window !== "undefined") {
-      const hash = window.location.hash || "";
-      const search = window.location.search || "";
-      if (
-        hash.includes("error=") ||
-        search.includes("error=") ||
-        hash.includes("error_code=") ||
-        search.includes("error_code=")
-      ) {
-        if (isMounted) {
-          setHasValidSession(false);
-          setIsCheckingSession(false);
-        }
-        return;
-      }
-    }
-
-    // 2. Escuchar evento de autenticación: PASSWORD_RECOVERY o SIGNED_IN
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    // Escuchar eventos de cambio de sesión por si Supabase la establece durante la carga
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!isMounted) return;
-      if (event === "PASSWORD_RECOVERY" || (session && event === "SIGNED_IN")) {
+      if (session) {
         setHasValidSession(true);
         setIsCheckingSession(false);
       }
     });
 
-    // 3. Al montar, el cliente de Supabase establece la sesión automáticamente desde el enlace
-    const verifyInitialSession = async () => {
+    // La decisión de qué mostrar se basa únicamente en getSession()
+    const checkSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (!isMounted) return;
 
-        if (data.session && !error) {
+        if (data?.session && !error) {
           setHasValidSession(true);
-          setIsCheckingSession(false);
-          return;
-        }
-
-        // Si la URL contiene hash con access_token o query con code, dar un momento a Supabase para procesar
-        const hasTokensInUrl =
-          typeof window !== "undefined" &&
-          (window.location.hash.includes("access_token") ||
-            window.location.search.includes("code="));
-
-        if (hasTokensInUrl) {
-          setTimeout(async () => {
-            if (!isMounted) return;
-            const { data: retryData } = await supabase.auth.getSession();
-            if (retryData.session) {
-              setHasValidSession(true);
-            } else {
-              setHasValidSession(false);
-            }
-            setIsCheckingSession(false);
-          }, 800);
         } else {
-          // No hay sesión ni tokens de recuperación
           setHasValidSession(false);
-          setIsCheckingSession(false);
         }
       } catch {
         if (isMounted) {
           setHasValidSession(false);
+        }
+      } finally {
+        if (isMounted) {
           setIsCheckingSession(false);
         }
       }
     };
 
-    verifyInitialSession();
+    checkSession();
 
     return () => {
       isMounted = false;
