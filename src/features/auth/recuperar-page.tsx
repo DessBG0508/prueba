@@ -43,9 +43,9 @@ export function RecuperarPage() {
     try {
       setIsSubmitting(true);
 
-      // Usar Supabase Auth nativo para enviar enlace/código de recuperación
+      // Usar Supabase Auth nativo para enviar enlace de recuperación a /reset
       const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-        redirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/restablecer`,
+        redirectTo: "http://localhost:3000/reset",
       });
 
       if (error) {
@@ -102,8 +102,8 @@ export function RecuperarPage() {
               </h1>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {emailSent
-                  ? "Hemos enviado las instrucciones y tu código de verificación a tu bandeja de entrada."
-                  : `Ingresa tu correo institucional o registrado para recibir las instrucciones de recuperación.`}
+                  ? "Hemos enviado el enlace de recuperación a tu bandeja de entrada."
+                  : `Ingresa tu correo institucional o registrado para recibir el enlace de recuperación.`}
               </p>
             </div>
           </div>
@@ -114,11 +114,11 @@ export function RecuperarPage() {
               <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs text-emerald-950 dark:text-emerald-200">
                 <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <div className="space-y-1">
-                  <p className="font-semibold text-foreground">Instrucciones enviadas a:</p>
+                  <p className="font-semibold text-foreground">Enlace enviado a:</p>
                   <p className="font-mono text-xs text-accent break-all">{sentEmailAddress}</p>
                   <p className="text-muted-foreground pt-1">
-                    Revisa tu bandeja principal y la carpeta de spam o no deseados. Copia el código
-                    de 6 dígitos o abre el enlace para actualizar tu contraseña.
+                    Revisa tu bandeja principal y la carpeta de spam. Abre el enlace que recibiste
+                    para definir tu nueva contraseña.
                   </p>
                 </div>
               </div>
@@ -126,16 +126,11 @@ export function RecuperarPage() {
               <div className="space-y-2.5">
                 <Button
                   type="button"
-                  onClick={() =>
-                    navigate({
-                      to: "/restablecer",
-                      search: { email: sentEmailAddress },
-                    })
-                  }
-                  className="h-11 w-full gap-2 rounded-xl bg-accent font-semibold text-accent-foreground shadow-md transition-all hover:bg-accent/90"
+                  onClick={() => navigate({ to: "/login" })}
+                  className="h-11 w-full gap-2 rounded-xl bg-accent font-semibold text-accent-foreground shadow-md transition-all hover:bg-accent/90 cursor-pointer"
                 >
-                  <Send className="size-4" />
-                  <span>Ingresar código de 6 dígitos</span>
+                  <ArrowLeft className="size-4" />
+                  <span>Volver a iniciar sesión</span>
                 </Button>
 
                 <Button
@@ -145,7 +140,7 @@ export function RecuperarPage() {
                     setEmailSent(false);
                     setErrorMessage(null);
                   }}
-                  className="h-10 w-full rounded-xl border-border/70 text-xs font-medium text-foreground hover:bg-accent/10"
+                  className="h-10 w-full rounded-xl border-border/70 text-xs font-medium text-foreground hover:bg-accent/10 cursor-pointer"
                 >
                   Reenviar a otro correo
                 </Button>
@@ -187,21 +182,19 @@ export function RecuperarPage() {
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="mt-2 h-11 w-full gap-2 rounded-xl bg-accent font-semibold text-accent-foreground shadow-md transition-all hover:bg-accent/90 disabled:opacity-50"
+                className="mt-2 h-11 w-full gap-2 rounded-xl bg-accent font-semibold text-accent-foreground shadow-md transition-all hover:bg-accent/90 disabled:opacity-50 cursor-pointer"
               >
                 <Send className="size-4" />
-                <span>
-                  {isSubmitting ? "Enviando instrucciones..." : "Enviar correo de recuperación"}
-                </span>
+                <span>{isSubmitting ? "Enviando enlace..." : "Enviar enlace de recuperación"}</span>
               </Button>
 
               <div className="pt-2 text-center text-xs text-muted-foreground">
-                <span>¿Ya recibiste tu código? </span>
+                <span>¿Recordaste tu contraseña? </span>
                 <Link
-                  to="/restablecer"
+                  to="/login"
                   className="font-medium text-accent hover:underline focus:outline-none"
                 >
-                  Restablecer aquí
+                  Inicia sesión aquí
                 </Link>
               </div>
             </form>

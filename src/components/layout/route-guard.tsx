@@ -7,7 +7,7 @@ import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { PersistentSosButton } from "@/components/common/persistent-sos-button";
 
-const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/restablecer"];
+const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/restablecer", "/reset"];
 
 /**
  * DECISIÓN DE ARQUITECTURA:
@@ -25,8 +25,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     if (isLoading) return;
 
     const isPublic = PUBLIC_ROUTES.includes(pathname);
+    const isResetPage = pathname === "/reset" || pathname === "/restablecer";
 
-    // 1. Sin sesión activa -> Redirigir a /login
+    // 1. Sin sesión activa -> Redirigir a /login (excepto en rutas públicas)
     if (!user) {
       if (!isPublic) {
         navigate({ to: "/login", replace: true });
@@ -36,8 +37,8 @@ export function RouteGuard({ children }: { children: ReactNode }) {
 
     const destinoAutorizado = rutaPorRol(user.role);
 
-    // 2. Con sesión activa en ruta pública -> Redirigir según rol
-    if (isPublic) {
+    // 2. Con sesión activa en ruta pública -> Redirigir según rol (salvo en /reset donde se actualiza contraseña)
+    if (isPublic && !isResetPage) {
       navigate({ to: destinoAutorizado, replace: true });
       return;
     }
