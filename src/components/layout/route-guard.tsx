@@ -96,7 +96,8 @@ export function RouteGuard({ children }: { children: ReactNode }) {
 
   // Si hay usuario y está en una ruta que no le corresponde, no renderizar mientras redirige
   if (user) {
-    if (PUBLIC_ROUTES.includes(pathname)) return null;
+    const enReset = pathname === "/reset" || pathname === "/restablecer";
+    if (PUBLIC_ROUTES.includes(pathname) && !enReset) return null;
     if (
       user.role === "psicologo" &&
       !pathname.startsWith("/psicologo") &&
