@@ -1,2 +1,2 @@
-// Re-export oficial del cliente Supabase para compatibilidad con integraciones y Lovable
+// Cliente Supabase para el proyecto Equilibra TESH
 export { supabase, supabaseUrl, supabaseAnonKey, isSupabaseConfigured } from "@/lib/supabase";

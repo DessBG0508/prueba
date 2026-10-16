@@ -55,9 +55,9 @@ export function EquilibraBrand({
               y2="85"
               gradientUnits="userSpaceOnUse"
             >
-              <stop stopColor="#6857E4" />
-              <stop offset="0.5" stopColor="#3B82F6" />
-              <stop offset="1" stopColor="#87FFBD" />
+              <stop stopColor="#1B198F" />
+              <stop offset="0.5" stopColor="#4A3EC4" />
+              <stop offset="1" stopColor="#6857E4" />
             </linearGradient>
             <linearGradient
               id="eq-head-grad"

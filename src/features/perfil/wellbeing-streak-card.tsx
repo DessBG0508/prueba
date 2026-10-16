@@ -61,15 +61,15 @@ export function WellbeingStreakCard() {
     >
       {/* Luz ambiental sutil en la esquina superior */}
       <div
-        className="pointer-events-none absolute -right-12 -top-12 size-44 rounded-full bg-gradient-to-br from-amber-500/15 via-rose-500/10 to-transparent blur-2xl"
+        className="pointer-events-none absolute -right-12 -top-12 size-44 rounded-full bg-gradient-to-br from-amber-500/10 via-[#6857E4]/5 to-transparent blur-2xl"
         aria-hidden="true"
       />
 
       {/* Encabezado del componente */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-4">
         <div className="flex items-center gap-2.5">
-          <div className="relative grid size-9 place-items-center rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 text-white shadow-soft">
-            <Flame className="size-5 animate-pulse" />
+          <div className="relative grid size-9 place-items-center rounded-xl bg-gradient-to-tr from-amber-500 to-[#6857E4] text-white shadow-soft">
+            <Flame className="size-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -143,7 +143,7 @@ export function WellbeingStreakCard() {
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPercent}%` }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
-                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-rose-500"
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-[#6857E4]"
               />
             </div>
           </div>
@@ -180,7 +180,7 @@ export function WellbeingStreakCard() {
                     </div>
                   ) : day.isToday ? (
                     <div className="grid size-6 place-items-center rounded-full border-2 border-dashed border-primary text-primary">
-                      <Flame className="size-3.5 animate-pulse" />
+                      <Flame className="size-3.5" />
                     </div>
                   ) : (
                     <div className="size-2 rounded-full bg-border" />
@@ -263,7 +263,7 @@ export function WellbeingStreakCard() {
             <Button
               asChild
               size="sm"
-              className="rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 text-white text-xs font-semibold shadow-soft hover:opacity-95"
+              className="rounded-xl bg-gradient-to-r from-amber-500 to-[#6857E4] text-white text-xs font-semibold shadow-soft hover:opacity-95"
             >
               <Link to="/checkin">
                 <span>Completar check-in de hoy</span>

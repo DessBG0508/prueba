@@ -340,7 +340,7 @@ export function PsychologistDashboard() {
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-border/70 bg-card/85 px-4 sm:px-8 backdrop-blur-md">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <span className="text-xs font-bold uppercase tracking-wider text-teal hidden sm:inline-flex items-center gap-1.5">
-              <span className="inline-block size-2 rounded-full bg-teal animate-pulse" />
+              <span className="inline-block size-1.5 rounded-full bg-teal" />
               Área de Acompañamiento TESH
             </span>
             <span className="text-muted-foreground/40 hidden sm:inline">•</span>

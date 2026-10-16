@@ -116,13 +116,13 @@ export function HomePage() {
             {/* Tarjeta destacada de Eli — Asistente de apoyo emocional */}
             <motion.section
               variants={activeCardVariants}
-              className="ethereal-card overflow-hidden p-5 sm:p-6 border-accent/30 bg-gradient-to-r from-card via-card to-lavender-soft/40 shadow-soft"
+              className="ethereal-card overflow-hidden p-5 sm:p-6 border-[#6857E4]/30 bg-card shadow-soft"
               aria-label={`Asistente ${BRAND.assistant}`}
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
-                  {/* Avatar de Eli: Círculo con gradiente de la marca (#6857E4 a #87FFBD), no foto */}
-                  <div className="relative flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#6857E4] to-[#87FFBD] shadow-soft ring-2 ring-card">
+                  {/* Avatar de Eli: Círculo con gradiente canónico (#1B198F a #6857E4) */}
+                  <div className="relative flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-soft ring-2 ring-card">
                     <Sparkles className="size-6 text-white" />
                     <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 ring-2 ring-card" />
                   </div>
@@ -142,7 +142,7 @@ export function HomePage() {
                 </div>
                 <Button
                   asChild
-                  className="rounded-2xl bg-[#6857E4] px-5 text-xs font-semibold text-white shadow-soft transition-transform hover:scale-105 active:scale-95"
+                  className="rounded-2xl bg-[#6857E4] hover:bg-[#6857E4]/90 px-5 text-xs font-semibold text-white shadow-soft transition-colors active:scale-95"
                 >
                   <Link to="/chat">
                     <span>Conversar con {BRAND.assistant}</span>

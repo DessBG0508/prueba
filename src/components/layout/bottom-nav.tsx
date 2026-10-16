@@ -54,9 +54,9 @@ export function BottomNav() {
             aria-label="Check-in emocional y apoyo"
             title="Check-in emocional y apoyo"
             aria-current={isCenterActive ? "page" : undefined}
-            className={`-mt-7 flex size-14 items-center justify-center rounded-full bg-gradient-to-tr from-[#6857E4] to-[#87FFBD] shadow-float transition-all duration-200 ${
+            className={`-mt-7 flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-float transition-all duration-200 ${
               isCenterActive
-                ? "ring-4 ring-indigo-200 dark:ring-indigo-800/90 scale-105 shadow-md"
+                ? "ring-4 ring-[#6857E4]/30 scale-105 shadow-md"
                 : "ring-4 ring-background hover:scale-105 active:scale-95"
             }`}
           >

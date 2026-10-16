@@ -66,7 +66,7 @@ export function DirectivoDashboard() {
       <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-5 sm:py-7 border-b border-border/60">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="inline-block size-2 rounded-full bg-teal animate-pulse" />
+            <span className="inline-block size-1.5 rounded-full bg-teal" />
             <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-teal">
               Dirección Académica y Jefaturas • {BRAND.fullName}
             </p>

@@ -1,11 +1,6 @@
 // Configuración centralizada de marca, logo e ilustraciones del emocionómetro.
 // Permite cambiar, editar o sustituir iconos e imágenes fácilmente en un solo lugar.
 
-import estrellaFeliz from "@/assets/moods/estrella-feliz.png.asset.json";
-import nubeLigera from "@/assets/moods/nube-ligera.png.asset.json";
-import nubeNormal from "@/assets/moods/nube-normal.png.asset.json";
-import gotaTriste from "@/assets/moods/gota-triste.png.asset.json";
-import nubeMuyMal from "@/assets/moods/nube-muy-mal.png.asset.json";
 import type { MoodId } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 
@@ -35,35 +30,35 @@ export const moodIllustrationsConfig: Record<MoodId, MoodIllustrationConfig> = {
   "muy-bien": {
     id: "muy-bien",
     label: "Excelente",
-    src: estrellaFeliz.url,
+    src: "/img/emocionmetro/estrella-feliz.svg",
     alt: "Estrella sonriente y luminosa",
     description: "Te sientes con energía, vitalidad y apertura emocional",
   },
   bien: {
     id: "bien",
     label: "Bien",
-    src: nubeLigera.url,
+    src: "/img/emocionmetro/nube-ligera.svg",
     alt: "Nube suave y alegre",
     description: "Te sientes con tranquilidad y buen ánimo para tus actividades",
   },
   regular: {
     id: "regular",
     label: "Regular",
-    src: nubeNormal.url,
+    src: "/img/emocionmetro/nube-normal.svg",
     alt: "Nube con expresión neutra",
     description: "Te sientes en balance o con un nivel manejable de cansancio",
   },
   triste: {
     id: "triste",
     label: "Triste",
-    src: gotaTriste.url,
+    src: "/img/emocionmetro/gota-triste.svg",
     alt: "Gota de agua con semblante melancólico",
     description: "Sientes desánimo, vulnerabilidad o ganas de desconectar",
   },
   "muy-mal": {
     id: "muy-mal",
     label: "Muy mal",
-    src: nubeMuyMal.url,
+    src: "/img/emocionmetro/nube-muy-mal.svg",
     alt: "Nube con tormenta y relámpago",
     description: "Sientes sobrecarga, dolor emocional o angustia intensa",
   },

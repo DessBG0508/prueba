@@ -711,13 +711,6 @@ export function ChatPage() {
 
   return (
     <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-background text-foreground">
-      {/* Fondo con auroras de baja carga */}
-      <div className="aurora-blobs pointer-events-none" aria-hidden="true">
-        <div className="aurora-blob aurora-blob-1 opacity-60" />
-        <div className="aurora-blob aurora-blob-2 opacity-50" />
-      </div>
-      <div className="grain-layer pointer-events-none" aria-hidden="true" />
-
       {/* 
         BARRA SUPERIOR PERMANENTE (Sticky, siempre visible)
         Incluye botón de salir explícito, identidad de Eli, botón de reiniciar y botón de historial
@@ -740,7 +733,7 @@ export function ChatPage() {
 
             <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
               <div
-                className="relative flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#6857E4] to-[#87FFBD] shadow-soft"
+                className="relative flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-soft"
                 aria-hidden="true"
               >
                 <Sparkles className="size-4 text-white" />

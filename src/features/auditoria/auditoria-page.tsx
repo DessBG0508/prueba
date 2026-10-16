@@ -107,7 +107,7 @@ export function AuditoriaPage() {
                 <ArrowLeft className="size-3.5" />
                 <span>Volver al Panel</span>
               </Link>
-              <span className="inline-block size-2 rounded-full bg-teal animate-pulse" />
+              <span className="inline-block size-1.5 rounded-full bg-teal" />
               <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-teal">
                 Oficina de Protección de Datos • {BRAND.fullName}
               </p>

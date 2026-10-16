@@ -3,8 +3,6 @@ import { Link } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
 import { ChevronDown, HeartHandshake, MessageCircle, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import estrellaFeliz from "@/assets/moods/estrella-feliz.png.asset.json";
-import nubeLigera from "@/assets/moods/nube-ligera.png.asset.json";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { BreathingSphereView } from "@/components/effects/breathing-sphere-view";
@@ -60,13 +58,13 @@ export function AlertaPage() {
           aria-labelledby="alert-title"
         >
           <img
-            src={nubeLigera.url}
+            src="/img/emocionmetro/nube-ligera.svg"
             alt=""
             className="pointer-events-none absolute -right-5 -top-4 w-28 rotate-6 opacity-20 sm:w-40"
             aria-hidden="true"
           />
           <img
-            src={estrellaFeliz.url}
+            src="/img/emocionmetro/estrella-feliz.svg"
             alt=""
             className="pointer-events-none absolute -bottom-6 right-20 w-20 -rotate-12 opacity-15 sm:w-28"
             aria-hidden="true"

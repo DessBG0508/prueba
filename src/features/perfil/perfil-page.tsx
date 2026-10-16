@@ -378,8 +378,8 @@ export function PerfilPage() {
           aria-labelledby="perfil-heading"
         >
           <div className="flex flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
-            {/* Avatar con gradiente de marca y texto blanco */}
-            <div className="relative flex size-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#6857E4] to-[#87FFBD] shadow-float ring-4 ring-card">
+            {/* Avatar con gradiente canónico de marca (#1B198F a #6857E4) */}
+            <div className="relative flex size-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-float ring-4 ring-card">
               <span className="font-display text-2xl font-bold tracking-tight text-white">
                 {getInitials(user?.name)}
               </span>

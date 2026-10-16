@@ -7,7 +7,7 @@ import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { PersistentSosButton } from "@/components/common/persistent-sos-button";
 
-const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/restablecer", "/reset"];
+const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/reset"];
 
 /**
  * DECISIÓN DE ARQUITECTURA:
@@ -25,7 +25,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     if (isLoading) return;
 
     const isPublic = PUBLIC_ROUTES.includes(pathname);
-    const isResetPage = pathname === "/reset" || pathname === "/restablecer";
+    const isResetPage = pathname === "/reset";
 
     // 1. Sin sesión activa -> Redirigir a /login (excepto en rutas públicas)
     if (!user) {
@@ -96,7 +96,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
 
   // Si hay usuario y está en una ruta que no le corresponde, no renderizar mientras redirige
   if (user) {
-    const enReset = pathname === "/reset" || pathname === "/restablecer";
+    const enReset = pathname === "/reset";
     if (PUBLIC_ROUTES.includes(pathname) && !enReset) return null;
     if (
       user.role === "psicologo" &&

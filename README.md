@@ -1,114 +1,87 @@
-# Equilibra TESH: Tu Bienestar
+# Equilibra TESH — Plataforma de Apoyo Psicológico Universitario
 
-Actúa como Frontend Engineer senior experto en React, TypeScript, Tailwind CSS,
-shadcn/ui, Lucide Icons y Framer Motion. Construye la interfaz web responsive
-(mobile-first) de "Equilibra TESH", plataforma de apoyo psicológico universitario
-del TESH Huixquilucan. Toda la UI en español de México, tono empático y calmado.
+Sistema integral de salud mental y bienestar emocional desarrollado para la comunidad estudiantil del **Tecnológico de Estudios Superiores de Huixquilucan (TESH)**.
 
-## STACK Y ARQUITECTURA
+---
 
-- React + Vite + TypeScript + Tailwind + shadcn/ui + lucide-react + framer-motion.
-- Estructura limpia desde el inicio:
-  /src
-  /components/ui (botones, chips, cards, inputs reutilizables)
-  /components/layout (AppHeader, BottomNav, PageShell)
-  /components/effects (AuroraBackground, LiquidButton, BlobCursor)
-  /features/home, /features/checkin, /features/alerta
-  /lib (utils, tokens, mock-data.ts, api-client.ts)
-- Datos 100% mock con flag DEMO_MODE para conectar Supabase después sin romper la UI.
-- Tipos TypeScript: Mood, CheckIn, RiskLevel, CrisisResource.
+##  Objetivo del Proyecto
 
-## DESIGN SYSTEM (tokens exactos en Tailwind)
+Brindar un entorno seguro, confidencial y accesible para la detección temprana, acompañamiento emocional y canalización profesional de los estudiantes del TESH, garantizando atención presencial oportuna y protocolos de contención ante situaciones de crisis.
 
-- primary #1B198F (Azul profundo): títulos en texto, botones sólidos, CTA de crisis
-- accent #6857E4 (Lila): botón primario, chips activos, escala
-- secondary #C3B3F1 (Lavanda): hover y decorativos
-- teal #12BDB6, cyan #00BCC8: gradientes y gráficas
-- alert #FF9CED: EXCLUSIVO de alertas/crisis (nunca decorativo)
-- Fondos: #DFF7F2, #F1EDFC, #87FFBD muy suaves; cards blancas con sombra difusa etérea
-- Radios grandes (rounded-2xl/3xl), estética calmada y etérea
-  Tipografía:
-- Títulos: "Milesdane" (self-hosted en /public/fonts con @font-face),
-  fallback "Playfair Display". Uso: logo, headings, frases destacadas.
-- Cuerpo/UI/botones: "Montserrat" 400/500/600/700.
+---
 
-## PANTALLAS
+##  Módulos Principales
 
-### 1. Home Estudiante "/"
+### 1. Portal del Estudiante
+- **Check-in Emocional Semanal:** Registro periódico del estado de ánimo y niveles de carga académica para monitorear tendencias de bienestar.
+- **Citas de Orientación Presencial:** Solicitud y gestión de sesiones presenciales con los psicólogos del campus universitario.
+- **Herramientas de Autorregulación:** Ejercicios interactivos de respiración guiada (técnica 4-7-8) y recursos psicoeducativos de autocuidado.
+- **Botón SOS Permanente:** Acceso inmediato a líneas de emergencia nacionales (Línea de la Vida 800 911 2000, SAPTEL 800 472 7835 y Emergencias 911).
 
-- Header: logo "Equilibra", campana, avatar.
-- "Hola, Dess ✨" + subtítulo: "Qué bueno verte por aquí. Siempre es un buen
-  momento para cuidar de ti."
-- Card de estado de ánimo: "¿Cómo te sientes hoy?" con 5 círculos de color
-  (Muy bien, Bien, Regular, Triste, Muy mal) + iconos lucide; spring al seleccionar.
-- Grid 2x2 de accesos rápidos: Check-in emocional (2 min), Ejercicios de
-  respiración, Recursos, Mis citas.
-- Botón principal full-width "Agendar cita con psicólogo" (#6857E4, efecto líquido).
-- "Tu bienestar en números" (mock): Ánimo 3.8/5, Sueño 6.5h, Estrés 2.4/5, Energía 3.6/5.
-- BottomNav: Inicio, Recursos, botón + central elevado, Citas, Perfil.
+### 2. Eli — Asistente de Tamizaje Clínico
+- Aplicación sistemática y confidencial de cuestionarios estandarizados de salud mental:
+  - **GAD-7:** Evaluación de sintomatología ansiosa.
+  - **PHQ-9:** Detección de sintomatología depresiva.
+- **Regla de Crisis Prioritaria:** Detección automatizada de respuestas de riesgo en el ítem 9 con canalización inmediata a servicios de urgencia y notificación para revisión profesional.
 
-### 2. Check-in Emocional "/checkin"
+### 3. Portal de Psicología y Orientación
+- **Agenda Clínica:** Gestión integral de citas presenciales programadas e historial de atención.
+- **Expedientes de Estudiantes:** Registro seguro de notas de evolución, escalas de riesgo y seguimiento continuo.
+- **Atención de Alertas:** Bandeja prioritaria para estudiantes con alertas rojas o tamizajes de alto riesgo.
 
-- Flecha atrás + título serif "Check-in emocional" + "Semana del 15 al 19 de septiembre".
-- Card: "¿Qué tan cargada sentiste esta semana académica?" con escala 1–5 en
-  píldoras circulares (la seleccionada se llena de lila con animación elástica).
-- Chips multi-seleccionables (fondo menta al activar): Tranquila, Estrés leve,
-  Buen sueño, Ansiedad, Insomnio, Ánimo bajo.
-- "Guardar check-in": overlay de éxito con check animado + mensaje empático.
-  En DEMO_MODE, si escala = 4 o 5 → redirigir a /alerta (simula regla de triaje RD02).
-- Botón outline secundario: "Hablar con un psicólogo".
+### 4. Coordinación y Dirección
+- **Auditoría e Indicadores:** Estadísticas agregadas y anónimas del estado de salud mental de la comunidad estudiantil para la toma de decisiones institucionales.
 
-### 3. Alerta Prioritaria — Nivel Rojo "/alerta"
+---
 
-- Etiqueta "ATENCIÓN PRIORITARIA".
-- Banner grande #FF9CED rounded-3xl: título serif "Notamos que podrías necesitar
-  apoyo ahora" + "No estás sola/o en esto. Hay alguien disponible para escucharte
-  en este momento, sin costo y de forma confidencial."
-- Botón sólido #1B198F: "Hablar con alguien ahora".
-- Botón blanco: "Ver recursos de apoyo".
-- Card "Mientras tanto": respiración 4-7-8 con círculo animado que crece/decrece.
-  "Respira lento cuatro segundos, sostén, y suelta. Estamos aquí contigo."
-- Recursos clicables: Línea de la Vida 800 911 2000, Emergencias 911, chat con Eli.
-- Tono SIEMPRE calmado, jamás alarmista.
+##  Stack Tecnológico
 
-## EFECTOS (premium pero sobrio)
+- **Frontend:** React 19, TypeScript, TanStack Start, TanStack Router.
+- **Estilos e Interfaz:** Tailwind CSS, Radix UI, Lucide Icons, Framer Motion.
+- **Persistencia y Autenticación:** Supabase (Auth con recuperación segura por correo, PostgreSQL y políticas Row Level Security).
+- **Herramientas de Desarrollo:** Vite, ESLint, Prettier.
 
-- AuroraBackground: gradientes lentos lavanda→menta→cyan con blur y grano sutil.
-- LiquidButton: en hover un gradiente radial líquido sigue el cursor dentro del
-  botón (estilo "What can I build" de reactbits.dev).
-- BlobCursor: blob suave que sigue el cursor con lerp, SOLO desktop
-  (pointer: fine) y respetando prefers-reduced-motion.
-- Cards con hover lift + sombra creciente; transiciones de ruta con fade/slide.
+---
 
-## PREPARADO PARA SEGURIDAD (fase Supabase)
+##  Instalación y Desarrollo Local
 
-- Login/Registro stub (email + placeholder Google OAuth) y ProtectedRoute que
-  valide rol: estudiante, psicologo, coordinador, admin (tabla profiles).
-- NADA sensible en localStorage; nada de API keys en el cliente.
-- /lib/api-client.ts con funciones mock documentadas (saveCheckIn, triggerRedAlert)
-  listas para reemplazar por Supabase.
-- Comentarios en español marcando dónde irán las políticas RLS por rol.
+### Prerrequisitos
+- Node.js (versión 18 o superior recomendada)
+- npm o bun
 
-Empieza implementando: design system + Home completa. Luego espera mi
-confirmación para el Check-in, y después la Alerta.
+### Pasos
 
-This project was built with [Lovable](https://lovable.dev).
+1. **Clonar el repositorio:**
+   ```bash
+   git clone <url-del-repositorio>
+   cd equilibra-tesh
+   ```
 
-## Build with Lovable
+2. **Instalar dependencias:**
+   ```bash
+   npm install
+   ```
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/b45662d9-52ac-4b25-8047-eed754c958fb).
+3. **Configurar variables de entorno:**
+   Crear un archivo `.env` basado en `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+   Configurar `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+4. **Iniciar el servidor de desarrollo:**
+   ```bash
+   npm run dev
+   ```
+   La aplicación estará disponible en `http://localhost:3000`.
 
-## Development
+5. **Construir para producción:**
+   ```bash
+   npm run build
+   ```
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+---
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
-```
+##  Privacidad y Ética
+
+Todos los datos recabados en los cuestionarios y sesiones se manejan con estricta confidencialidad clínica y apego a las normas de protección de datos institucionales.

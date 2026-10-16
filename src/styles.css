@@ -90,22 +90,22 @@
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.31 0.183 278.2);
-  --primary-foreground: oklch(0.99 0.005 280);
-  --secondary: oklch(0.78 0.088 293);
-  --secondary-foreground: oklch(0.31 0.183 278.2);
+  --primary: #1B198F;
+  --primary-foreground: #ffffff;
+  --secondary: #6857E4;
+  --secondary-foreground: #ffffff;
   --muted: oklch(0.955 0.024 285);
   --muted-foreground: oklch(0.48 0.045 277);
-  --accent: oklch(0.55 0.199 286);
-  --accent-foreground: oklch(0.99 0.005 280);
+  --accent: #6857E4;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(0.88 0.04 285 / 65%);
   --input: oklch(0.88 0.04 285);
-  --ring: oklch(0.55 0.199 286);
-  --teal: oklch(0.71 0.126 184);
-  --cyan: oklch(0.72 0.128 199);
-  --alert: #ff9ced;
+  --ring: #6857E4;
+  --teal: #1B198F;
+  --cyan: #6857E4;
+  --alert: #FF9CED;
   --mint-soft: oklch(0.94 0.046 174);
   --lavender-soft: oklch(0.95 0.034 292);
   --cyan-soft: oklch(0.94 0.042 204);
@@ -239,7 +239,7 @@ button:not(:disabled):active,
   pointer-events: none;
 }
 
-/* Blob 1: Lila (#6857E4 / secondary) - 25s loop */
+/* Blob 1: Lila canónico (#6857E4) */
 .aurora-blob-1 {
   top: -10%;
   left: 10%;
@@ -247,14 +247,13 @@ button:not(:disabled):active,
   height: 38rem;
   background: radial-gradient(
     circle,
-    color-mix(in oklab, var(--secondary) 65%, transparent),
+    rgba(104, 87, 228, 0.12),
     transparent 70%
   );
-  opacity: 0.32;
-  animation: aurora-blob-1 25s ease-in-out infinite alternate;
+  opacity: 0.35;
 }
 
-/* Blob 2: Menta / Verde (#87FFBD / green-soft) - 29s loop */
+/* Blob 2: Azul profundo canónico (#1B198F) */
 .aurora-blob-2 {
   top: 25%;
   right: -8%;
@@ -262,14 +261,13 @@ button:not(:disabled):active,
   height: 34rem;
   background: radial-gradient(
     circle,
-    color-mix(in oklab, var(--green-soft) 85%, transparent),
+    rgba(27, 25, 143, 0.10),
     transparent 70%
   );
-  opacity: 0.28;
-  animation: aurora-blob-2 29s ease-in-out infinite alternate;
+  opacity: 0.30;
 }
 
-/* Blob 3: Cyan (#00BCC8 / cyan) - 22s loop */
+/* Blob 3: Lila suave (#6857E4) */
 .aurora-blob-3 {
   bottom: -10%;
   left: 25%;
@@ -277,11 +275,10 @@ button:not(:disabled):active,
   height: 36rem;
   background: radial-gradient(
     circle,
-    color-mix(in oklab, var(--cyan) 45%, transparent),
+    rgba(104, 87, 228, 0.08),
     transparent 70%
   );
-  opacity: 0.26;
-  animation: aurora-blob-3 22s ease-in-out infinite alternate;
+  opacity: 0.25;
 }
 
 .grain-layer {
@@ -295,28 +292,28 @@ button:not(:disabled):active,
 
 /* Versión oscura más sutil de la aurora (contraste AA y descanso visual) */
 .dark .aurora-blob-1 {
-  opacity: 0.12;
+  opacity: 0.15;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, #8b7cf0 40%, transparent),
+    rgba(104, 87, 228, 0.25),
     transparent 70%
   );
 }
 
 .dark .aurora-blob-2 {
-  opacity: 0.1;
+  opacity: 0.12;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, #2bd9cf 35%, transparent),
+    rgba(27, 25, 143, 0.35),
     transparent 70%
   );
 }
 
 .dark .aurora-blob-3 {
-  opacity: 0.08;
+  opacity: 0.10;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, #2bd9cf 30%, transparent),
+    rgba(104, 87, 228, 0.18),
     transparent 70%
   );
 }
@@ -376,30 +373,6 @@ button:not(:disabled):active,
 .dark .mood-deep {
   background: color-mix(in srgb, #8b7cf0 30%, #1b1930);
   color: #ffffff;
-}
-.liquid-button::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    circle 7.5rem at var(--liquid-x) var(--liquid-y),
-    color-mix(in oklab, var(--cyan) 75%, transparent),
-    transparent 72%
-  );
-  opacity: 0;
-  transition: opacity 300ms ease;
-}
-@media (hover: hover) and (pointer: fine) {
-  .liquid-button:hover::before {
-    opacity: 1;
-  }
-}
-.liquid-glow {
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  border: 1px solid color-mix(in oklab, var(--primary-foreground) 18%, transparent);
-  pointer-events: none;
 }
 .breathing-orb,
 .breathing-circle {
@@ -473,16 +446,6 @@ button:not(:disabled):active,
   }
 }
 
-@keyframes liquid-ripple {
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0.45;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.6);
-    opacity: 0;
-  }
-}
 @media (min-width: 640px) {
   .mood-circle {
     width: 4rem;
