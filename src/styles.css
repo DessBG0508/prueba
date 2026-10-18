@@ -90,22 +90,22 @@
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: #1B198F;
+  --primary: #1b198f;
   --primary-foreground: #ffffff;
-  --secondary: #6857E4;
+  --secondary: #6857e4;
   --secondary-foreground: #ffffff;
   --muted: oklch(0.955 0.024 285);
   --muted-foreground: oklch(0.48 0.045 277);
-  --accent: #6857E4;
+  --accent: #6857e4;
   --accent-foreground: #ffffff;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(0.88 0.04 285 / 65%);
   --input: oklch(0.88 0.04 285);
-  --ring: #6857E4;
-  --teal: #1B198F;
-  --cyan: #6857E4;
-  --alert: #FF9CED;
+  --ring: #6857e4;
+  --teal: #1b198f;
+  --cyan: #6857e4;
+  --alert: #ff9ced;
   --mint-soft: oklch(0.94 0.046 174);
   --lavender-soft: oklch(0.95 0.034 292);
   --cyan-soft: oklch(0.94 0.042 204);
@@ -245,11 +245,7 @@ button:not(:disabled):active,
   left: 10%;
   width: 38rem;
   height: 38rem;
-  background: radial-gradient(
-    circle,
-    rgba(104, 87, 228, 0.12),
-    transparent 70%
-  );
+  background: radial-gradient(circle, rgba(104, 87, 228, 0.12), transparent 70%);
   opacity: 0.35;
 }
 
@@ -259,12 +255,8 @@ button:not(:disabled):active,
   right: -8%;
   width: 34rem;
   height: 34rem;
-  background: radial-gradient(
-    circle,
-    rgba(27, 25, 143, 0.10),
-    transparent 70%
-  );
-  opacity: 0.30;
+  background: radial-gradient(circle, rgba(27, 25, 143, 0.1), transparent 70%);
+  opacity: 0.3;
 }
 
 /* Blob 3: Lila suave (#6857E4) */
@@ -273,11 +265,7 @@ button:not(:disabled):active,
   left: 25%;
   width: 36rem;
   height: 36rem;
-  background: radial-gradient(
-    circle,
-    rgba(104, 87, 228, 0.08),
-    transparent 70%
-  );
+  background: radial-gradient(circle, rgba(104, 87, 228, 0.08), transparent 70%);
   opacity: 0.25;
 }
 
@@ -293,29 +281,17 @@ button:not(:disabled):active,
 /* Versión oscura más sutil de la aurora (contraste AA y descanso visual) */
 .dark .aurora-blob-1 {
   opacity: 0.15;
-  background: radial-gradient(
-    circle,
-    rgba(104, 87, 228, 0.25),
-    transparent 70%
-  );
+  background: radial-gradient(circle, rgba(104, 87, 228, 0.25), transparent 70%);
 }
 
 .dark .aurora-blob-2 {
   opacity: 0.12;
-  background: radial-gradient(
-    circle,
-    rgba(27, 25, 143, 0.35),
-    transparent 70%
-  );
+  background: radial-gradient(circle, rgba(27, 25, 143, 0.35), transparent 70%);
 }
 
 .dark .aurora-blob-3 {
-  opacity: 0.10;
-  background: radial-gradient(
-    circle,
-    rgba(104, 87, 228, 0.18),
-    transparent 70%
-  );
+  opacity: 0.1;
+  background: radial-gradient(circle, rgba(104, 87, 228, 0.18), transparent 70%);
 }
 
 .dark .grain-layer {
@@ -332,47 +308,51 @@ button:not(:disabled):active,
   transition: box-shadow 250ms ease;
 }
 .mood-illustration {
-  width: 88%;
-  height: 88%;
+  width: 86%;
+  height: 86%;
   object-fit: contain;
-  filter: drop-shadow(0 3px 5px color-mix(in oklab, var(--primary) 12%, transparent));
+  display: block;
 }
 .mood-teal {
-  background: color-mix(in oklab, var(--teal) 65%, white);
+  background: rgba(254, 240, 138, 0.35);
+  border: 1px solid rgba(234, 179, 8, 0.25);
 }
 .mood-cyan {
-  background: color-mix(in oklab, var(--cyan) 55%, white);
+  background: rgba(186, 230, 253, 0.4);
+  border: 1px solid rgba(56, 189, 248, 0.25);
 }
 .mood-mint {
-  background: var(--green-soft);
+  background: rgba(233, 213, 255, 0.4);
+  border: 1px solid rgba(168, 85, 247, 0.25);
 }
 .mood-lavender {
-  background: var(--secondary);
+  background: rgba(191, 219, 254, 0.4);
+  border: 1px solid rgba(59, 130, 246, 0.25);
 }
 .mood-deep {
-  background: color-mix(in oklab, var(--primary) 82%, white);
-  color: var(--primary-foreground);
+  background: rgba(254, 205, 211, 0.4);
+  border: 1px solid rgba(244, 63, 94, 0.25);
 }
 
 .dark .mood-teal {
-  background: color-mix(in srgb, #2bd9cf 22%, #1b1930);
-  color: #2bd9cf;
+  background: rgba(254, 240, 138, 0.14);
+  border: 1px solid rgba(234, 179, 8, 0.2);
 }
 .dark .mood-cyan {
-  background: color-mix(in srgb, #2bd9cf 18%, #1b1930);
-  color: #2bd9cf;
+  background: rgba(186, 230, 253, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.2);
 }
 .dark .mood-mint {
-  background: color-mix(in srgb, #87ffbd 18%, #1b1930);
-  color: #87ffbd;
+  background: rgba(233, 213, 255, 0.14);
+  border: 1px solid rgba(168, 85, 247, 0.2);
 }
 .dark .mood-lavender {
-  background: color-mix(in srgb, #8b7cf0 22%, #1b1930);
-  color: #edeafb;
+  background: rgba(191, 219, 254, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.2);
 }
 .dark .mood-deep {
-  background: color-mix(in srgb, #8b7cf0 30%, #1b1930);
-  color: #ffffff;
+  background: rgba(254, 205, 211, 0.14);
+  border: 1px solid rgba(244, 63, 94, 0.2);
 }
 .breathing-orb,
 .breathing-circle {

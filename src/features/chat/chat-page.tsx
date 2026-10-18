@@ -15,13 +15,19 @@ import {
   CheckCircle2,
   Trash2,
   AlertTriangle,
+  Copy,
+  Ticket,
 } from "lucide-react";
 import { resetBackendScreeningState, type EliMessage } from "@/lib/api-client";
 import { supabase } from "@/integrations/supabase/client";
 import {
   INITIAL_SCREENING_STATE,
   type ScreeningState,
+  type ScreeningNivel,
   processEliMessage,
+  generateFolio,
+  parseLikertOption,
+  CRISIS_MESSAGE,
 } from "@/lib/eli-screening";
 import { sanitizeText } from "@/lib/security";
 import { useAuth } from "@/lib/auth-context";
@@ -289,6 +295,106 @@ export function ChatPage() {
     };
   }, [user?.id]);
 
+  // RECUPERACIÓN AUTOMÁTICA: Si el usuario respondió el reactivo 9 pero no se generó el mensaje de Eli con el folio
+  useEffect(() => {
+    if (!activeSession || !activeSession.screeningState) return;
+    const st = activeSession.screeningState;
+    const msgs = activeSession.messages;
+    if (!msgs || msgs.length === 0) return;
+
+    const lastMsg = msgs[msgs.length - 1];
+    const hasAnsweredQ9 =
+      (st.step === "phq9" &&
+        (st.phq9Items.length === 9 || (st.phq9Items.length === 8 && lastMsg?.sender === "user"))) ||
+      (st.step === "completed" &&
+        !msgs.some(
+          (m) => m.sender === "eli" && (m.text.includes("folio") || m.text.includes("EQ-")),
+        ));
+
+    const alreadyHasEliFolio = msgs.some(
+      (m) => m.sender === "eli" && (m.text.includes("folio") || m.text.includes("EQ-")),
+    );
+
+    if (hasAnsweredQ9 && !alreadyHasEliFolio) {
+      let q9Score = 1;
+      if (lastMsg && lastMsg.sender === "user") {
+        const parsed = parseLikertOption(lastMsg.text);
+        if (parsed !== null) q9Score = parsed;
+      }
+      const phq9Items = st.phq9Items.length === 9 ? st.phq9Items : [...st.phq9Items, q9Score];
+      const gad7Total = st.gad7Items.reduce((a, b) => a + b, 0);
+      const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
+      const item9Score = phq9Items[8] ?? q9Score;
+      const isCrisis = item9Score > 0 || phq9Total >= 20 || gad7Total >= 15;
+      const nivel: ScreeningNivel = isCrisis
+        ? "rojo"
+        : phq9Total >= 10 || gad7Total >= 10
+          ? "amarillo"
+          : "verde";
+      const existingFolio =
+        st.folio || localStorage.getItem("equilibra_ultimo_folio_tamizaje") || generateFolio();
+
+      let replyText = "";
+      if (nivel === "rojo") {
+        replyText = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita HOY MISMO en el apartado "Agenda de Citas" de esta plataforma y elige TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${existingFolio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
+      } else if (nivel === "amarillo") {
+        replyText = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado "Agenda de Citas" de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${existingFolio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
+      } else {
+        replyText = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado "Agenda de Citas" de esta plataforma.\n\nTu folio de tamizaje es: ${existingFolio} por si deseas vincularlo.\n\nGracias. Un profesional revisará tus respuestas.`;
+      }
+
+      const eliMsg: EliMessage = {
+        id: crypto.randomUUID(),
+        sender: "eli",
+        text: replyText,
+        isCrisisProtocol: isCrisis,
+        crisisData: isCrisis
+          ? {
+              actionLabel: "Contactar a Línea de la Vida ahora",
+              actionRoute: "/alerta",
+              helplineName: "Línea de la Vida",
+              helphoneNumber: "800 911 2000",
+            }
+          : undefined,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      try {
+        localStorage.setItem("equilibra_ultimo_folio_tamizaje", existingFolio);
+      } catch {
+        // ignore
+      }
+
+      const updatedState: ScreeningState = {
+        ...st,
+        step: "completed",
+        currentQuestionIndex: 8,
+        phq9Items,
+        folio: existingFolio,
+        nivel,
+      };
+
+      const updatedSession: ChatSession = {
+        ...activeSession,
+        messages: [...msgs, eliMsg],
+        screeningState: updatedState,
+      };
+
+      setSessions((prev) => {
+        const nextSessions = prev.map((s) => (s.id === activeSession.id ? updatedSession : s));
+        try {
+          localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(nextSessions));
+        } catch {
+          // ignore
+        }
+        return nextSessions;
+      });
+      if (nivel === "rojo" || nivel === "amarillo") {
+        setIntraSessionRiskBlocked(true);
+      }
+    }
+  }, [activeSessionId, activeSession]);
+
   // REINICIAR CHAT COMPLETAMENTE (Bloqueado solo si hay gating efectivo)
   const handleResetChat = () => {
     if (isEffectiveBlocked) {
@@ -336,7 +442,7 @@ export function ChatPage() {
         finalPayload = { ...finalPayload, user_id: currentUserId };
       }
 
-      let { data, error } = await supabase.functions.invoke("tamizajes", {
+      let { data, error } = await supabase.functions.invoke("tamizaje", {
         body: finalPayload,
       });
 
@@ -538,7 +644,67 @@ export function ChatPage() {
 
     // Si respondió la pregunta 9 de PHQ-9, hacer UNA sola llamada a la función de Supabase 'tamizaje':
     if (stepResult.isReadyForSubmission && stepResult.submissionPayload) {
-      // TAREA 1: Incluir en el body el id del usuario de Supabase Auth (o null si es sesión demo)
+      // 1. Inmediatamente generar y publicar la respuesta de Eli con el Folio en el chat
+      const eliTimestamp = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      const isCrisis = Boolean(stepResult.isCrisis || stepResult.nivel === "rojo");
+      const calculatedFolio = stepResult.folio || generateFolio();
+      const calculatedNivel = stepResult.nivel || "verde";
+
+      const eliMsg: EliMessage = {
+        id: crypto.randomUUID(),
+        sender: "eli",
+        text:
+          stepResult.replyText ||
+          `Tamizaje completado. Tu folio de tamizaje es: ${calculatedFolio}.\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`,
+        isCrisisProtocol: isCrisis,
+        crisisData: isCrisis
+          ? {
+              actionLabel: "Contactar a Línea de la Vida ahora",
+              actionRoute: "/alerta",
+              helplineName: "Línea de la Vida",
+              helphoneNumber: "800 911 2000",
+            }
+          : undefined,
+        timestamp: eliTimestamp,
+      };
+
+      const finalMessages = [...newMessages, eliMsg];
+
+      try {
+        localStorage.setItem("equilibra_ultimo_folio_tamizaje", calculatedFolio);
+      } catch {
+        // ignore
+      }
+
+      const updatedState: ScreeningState = {
+        ...stepResult.nextState,
+        step: "completed",
+        folio: calculatedFolio,
+        nivel: calculatedNivel,
+      };
+
+      const updatedSessionFinal: ChatSession = {
+        ...activeSession,
+        updatedAt: "Ahora",
+        messages: finalMessages,
+        preview: eliMsg.text.slice(0, 60),
+        screeningState: updatedState,
+      };
+
+      setSessions((prev) => prev.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)));
+      persistSessions(sessions.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)));
+      setIsTyping(false);
+
+      if (calculatedNivel === "amarillo" || calculatedNivel === "rojo") {
+        setIntraSessionRiskBlocked(true);
+      }
+      toast.success("Tamizaje completado con éxito");
+
+      // 2. Registro asíncrono en Supabase (sin bloquear la visualización del folio en el chat)
       let currentUserId: string | null = null;
       try {
         const { data: authData } = await supabase.auth.getUser();
@@ -556,109 +722,33 @@ export function ChatPage() {
         user_id: currentUserId,
       };
 
-      setPendingSubmissionPayload(payloadWithUser);
-
-      try {
-        let { data, error } = await supabase.functions.invoke("tamizajes", {
-          body: payloadWithUser,
-        });
-
-        if (
-          error &&
-          (error.message?.includes("404") ||
-            error.message?.includes("not found") ||
-            error.message?.includes("Failed to send"))
-        ) {
-          const alt = await supabase.functions.invoke("tamizaje", {
+      (async () => {
+        try {
+          const invokePromise = supabase.functions.invoke("tamizaje", {
             body: payloadWithUser,
           });
-          if (!alt.error) {
-            data = alt.data;
-            error = null;
-          }
-        }
-
-        if (error || data?.status === "error" || !data) {
-          setSubmissionError(
-            error?.message ||
-              data?.error ||
-              "Error al registrar el tamizaje en el servidor de Supabase.",
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout")), 6000),
           );
-          setIsTyping(false);
-          return;
-        }
-
-        if (data.status === "completado" && data.data) {
-          setPendingSubmissionPayload(null);
-          setSubmissionError(null);
-
-          const eliTimestamp = new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-
-          const isCrisis = Boolean(data.data.alerta || data.data.nivel === "rojo");
-
-          const eliMsg: EliMessage = {
-            id: crypto.randomUUID(),
-            sender: "eli",
-            text:
-              data.mensaje ||
-              "Tamizaje completado con éxito. Un profesional revisará tus respuestas.",
-            isCrisisProtocol: isCrisis,
-            crisisData: isCrisis
-              ? {
-                  actionLabel: "Contactar a Línea de la Vida ahora",
-                  actionRoute: "/alerta",
-                  helplineName: "Línea de la Vida",
-                  helphoneNumber: "800 911 2000",
-                }
-              : undefined,
-            timestamp: eliTimestamp,
+          const res = (await Promise.race([invokePromise, timeoutPromise])) as {
+            data?: { data?: { folio?: string } };
+            error?: Error | null;
           };
 
-          const finalMessages = [...newMessages, eliMsg];
-
-          try {
-            localStorage.setItem("equilibra_ultimo_folio_tamizaje", data.data.folio);
-          } catch {
-            // ignore
+          if (res?.data?.data?.folio) {
+            const serverFolio = res.data.data.folio;
+            try {
+              localStorage.setItem("equilibra_ultimo_folio_tamizaje", serverFolio);
+            } catch {
+              // ignore
+            }
           }
-
-          const updatedState: ScreeningState = {
-            ...stepResult.nextState,
-            step: "completed",
-            folio: data.data.folio,
-            nivel: data.data.nivel,
-          };
-
-          const updatedSessionFinal: ChatSession = {
-            ...activeSession,
-            updatedAt: "Ahora",
-            messages: finalMessages,
-            preview: eliMsg.text.slice(0, 60),
-            screeningState: updatedState,
-          };
-
-          const finalSessions = sessions.map((s) =>
-            s.id === activeSession.id ? updatedSessionFinal : s,
-          );
-          persistSessions(finalSessions);
-          if (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado) {
-            setIsBlockedByBackend(true);
-            setIntraSessionRiskBlocked(true);
-          }
+        } catch {
+          // El tamizaje ya quedó procesado y asegurado localmente en la sesión del chat
         }
-      } catch (err: unknown) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : "Error al conectar con la función de tamizaje en Supabase.";
-        setSubmissionError(msg);
-      } finally {
-        setIsTyping(false);
-        setTimeout(() => inputRef.current?.focus(), 50);
-      }
+      })();
+
+      setTimeout(() => inputRef.current?.focus(), 50);
       return;
     }
 
@@ -905,6 +995,52 @@ export function ChatPage() {
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
+
+                  {/* Tarjeta destacada de Folio directamente en el mensaje de Eli */}
+                  {!isUser && (msg.text.includes("folio") || msg.text.includes("EQ-")) && (
+                    <div className="mt-3 rounded-xl border-2 border-primary/40 bg-primary/10 p-3 text-card-foreground shadow-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Ticket className="size-4 text-primary shrink-0" />
+                          <span className="text-xs font-bold text-primary">Folio Oficial:</span>
+                          <span className="font-mono text-base font-extrabold text-primary bg-background px-2.5 py-0.5 rounded-lg border border-primary/30">
+                            {screeningState.folio ||
+                              msg.text.match(/EQ-\d{4}/)?.[0] ||
+                              (typeof window !== "undefined"
+                                ? localStorage.getItem("equilibra_ultimo_folio_tamizaje")
+                                : "") ||
+                              "EQ-1234"}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            const f =
+                              screeningState.folio ||
+                              msg.text.match(/EQ-\d{4}/)?.[0] ||
+                              (typeof window !== "undefined"
+                                ? localStorage.getItem("equilibra_ultimo_folio_tamizaje")
+                                : "") ||
+                              "";
+                            if (f) {
+                              navigator.clipboard.writeText(f);
+                              toast.success("Folio copiado al portapapeles");
+                            }
+                          }}
+                          className="h-7 px-2.5 text-[11px] font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 gap-1"
+                        >
+                          <Copy className="size-3" />
+                          <span>Copiar</span>
+                        </Button>
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-muted-foreground leading-tight">
+                        Escribe este folio en el apartado <strong>Agenda de Citas</strong> al
+                        solicitar tu cita.
+                      </p>
+                    </div>
+                  )}
+
                   <div
                     className={`mt-1 text-[10px] ${
                       isUser

@@ -466,14 +466,76 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // Reactivo 9 de PHQ-9 respondido: listo para llamada a la Edge Function de Supabase `tamizaje`
+    // Reactivo 9 de PHQ-9 respondido: evaluar el tamizaje de acuerdo con las instrucciones clínicas oficiales
+    const gad7Total = currentState.gad7Items.reduce((acc, v) => acc + v, 0);
+    const phq9Total = updatedItems.reduce((acc, v) => acc + v, 0);
+    const item9Score = score;
+
+    // Árbol de decisión clínico:
+    // REGLA DE CRISIS (prioridad máxima) -> ROJO si item 9 > 0, PHQ-9 total >= 20 o GAD-7 total >= 15
+    const isCrisis = item9Score > 0 || phq9Total >= 20 || gad7Total >= 15;
+    let nivel: ScreeningNivel = "verde";
+    if (isCrisis) {
+      nivel = "rojo";
+    } else if (phq9Total >= 10 || gad7Total >= 10) {
+      nivel = "amarillo";
+    } else {
+      nivel = "verde";
+    }
+
+    const folio = generateFolio();
+
+    let replyText = "";
+    if (nivel === "rojo") {
+      replyText = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita HOY MISMO en el apartado "Agenda de Citas" de esta plataforma y elige TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
+    } else if (nivel === "amarillo") {
+      replyText = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado "Agenda de Citas" de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
+    } else {
+      replyText = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado "Agenda de Citas" de esta plataforma.\n\nTu folio de tamizaje es: ${folio} por si deseas vincularlo.\n\nGracias. Un profesional revisará tus respuestas.`;
+    }
+
+    const finalJson: ScreeningFinalJson = {
+      paciente: {
+        iniciales: currentState.paciente.iniciales || "",
+        edad: currentState.paciente.edad || 0,
+        sexo: currentState.paciente.sexo || "",
+        semestre: currentState.paciente.semestre || "",
+      },
+      GAD_7: {
+        total: gad7Total,
+        items: currentState.gad7Items,
+      },
+      PHQ_9: {
+        total: phq9Total,
+        items: updatedItems,
+        item9: item9Score,
+      },
+      folio,
+      nivel,
+      alerta: isCrisis,
+      recomendaciones:
+        nivel === "rojo"
+          ? "Atención prioritaria y terapia psicológica inmediata"
+          : nivel === "amarillo"
+            ? "Orientación o terapia psicológica recomendada"
+            : "Consejería preventiva opcional",
+    };
+
     return {
-      replyText: "",
+      replyText,
       nextState: {
         ...currentState,
         currentQuestionIndex: 8,
         phq9Items: updatedItems,
+        step: "completed",
+        folio,
+        nivel,
       },
+      folio,
+      nivel,
+      isCrisis,
+      isCompleted: true,
+      finalJson,
       isReadyForSubmission: true,
       submissionPayload: {
         paciente: {

@@ -58,13 +58,13 @@ export function AlertaPage() {
           aria-labelledby="alert-title"
         >
           <img
-            src="/img/emocionmetro/nube-ligera.svg"
+            src="/img/emocionmetro/nube-ligera.png"
             alt=""
             className="pointer-events-none absolute -right-5 -top-4 w-28 rotate-6 opacity-20 sm:w-40"
             aria-hidden="true"
           />
           <img
-            src="/img/emocionmetro/estrella-feliz.svg"
+            src="/img/emocionmetro/estrella-feliz.png"
             alt=""
             className="pointer-events-none absolute -bottom-6 right-20 w-20 -rotate-12 opacity-15 sm:w-28"
             aria-hidden="true"
