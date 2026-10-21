@@ -299,10 +299,18 @@ export function LoginPage() {
             </Button>
           </form>
 
-          {/* Microcopy empático de confidencialidad */}
-          <div className="flex items-center justify-center gap-2 rounded-xl bg-card/40 p-2.5 text-center text-xs text-muted-foreground">
-            <authIcons.shield className="size-4 shrink-0 text-accent" />
-            <span>Tu información está protegida y es confidencial.</span>
+          {/* Microcopy empático de confidencialidad y enlace al Aviso de Privacidad */}
+          <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-card/40 p-2.5 text-center text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <authIcons.shield className="size-4 shrink-0 text-accent" />
+              <span>Tu información está protegida y es confidencial.</span>
+            </div>
+            <Link
+              to="/aviso-privacidad"
+              className="text-[11px] font-medium text-accent hover:underline"
+            >
+              Consultar Aviso de Privacidad Integral
+            </Link>
           </div>
 
           {/* Enlace a Registro */}

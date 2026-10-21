@@ -104,7 +104,8 @@ export function RegistroPage() {
       });
 
       toast.success(`Cuenta creada con éxito. ¡Bienvenido/a, ${user.name}!`);
-      navigate({ to: rutaPorRol(user.role), replace: true });
+      // Requisito normativo PB-002: Redirigir al Aviso de Privacidad antes de acceder a la plataforma
+      navigate({ to: "/aviso-privacidad", replace: true });
     } catch (err: unknown) {
       const msg =
         err instanceof Error

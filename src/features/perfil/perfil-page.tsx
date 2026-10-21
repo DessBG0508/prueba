@@ -521,7 +521,9 @@ export function PerfilPage() {
                       </Label>
                       <button
                         type="button"
-                        onClick={() => setIsPrivacyModalOpen(true)}
+                        onClick={() =>
+                          navigate({ to: "/aviso-privacidad", search: { mode: "consulta" } })
+                        }
                         className="text-xs font-semibold text-teal hover:underline focus:outline-none"
                       >
                         Ver aviso de privacidad

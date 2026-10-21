@@ -2,12 +2,13 @@ import { useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { useAvisoPrivacidad } from "@/lib/use-aviso-privacidad";
 import { rutaPorRol } from "@/lib/roles";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { AuroraBackground } from "@/components/effects/aurora-background";
 import { PersistentSosButton } from "@/components/common/persistent-sos-button";
 
-const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/reset"];
+const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/reset", "/aviso-privacidad"];
 
 /**
  * DECISIÓN DE ARQUITECTURA:
@@ -17,12 +18,18 @@ const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/reset"];
  */
 export function RouteGuard({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
+  const { needsAcceptance, isLoading: isAvisoLoading } = useAvisoPrivacidad();
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = location.pathname;
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isAvisoLoading) return;
+
+    // El Aviso de Privacidad es de acceso público universal para cualquier usuario o visitante
+    if (pathname === "/aviso-privacidad") {
+      return;
+    }
 
     const isPublic = PUBLIC_ROUTES.includes(pathname);
     const isResetPage = pathname === "/reset";
@@ -35,10 +42,16 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
+    // 2. Si el estudiante requiere aceptar el Aviso de Privacidad (primera vez o versión nueva)
+    if (user.role === "estudiante" && needsAcceptance && !isResetPage) {
+      navigate({ to: "/aviso-privacidad", replace: true });
+      return;
+    }
+
     const destinoAutorizado = rutaPorRol(user.role);
 
-    // 2. Con sesión activa en ruta pública -> Redirigir según rol (salvo en /reset donde se actualiza contraseña)
-    if (isPublic && !isResetPage) {
+    // 3. Con sesión activa en ruta pública -> Redirigir según rol (salvo en /reset donde se actualiza contraseña)
+    if (isPublic && !isResetPage && pathname !== "/aviso-privacidad") {
       navigate({ to: destinoAutorizado, replace: true });
       return;
     }
@@ -73,9 +86,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
         navigate({ to: "/", replace: true });
       }
     }
-  }, [user, isLoading, pathname, navigate]);
+  }, [user, isLoading, isAvisoLoading, needsAcceptance, pathname, navigate]);
 
-  if (isLoading) {
+  if (isLoading || (user && isAvisoLoading && pathname !== "/aviso-privacidad")) {
     return (
       <AuroraBackground>
         <div className="flex min-h-screen items-center justify-center px-4">
@@ -97,7 +110,8 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   // Si hay usuario y está en una ruta que no le corresponde, no renderizar mientras redirige
   if (user) {
     const enReset = pathname === "/reset";
-    if (PUBLIC_ROUTES.includes(pathname) && !enReset) return null;
+    if (PUBLIC_ROUTES.includes(pathname) && !enReset && pathname !== "/aviso-privacidad")
+      return null;
     if (
       user.role === "psicologo" &&
       !pathname.startsWith("/psicologo") &&
