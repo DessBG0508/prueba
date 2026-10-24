@@ -17,8 +17,10 @@ import {
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/layout/page-shell";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { AjustesModal } from "@/components/settings/ajustes-modal";
 import { useAuth } from "@/lib/auth-context";
 import { BRAND } from "@/lib/branding";
 import {
@@ -81,6 +83,7 @@ export function DirectivoDashboard() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+          <AjustesModal rol="directivo" />
           <ThemeToggle />
 
           {/* Menú de Usuario Directivo */}

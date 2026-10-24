@@ -47,9 +47,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       typeof window !== "undefined" &&
       localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
 
-    // 2. Si el estudiante requiere aceptar el Aviso de Privacidad (primera vez o versión nueva)
-    // FIX S4: Si localAceptado es true, no bloquear aunque la consulta de BD esté en vuelo o el hook sincronizando
-    if (user.role === "estudiante" && needsAcceptance && !localAceptado && !isResetPage) {
+    // FIX S4: Aviso obligatorio para TODOS los roles en su primer inicio de sesión
+    // (estudiante, psicólogo, jefatura, coordinador) — privacidad por defecto LFPDPPP
+    if (needsAcceptance && !localAceptado && !isResetPage) {
       navigate({ to: "/aviso-privacidad", replace: true });
       return;
     }
@@ -120,18 +120,21 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return null;
     if (
       user.role === "psicologo" &&
+      pathname !== "/aviso-privacidad" &&
       !pathname.startsWith("/psicologo") &&
       !pathname.startsWith("/expedientes")
     )
       return null;
     if (
       (user.role === "jefatura" || user.role === "coordinador") &&
+      pathname !== "/aviso-privacidad" &&
       !pathname.startsWith("/directivo") &&
       !pathname.startsWith("/auditoria")
     )
       return null;
     if (
       user.role === "estudiante" &&
+      pathname !== "/aviso-privacidad" &&
       (pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
         pathname.startsWith("/expedientes") ||

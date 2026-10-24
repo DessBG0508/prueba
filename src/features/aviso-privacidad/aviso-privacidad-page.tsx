@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { PageShell } from "@/components/layout/page-shell";
 import { useAuth } from "@/lib/auth-context";
+import { rutaPorRol } from "@/lib/roles";
 import { useAvisoPrivacidad, AVISO_PRIVACIDAD_VERSION_ACTUAL } from "@/lib/use-aviso-privacidad";
 import { AVISO_PRIVACIDAD_METADATA, AVISO_PRIVACIDAD_SECCIONES } from "./aviso-privacidad-content";
 
@@ -90,7 +91,11 @@ export function AvisoPrivacidadPage() {
   };
 
   const handleReturnToProfile = () => {
-    navigate({ to: "/perfil", replace: true }); // FIX S4: Usar replace: true para salir del aviso sin dejar rastro en history
+    if (user) {
+      navigate({ to: rutaPorRol(user.role), replace: true });
+    } else {
+      navigate({ to: "/", replace: true });
+    }
   };
 
   const handleCancel = () => {

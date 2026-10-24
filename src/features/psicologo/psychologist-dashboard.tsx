@@ -15,6 +15,8 @@ import {
   FolderOpen,
   UserCheck,
   ChevronDown,
+  Shield,
+  Users,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -40,6 +42,8 @@ import { ContactPatientDialog } from "./contact-patient-dialog";
 import { CrisisProtocolDialog } from "./crisis-protocol-dialog";
 import { PsychologistAgenda } from "./psychologist-agenda";
 import { ClinicalNotesFeed } from "./clinical-notes-feed";
+import { SemaforoPacientes } from "./semaforo-pacientes";
+import { AjustesModal } from "@/components/settings/ajustes-modal";
 import { useAuth } from "@/lib/auth-context";
 import {
   getPsychologistCases,
@@ -135,6 +139,7 @@ export function PsychologistDashboard() {
   const [selectedSemester, setSelectedSemester] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [alertasViewMode, setAlertasViewMode] = useState<"semaforo" | "tarjetas">("semaforo");
 
   const [cases, setCases] = useState<CaseSummary[]>(() => getPsychologistCases());
   const [appointments, setAppointments] = useState<Appointment[]>(() => getStoredAppointments());
@@ -354,6 +359,7 @@ export function PsychologistDashboard() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <AjustesModal rol="psicologo" />
             <NotificationsCenter
               role="psicologo"
               onSelectCase={handleOpenCaseById}
@@ -389,399 +395,452 @@ export function PsychologistDashboard() {
                   tamizajes.
                 </p>
               </div>
-              {/* Tarjetas de Métricas Rápidas y Filtros */}
-              <section
-                className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
-                aria-label="Filtros rápidos por riesgo"
-              >
-                <button
+
+              {/* Selector de subvista: Semáforo Oficial vs Tarjetas */}
+              <div className="flex items-center gap-2 border-b border-border/60 pb-3">
+                <Button
                   type="button"
-                  onClick={() => setActiveRiskFilter((prev) => (prev === "rojo" ? null : "rojo"))}
-                  className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
-                    activeRiskFilter === "rojo"
-                      ? "border-rose-400 bg-rose-50/70 dark:bg-rose-950/30 ring-2 ring-rose-400/20"
-                      : "border-border hover:border-rose-200"
+                  size="sm"
+                  variant={alertasViewMode === "semaforo" ? "default" : "outline"}
+                  onClick={() => setAlertasViewMode("semaforo")}
+                  className={`rounded-xl text-xs font-bold ${
+                    alertasViewMode === "semaforo"
+                      ? "bg-[#1B198F] text-white hover:bg-[#1B198F]/90"
+                      : "border-border text-foreground hover:bg-muted"
                   }`}
                 >
-                  <div>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
-                      <ShieldAlert className="size-3.5" />
-                      Riesgo Alto
-                    </span>
-                    <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
-                      {redCount}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Atención prioritaria</p>
-                  </div>
-                  <div className="size-2.5 rounded-full bg-rose-500 self-start animate-ping" />
-                </button>
-
-                <button
+                  <Users className="mr-1.5 size-3.5" />
+                  Semáforo de Pacientes (Oficial)
+                </Button>
+                <Button
                   type="button"
-                  onClick={() =>
-                    setActiveRiskFilter((prev) => (prev === "amarillo" ? null : "amarillo"))
-                  }
-                  className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
-                    activeRiskFilter === "amarillo"
-                      ? "border-amber-400 bg-amber-50/70 dark:bg-amber-950/30 ring-2 ring-amber-400/20"
-                      : "border-border hover:border-amber-200"
+                  size="sm"
+                  variant={alertasViewMode === "tarjetas" ? "default" : "outline"}
+                  onClick={() => setAlertasViewMode("tarjetas")}
+                  className={`rounded-xl text-xs font-bold ${
+                    alertasViewMode === "tarjetas"
+                      ? "bg-[#1B198F] text-white hover:bg-[#1B198F]/90"
+                      : "border-border text-foreground hover:bg-muted"
                   }`}
                 >
-                  <div>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
-                      <Activity className="size-3.5" />
-                      Seguimiento
-                    </span>
-                    <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
-                      {yellowCount}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Monitoreo activo</p>
-                  </div>
-                  <div className="size-2.5 rounded-full bg-amber-500 self-start" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveRiskFilter((prev) => (prev === "verde" ? null : "verde"))}
-                  className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
-                    activeRiskFilter === "verde"
-                      ? "border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 ring-2 ring-emerald-400/20"
-                      : "border-border hover:border-emerald-200"
-                  }`}
-                >
-                  <div>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                      <UsersRound className="size-3.5" />
-                      Estables
-                    </span>
-                    <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
-                      {greenCount}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Sin alertas críticas</p>
-                  </div>
-                  <div className="size-2.5 rounded-full bg-emerald-500 self-start" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("agenda")}
-                  className="ethereal-card p-4 rounded-2xl border border-border hover:border-teal/50 transition-all text-left flex items-center justify-between"
-                >
-                  <div>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-teal">
-                      <Calendar className="size-3.5" />
-                      Citas Activas
-                    </span>
-                    <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
-                      {activeAppointmentsCount}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">En agenda clínica</p>
-                  </div>
-                  <CalendarPlus className="size-4 text-teal self-start" />
-                </button>
-              </section>
-
-              {/* Barra de Filtros y Búsqueda */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Buscar por iniciales, nombre, carrera o síntoma..."
-                    className="pl-9 rounded-xl border-border bg-card text-xs"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground font-semibold">
-                    Mostrando {filteredCases.length} de {cases.length} casos
-                  </span>
-                  {hasActiveFilters && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleClearAllFilters}
-                      className="h-7 text-xs text-[#6857E4] hover:bg-[#6857E4]/10 px-2 font-medium"
-                    >
-                      Limpiar filtros
-                    </Button>
-                  )}
-                </div>
+                  <Activity className="mr-1.5 size-3.5" />
+                  Tarjetas de Triaje
+                </Button>
               </div>
 
-              {/* Chips de filtro (Bajo la barra de búsqueda) */}
-              <div
-                className="flex flex-wrap items-center gap-2 pt-1"
-                aria-label="Filtros avanzados"
-              >
-                <span className="text-xs font-semibold text-muted-foreground mr-1">Riesgo:</span>
-                <button
-                  type="button"
-                  onClick={() => setActiveRiskFilter(null)}
-                  className={chipClass(activeRiskFilter === null)}
-                >
-                  Todos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveRiskFilter("rojo")}
-                  className={chipClass(activeRiskFilter === "rojo")}
-                >
-                  Riesgo alto
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveRiskFilter("amarillo")}
-                  className={chipClass(activeRiskFilter === "amarillo")}
-                >
-                  Seguimiento
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveRiskFilter("verde")}
-                  className={chipClass(activeRiskFilter === "verde")}
-                >
-                  Estable
-                </button>
-
-                <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
-
-                {/* Dropdown Carrera */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button type="button" className={chipClass(selectedCareer !== "all")}>
-                      <span>{selectedCareer === "all" ? "Carrera: Todas" : selectedCareer}</span>
-                      <ChevronDown className="size-3.5 opacity-80" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
-                    <DropdownMenuLabel className="text-xs font-bold text-muted-foreground">
-                      Carrera TESH
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      onClick={() => setSelectedCareer("all")}
-                      className={selectedCareer === "all" ? "font-bold text-[#6857E4]" : ""}
-                    >
-                      Todas las carreras
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {TESH_CAREERS.map((career) => (
-                      <DropdownMenuItem
-                        key={career}
-                        onClick={() => setSelectedCareer(career)}
-                        className={selectedCareer === career ? "font-bold text-[#6857E4]" : ""}
-                      >
-                        {career}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Dropdown Semestre */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button type="button" className={chipClass(selectedSemester !== "all")}>
-                      <span>
-                        {selectedSemester === "all" ? "Semestre: Todos" : selectedSemester}
-                      </span>
-                      <ChevronDown className="size-3.5 opacity-80" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-52 max-h-72 overflow-y-auto">
-                    <DropdownMenuLabel className="text-xs font-bold text-muted-foreground">
-                      Semestre (1º a 9º)
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      onClick={() => setSelectedSemester("all")}
-                      className={selectedSemester === "all" ? "font-bold text-[#6857E4]" : ""}
-                    >
-                      Todos los semestres
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    {TESH_SEMESTERS.map((sem) => (
-                      <DropdownMenuItem
-                        key={sem}
-                        onClick={() => setSelectedSemester(sem)}
-                        className={selectedSemester === sem ? "font-bold text-[#6857E4]" : ""}
-                      >
-                        {sem}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Lista de Tarjetas de Pacientes */}
-              <div className="grid gap-4 md:grid-cols-2">
-                {filteredCases.length === 0 ? (
-                  <div className="col-span-2 p-12 text-center rounded-2xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center space-y-3">
-                    <p className="text-sm font-semibold text-foreground">
-                      No hay casos con estos filtros
-                    </p>
-                    <Button
+              {alertasViewMode === "semaforo" ? (
+                <SemaforoPacientes />
+              ) : (
+                <>
+                  {/* Tarjetas de Métricas Rápidas y Filtros */}
+                  <section
+                    className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+                    aria-label="Filtros rápidos por riesgo"
+                  >
+                    <button
                       type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleClearAllFilters}
-                      className="rounded-xl border-[#6857E4] text-[#6857E4] hover:bg-[#6857E4]/10 font-medium text-xs"
+                      onClick={() =>
+                        setActiveRiskFilter((prev) => (prev === "rojo" ? null : "rojo"))
+                      }
+                      className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
+                        activeRiskFilter === "rojo"
+                          ? "border-rose-400 bg-rose-50/70 dark:bg-rose-950/30 ring-2 ring-rose-400/20"
+                          : "border-border hover:border-rose-200"
+                      }`}
                     >
-                      Limpiar filtros
-                    </Button>
+                      <div>
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
+                          <ShieldAlert className="size-3.5" />
+                          Riesgo Alto
+                        </span>
+                        <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                          {redCount}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Atención prioritaria
+                        </p>
+                      </div>
+                      <div className="size-2.5 rounded-full bg-rose-500 self-start animate-ping" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveRiskFilter((prev) => (prev === "amarillo" ? null : "amarillo"))
+                      }
+                      className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
+                        activeRiskFilter === "amarillo"
+                          ? "border-amber-400 bg-amber-50/70 dark:bg-amber-950/30 ring-2 ring-amber-400/20"
+                          : "border-border hover:border-amber-200"
+                      }`}
+                    >
+                      <div>
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                          <Activity className="size-3.5" />
+                          Seguimiento
+                        </span>
+                        <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                          {yellowCount}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">Monitoreo activo</p>
+                      </div>
+                      <div className="size-2.5 rounded-full bg-amber-500 self-start" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveRiskFilter((prev) => (prev === "verde" ? null : "verde"))
+                      }
+                      className={`ethereal-card p-4 rounded-2xl border transition-all text-left flex items-center justify-between ${
+                        activeRiskFilter === "verde"
+                          ? "border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 ring-2 ring-emerald-400/20"
+                          : "border-border hover:border-emerald-200"
+                      }`}
+                    >
+                      <div>
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                          <UsersRound className="size-3.5" />
+                          Estables
+                        </span>
+                        <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                          {greenCount}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Sin alertas críticas
+                        </p>
+                      </div>
+                      <div className="size-2.5 rounded-full bg-emerald-500 self-start" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("agenda")}
+                      className="ethereal-card p-4 rounded-2xl border border-border hover:border-teal/50 transition-all text-left flex items-center justify-between"
+                    >
+                      <div>
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-teal">
+                          <Calendar className="size-3.5" />
+                          Citas Activas
+                        </span>
+                        <p className="font-numeric text-2xl sm:text-3xl font-bold text-primary mt-1">
+                          {activeAppointmentsCount}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          En agenda clínica
+                        </p>
+                      </div>
+                      <CalendarPlus className="size-4 text-teal self-start" />
+                    </button>
+                  </section>
+
+                  {/* Barra de Filtros y Búsqueda */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Buscar por iniciales, nombre, carrera o síntoma..."
+                        className="pl-9 rounded-xl border-border bg-card text-xs"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground font-semibold">
+                        Mostrando {filteredCases.length} de {cases.length} casos
+                      </span>
+                      {hasActiveFilters && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleClearAllFilters}
+                          className="h-7 text-xs text-[#6857E4] hover:bg-[#6857E4]/10 px-2 font-medium"
+                        >
+                          Limpiar filtros
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  paginatedCases.map((item) => {
-                    const style = riskStyles[item.riskLevel];
-                    const statusInfo = statusLabels[item.status || "por_contactar"];
 
-                    return (
-                      <article
-                        key={item.id}
-                        className={`ethereal-card p-5 rounded-2xl border ${style.border} flex flex-col justify-between space-y-4 hover:shadow-soft transition-all`}
-                      >
-                        <div>
-                          {/* Cabecera de la tarjeta */}
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-lavender-soft font-bold text-primary text-base">
-                                {item.initials}
-                              </div>
-                              <div>
-                                <h3 className="text-base font-bold text-foreground leading-tight">
-                                  {item.studentName || `Estudiante ${item.initials}`}
-                                </h3>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {item.career} {item.semester ? `• ${item.semester}` : ""}
-                                </p>
-                              </div>
-                            </div>
+                  {/* Chips de filtro (Bajo la barra de búsqueda) */}
+                  <div
+                    className="flex flex-wrap items-center gap-2 pt-1"
+                    aria-label="Filtros avanzados"
+                  >
+                    <span className="text-xs font-semibold text-muted-foreground mr-1">
+                      Riesgo:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRiskFilter(null)}
+                      className={chipClass(activeRiskFilter === null)}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRiskFilter("rojo")}
+                      className={chipClass(activeRiskFilter === "rojo")}
+                    >
+                      Riesgo alto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRiskFilter("amarillo")}
+                      className={chipClass(activeRiskFilter === "amarillo")}
+                    >
+                      Seguimiento
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRiskFilter("verde")}
+                      className={chipClass(activeRiskFilter === "verde")}
+                    >
+                      Estable
+                    </button>
 
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              <Badge
-                                variant="outline"
-                                className={`${style.surface} text-xs font-bold`}
-                              >
-                                <span className={`mr-1.5 size-2 rounded-full ${style.dot}`} />
-                                {style.label}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={`${statusInfo.surface} text-[10px] font-medium`}
-                              >
-                                {statusInfo.label}
-                              </Badge>
-                            </div>
-                          </div>
+                    <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
 
-                          {/* Reporte clínico / Resumen */}
-                          <p className="mt-3.5 text-xs text-foreground font-medium leading-relaxed line-clamp-2 bg-muted/20 p-2.5 rounded-xl border border-border/40">
-                            {item.summary}
-                          </p>
-
-                          {/* Puntajes de tamizaje e info de contacto */}
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary">
-                                PHQ-9: {item.phq9}/27
-                              </span>
-                              <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary">
-                                GAD-7: {item.gad7}/21
-                              </span>
-                            </div>
-
-                            <span className="text-[11px] flex items-center gap-1 font-medium text-muted-foreground">
-                              <Clock className="size-3 text-teal" />
-                              {item.lastCheckIn}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Botones de Acción Inmediata */}
-                        <div className="pt-2 border-t border-border/60 flex flex-col gap-2">
-                          <div className="grid grid-cols-3 gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => setScheduleDialogCase(item)}
-                              className="rounded-xl bg-teal hover:bg-teal/90 text-white text-xs h-8 gap-1 font-semibold"
-                            >
-                              <CalendarPlus className="size-3.5" />
-                              <span className="truncate">Agendar</span>
-                            </Button>
-
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setContactDialogCase(item)}
-                              className="rounded-xl border-accent text-accent hover:bg-accent/10 text-xs h-8 gap-1 font-semibold"
-                            >
-                              <PhoneCall className="size-3.5" />
-                              <span className="truncate">Contactar</span>
-                            </Button>
-
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setSelectedCaseForDetail(item)}
-                              className="rounded-xl text-xs h-8 gap-1 text-foreground hover:bg-card font-semibold"
-                            >
-                              <FolderOpen className="size-3.5 text-primary" />
-                              <span className="truncate">Expediente</span>
-                            </Button>
-                          </div>
-
-                          {/* Botón Atendido — Liberar (RD-07) */}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleLiberarPaciente(item.id)}
-                            className={`w-full rounded-xl text-xs h-8 gap-1.5 font-semibold transition-all ${
-                              item.bloqueado
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-xs"
-                                : "border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                            }`}
-                            title="Liberar tamizaje para permitir que el estudiante inicie uno nuevo"
+                    {/* Dropdown Carrera */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className={chipClass(selectedCareer !== "all")}>
+                          <span>
+                            {selectedCareer === "all" ? "Carrera: Todas" : selectedCareer}
+                          </span>
+                          <ChevronDown className="size-3.5 opacity-80" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                        <DropdownMenuLabel className="text-xs font-bold text-muted-foreground">
+                          Carrera TESH
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem
+                          onClick={() => setSelectedCareer("all")}
+                          className={selectedCareer === "all" ? "font-bold text-[#6857E4]" : ""}
+                        >
+                          Todas las carreras
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {TESH_CAREERS.map((career) => (
+                          <DropdownMenuItem
+                            key={career}
+                            onClick={() => setSelectedCareer(career)}
+                            className={selectedCareer === career ? "font-bold text-[#6857E4]" : ""}
                           >
-                            <UserCheck className="size-3.5" />
-                            <span>Atendido — Liberar</span>
-                          </Button>
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
+                            {career}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
 
-              {/* Paginación de 6 casos por página */}
-              {filteredCases.length > PAGE_SIZE && (
-                <div className="flex items-center justify-between pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={safePage <= 1}
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="rounded-xl border-[#D8D2FF] text-foreground hover:bg-[#6857E4]/10 disabled:opacity-40 text-xs"
-                  >
-                    Anterior
-                  </Button>
-                  <span className="text-xs text-muted-foreground font-medium">
-                    Página {safePage} de {totalPages}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className="rounded-xl border-[#D8D2FF] text-foreground hover:bg-[#6857E4]/10 disabled:opacity-40 text-xs"
-                  >
-                    Siguiente
-                  </Button>
-                </div>
+                    {/* Dropdown Semestre */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button type="button" className={chipClass(selectedSemester !== "all")}>
+                          <span>
+                            {selectedSemester === "all" ? "Semestre: Todos" : selectedSemester}
+                          </span>
+                          <ChevronDown className="size-3.5 opacity-80" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-52 max-h-72 overflow-y-auto">
+                        <DropdownMenuLabel className="text-xs font-bold text-muted-foreground">
+                          Semestre (1º a 9º)
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem
+                          onClick={() => setSelectedSemester("all")}
+                          className={selectedSemester === "all" ? "font-bold text-[#6857E4]" : ""}
+                        >
+                          Todos los semestres
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {TESH_SEMESTERS.map((sem) => (
+                          <DropdownMenuItem
+                            key={sem}
+                            onClick={() => setSelectedSemester(sem)}
+                            className={selectedSemester === sem ? "font-bold text-[#6857E4]" : ""}
+                          >
+                            {sem}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  {/* Lista de Tarjetas de Pacientes */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {filteredCases.length === 0 ? (
+                      <div className="col-span-2 p-12 text-center rounded-2xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center space-y-3">
+                        <p className="text-sm font-semibold text-foreground">
+                          No hay casos con estos filtros
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleClearAllFilters}
+                          className="rounded-xl border-[#6857E4] text-[#6857E4] hover:bg-[#6857E4]/10 font-medium text-xs"
+                        >
+                          Limpiar filtros
+                        </Button>
+                      </div>
+                    ) : (
+                      paginatedCases.map((item) => {
+                        const style = riskStyles[item.riskLevel];
+                        const statusInfo = statusLabels[item.status || "por_contactar"];
+
+                        return (
+                          <article
+                            key={item.id}
+                            className={`ethereal-card p-5 rounded-2xl border ${style.border} flex flex-col justify-between space-y-4 hover:shadow-soft transition-all`}
+                          >
+                            <div>
+                              {/* Cabecera de la tarjeta */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-lavender-soft font-bold text-primary text-base">
+                                    {item.initials}
+                                  </div>
+                                  <div>
+                                    <h3 className="text-base font-bold text-foreground leading-tight">
+                                      {item.studentName || `Estudiante ${item.initials}`}
+                                    </h3>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      {item.career} {item.semester ? `• ${item.semester}` : ""}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <Badge
+                                    variant="outline"
+                                    className={`${style.surface} text-xs font-bold`}
+                                  >
+                                    <span className={`mr-1.5 size-2 rounded-full ${style.dot}`} />
+                                    {style.label}
+                                  </Badge>
+                                  <Badge
+                                    variant="outline"
+                                    className={`${statusInfo.surface} text-[10px] font-medium`}
+                                  >
+                                    {statusInfo.label}
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              {/* Reporte clínico / Resumen */}
+                              <p className="mt-3.5 text-xs text-foreground font-medium leading-relaxed line-clamp-2 bg-muted/20 p-2.5 rounded-xl border border-border/40">
+                                {item.summary}
+                              </p>
+
+                              {/* Puntajes de tamizaje e info de contacto */}
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary">
+                                    PHQ-9: {item.phq9}/27
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-md bg-card border border-border text-[11px] font-bold text-primary">
+                                    GAD-7: {item.gad7}/21
+                                  </span>
+                                </div>
+
+                                <span className="text-[11px] flex items-center gap-1 font-medium text-muted-foreground">
+                                  <Clock className="size-3 text-teal" />
+                                  {item.lastCheckIn}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Botones de Acción Inmediata */}
+                            <div className="pt-2 border-t border-border/60 flex flex-col gap-2">
+                              <div className="grid grid-cols-3 gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => setScheduleDialogCase(item)}
+                                  className="rounded-xl bg-teal hover:bg-teal/90 text-white text-xs h-8 gap-1 font-semibold"
+                                >
+                                  <CalendarPlus className="size-3.5" />
+                                  <span className="truncate">Agendar</span>
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setContactDialogCase(item)}
+                                  className="rounded-xl border-accent text-accent hover:bg-accent/10 text-xs h-8 gap-1 font-semibold"
+                                >
+                                  <PhoneCall className="size-3.5" />
+                                  <span className="truncate">Contactar</span>
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setSelectedCaseForDetail(item)}
+                                  className="rounded-xl text-xs h-8 gap-1 text-foreground hover:bg-card font-semibold"
+                                >
+                                  <FolderOpen className="size-3.5 text-primary" />
+                                  <span className="truncate">Expediente</span>
+                                </Button>
+                              </div>
+
+                              {/* Botón Atendido — Liberar (RD-07) */}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleLiberarPaciente(item.id)}
+                                className={`w-full rounded-xl text-xs h-8 gap-1.5 font-semibold transition-all ${
+                                  item.bloqueado
+                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-xs"
+                                    : "border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                }`}
+                                title="Liberar tamizaje para permitir que el estudiante inicie uno nuevo"
+                              >
+                                <UserCheck className="size-3.5" />
+                                <span>Atendido — Liberar</span>
+                              </Button>
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Paginación de 6 casos por página */}
+                  {filteredCases.length > PAGE_SIZE && (
+                    <div className="flex items-center justify-between pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={safePage <= 1}
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className="rounded-xl border-[#D8D2FF] text-foreground hover:bg-[#6857E4]/10 disabled:opacity-40 text-xs"
+                      >
+                        Anterior
+                      </Button>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        Página {safePage} de {totalPages}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={safePage >= totalPages}
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        className="rounded-xl border-[#D8D2FF] text-foreground hover:bg-[#6857E4]/10 disabled:opacity-40 text-xs"
+                      >
+                        Siguiente
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
