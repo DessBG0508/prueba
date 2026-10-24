@@ -40,9 +40,16 @@ export function AvisoPrivacidadPage() {
   );
   const queryMode = searchParams.get("mode");
 
+  // FIX S4: Verificar también localStorage de forma síncrona para que isConsultationMode se active de inmediato tras aceptar
+  const localAceptado =
+    typeof window !== "undefined" &&
+    localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
+
   // MODO 2 (Consulta): si viene con ?mode=consulta o si el usuario ya aceptó la versión actual
   const isConsultationMode =
-    queryMode === "consulta" || (!needsAcceptance && !isAvisoLoading && queryMode !== "forzar");
+    queryMode === "consulta" ||
+    localAceptado || // FIX S4: Reconocer aceptación local inmediata
+    (!needsAcceptance && !isAvisoLoading && queryMode !== "forzar");
 
   // Checkbox: en consulta aparece premarcado; en forzada inicia desmarcado
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -74,7 +81,7 @@ export function AvisoPrivacidadPage() {
       setIsSubmitting(true);
       await acceptAviso(AVISO_PRIVACIDAD_VERSION_ACTUAL, modoAcompanamientoConsent);
       toast.success("Aviso de Privacidad aceptado. Bienvenido/a a Equilibra TESH.");
-      navigate({ to: "/", replace: true });
+      navigate({ to: "/", replace: true }); // FIX S4: Reemplazar historia para evitar bucle de retorno
     } catch {
       toast.error("Ocurrió un error al procesar tu consentimiento. Intenta nuevamente.");
     } finally {
@@ -83,7 +90,7 @@ export function AvisoPrivacidadPage() {
   };
 
   const handleReturnToProfile = () => {
-    navigate({ to: "/perfil" });
+    navigate({ to: "/perfil", replace: true }); // FIX S4: Usar replace: true para salir del aviso sin dejar rastro en history
   };
 
   const handleCancel = () => {
@@ -326,7 +333,7 @@ export function AvisoPrivacidadPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate({ to: "/" })}
+                    onClick={() => navigate({ to: "/", replace: true })} // FIX S4: replace: true para evitar ciclo en history
                     className="rounded-xl border-border bg-card text-xs font-semibold text-foreground shadow-xs hover:bg-muted"
                   >
                     <span>Ir al Inicio</span>

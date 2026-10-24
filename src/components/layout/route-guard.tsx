@@ -42,8 +42,14 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
+    // FIX S4: Verificación síncrona con localStorage antes de evaluar bloqueo por aviso
+    const localAceptado =
+      typeof window !== "undefined" &&
+      localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
+
     // 2. Si el estudiante requiere aceptar el Aviso de Privacidad (primera vez o versión nueva)
-    if (user.role === "estudiante" && needsAcceptance && !isResetPage) {
+    // FIX S4: Si localAceptado es true, no bloquear aunque la consulta de BD esté en vuelo o el hook sincronizando
+    if (user.role === "estudiante" && needsAcceptance && !localAceptado && !isResetPage) {
       navigate({ to: "/aviso-privacidad", replace: true });
       return;
     }
