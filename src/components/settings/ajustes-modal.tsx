@@ -88,10 +88,12 @@ export function AjustesModal({
   const activeRole: RoleType = (rolProp || (user?.role as RoleType) || "estudiante") as RoleType;
   const isEstudiante = activeRole === "estudiante";
 
-  // Build sidebar sections based on role
+  // Secciones del sidebar según el rol
   const sections: SidebarItem[] = [
     { id: "cuenta", label: "Cuenta", icon: User },
-    { id: "privacidad", label: "Privacidad y datos", icon: Shield },
+    ...(isEstudiante
+      ? [{ id: "privacidad" as SectionKey, label: "Privacidad y datos", icon: Shield }]
+      : []),
     { id: "apariencia", label: "Apariencia", icon: Palette },
     { id: "ayuda", label: "Ayuda y soporte", icon: HelpCircle },
     { id: "acerca", label: "Acerca de", icon: Info },

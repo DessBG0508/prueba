@@ -12,12 +12,15 @@ import {
   GraduationCap,
   Sparkles,
   ShieldAlert,
+  Mic,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { EscucharVozNota } from "@/components/voz/EscucharVozNota";
+import { NotasVozModal } from "./notas-voz-modal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -108,6 +111,9 @@ export function SemaforoPacientes() {
   // Estado del modal de confirmación de liberación
   const [pacienteALiberar, setPacienteALiberar] = useState<PacienteParaPsicologo | null>(null);
   const [isLiberando, setIsLiberando] = useState<boolean>(false);
+
+  // Estado del modal de notas de voz del paciente
+  const [pacienteParaNotas, setPacienteParaNotas] = useState<PacienteParaPsicologo | null>(null);
 
   const fetchPacientes = useCallback(async () => {
     try {
@@ -630,6 +636,18 @@ export function SemaforoPacientes() {
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => setPacienteParaNotas(paciente)}
+                            className="h-8 rounded-xl border-border bg-card px-2.5 text-xs font-semibold text-foreground shadow-xs hover:bg-[#6857E4]/10 hover:text-[#6857E4] focus-visible:ring-2 focus-visible:ring-[#6857E4]"
+                            aria-label={`Ver y escuchar notas de voz del paciente ${paciente.iniciales || paciente.folio}`}
+                            title="Ver y escuchar notas de voz del estudiante"
+                          >
+                            <Mic className="mr-1.5 size-3.5 text-[#6857E4]" />
+                            <span>Notas de voz</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => navigate({ to: "/expedientes" })}
                             className="h-8 rounded-xl border-border bg-card px-2.5 text-xs font-semibold text-foreground shadow-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-[#6857E4]"
                             aria-label={`Ver expediente del paciente ${paciente.iniciales || paciente.folio}`}
@@ -748,6 +766,18 @@ export function SemaforoPacientes() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => setPacienteParaNotas(paciente)}
+                        className="h-7 rounded-lg border-border text-[11px] font-semibold px-2 hover:bg-[#6857E4]/10 hover:text-[#6857E4]"
+                        aria-label={`Ver notas de voz de ${paciente.iniciales}`}
+                        title="Notas de voz"
+                      >
+                        <Mic className="mr-1 size-3 text-[#6857E4]" />
+                        <span>Notas</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => navigate({ to: "/expedientes" })}
                         className="h-7 rounded-lg border-border text-[11px] font-semibold px-2"
                         aria-label={`Ver expediente de ${paciente.iniciales}`}
@@ -829,6 +859,15 @@ export function SemaforoPacientes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* MODAL DE NOTAS DE VOZ CON REPRODUCTOR ESPECÍFICO */}
+      <NotasVozModal
+        paciente={pacienteParaNotas}
+        open={Boolean(pacienteParaNotas)}
+        onOpenChange={(open) => {
+          if (!open) setPacienteParaNotas(null);
+        }}
+      />
     </div>
   );
 }
