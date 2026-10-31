@@ -46,7 +46,7 @@ export function NotasVozModal({ paciente, open, onOpenChange }: NotasVozModalPro
       const { data, error } = await supabase
         .from("notas_voz")
         .select("*")
-        .eq("folio", paciente.folio)
+        .eq("folio_tamizaje", paciente.folio)
         .order("creado_en", { ascending: false });
 
       if (error) {
