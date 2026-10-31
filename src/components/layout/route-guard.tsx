@@ -42,14 +42,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // FIX S4: Verificación síncrona con localStorage antes de evaluar bloqueo por aviso
-    const localAceptado =
-      typeof window !== "undefined" &&
-      localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
-
-    // FIX S4: Aviso obligatorio para TODOS los roles en su primer inicio de sesión
+    // Aviso obligatorio para TODOS los roles en su primer inicio de sesión
     // (estudiante, psicólogo, jefatura, coordinador) — privacidad por defecto LFPDPPP
-    if (needsAcceptance && !localAceptado && !isResetPage) {
+    if (needsAcceptance && !isResetPage) {
       navigate({ to: "/aviso-privacidad", replace: true });
       return;
     }
@@ -116,6 +111,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   // Si hay usuario y está en una ruta que no le corresponde, no renderizar mientras redirige
   if (user) {
     const enReset = pathname === "/reset";
+    if (needsAcceptance && pathname !== "/aviso-privacidad" && !enReset) {
+      return null;
+    }
     if (PUBLIC_ROUTES.includes(pathname) && !enReset && pathname !== "/aviso-privacidad")
       return null;
     if (

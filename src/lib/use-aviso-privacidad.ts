@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 
 export const AVISO_PRIVACIDAD_VERSION_ACTUAL = "1.0";
-const SYNC_EVENT_NAME = "equilibra_aviso_privacidad_sync"; // FIX S4: Nombre de evento global para sincronizar todas las instancias del hook
+const SYNC_EVENT_NAME = "equilibra_aviso_privacidad_sync";
 
 export interface AvisoPrivacidadStatus {
   needsAcceptance: boolean;
@@ -11,120 +11,221 @@ export interface AvisoPrivacidadStatus {
   versionAceptada: string | null;
   fechaAceptacion: string | null;
   acceptAviso: (version?: string, modoAcompanamiento?: boolean) => Promise<boolean>;
-  refetch: () => Promise<void>; // FIX S4: Exponer refetch para revalidación explícita
+  refetch: () => Promise<void>;
+}
+
+export interface StoredAvisoInfo {
+  aceptado: boolean;
+  version: string | null;
+  fecha: string | null;
+}
+
+/**
+ * Genera la clave de localStorage scoped por user_id.
+ */
+export function getAvisoStorageKey(userId: string): string {
+  return `equilibra_aviso_aceptado_${userId}`;
+}
+
+/**
+ * Lee el estado del aviso desde localStorage para un usuario específico.
+ */
+export function getStoredAviso(userId?: string | null): StoredAvisoInfo | null {
+  if (!userId || typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(getAvisoStorageKey(userId));
+    if (!raw) return null;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return {
+          aceptado: Boolean(parsed.aceptado),
+          version: typeof parsed.version === "string" ? parsed.version : null,
+          fecha: typeof parsed.fecha === "string" ? parsed.fecha : null,
+        };
+      }
+    } catch {
+      if (raw === "true") {
+        return {
+          aceptado: true,
+          version: AVISO_PRIVACIDAD_VERSION_ACTUAL,
+          fecha: null,
+        };
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Limpia todas las claves del localStorage que comiencen con equilibra_aviso_aceptado_
+ * (y claves legadas) al cerrar sesión.
+ */
+export function clearAllAvisoStorage(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        (key.startsWith("equilibra_aviso_aceptado_") ||
+          key.startsWith("equilibra_aviso_privacidad_"))
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (err) {
+    console.error("Error al limpiar claves de aviso en localStorage:", err);
+  }
 }
 
 export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
 
-  // FIX S4: Inicializar con verificación síncrona de localStorage para evitar falsos positivos
+  // Inicialización síncrona scoped exclusivamente al user.id actual (evita falsos positivos de otros usuarios)
   const [needsAcceptance, setNeedsAcceptance] = useState<boolean>(() => {
-    try {
-      const localAceptado = localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
-      const localVersion = localStorage.getItem("equilibra_aviso_privacidad_version");
-      if (localAceptado && localVersion === AVISO_PRIVACIDAD_VERSION_ACTUAL) {
-        return false;
-      }
-    } catch {
-      // ignore
+    if (!user?.id) return false;
+    const stored = getStoredAviso(user.id);
+    if (stored?.aceptado && stored.version === AVISO_PRIVACIDAD_VERSION_ACTUAL) {
+      return false;
     }
-    return false;
+    return true;
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
   const [versionAceptada, setVersionAceptada] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("equilibra_aviso_privacidad_version");
-    } catch {
-      return null;
-    }
+    if (!user?.id) return null;
+    return getStoredAviso(user.id)?.version ?? null;
   });
+
   const [fechaAceptacion, setFechaAceptacion] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("equilibra_aviso_privacidad_fecha");
-    } catch {
-      return null;
-    }
+    if (!user?.id) return null;
+    return getStoredAviso(user.id)?.fecha ?? null;
   });
 
   const checkAviso = useCallback(async () => {
+    if (isAuthLoading) return;
+
     if (!user?.id) {
       setIsLoading(false);
       setNeedsAcceptance(false);
+      setVersionAceptada(null);
+      setFechaAceptacion(null);
       return;
     }
 
-    // 1. Verificación en almacenamiento local
-    try {
-      const localAceptado = localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
-      const localVersion = localStorage.getItem("equilibra_aviso_privacidad_version");
-      const localFecha = localStorage.getItem("equilibra_aviso_privacidad_fecha");
-
-      if (localAceptado && localVersion === AVISO_PRIVACIDAD_VERSION_ACTUAL) {
-        setNeedsAcceptance(false); // FIX S4: Desactivar bloqueo inmediatamente si localStorage es válido
-        setVersionAceptada(localVersion);
-        setFechaAceptacion(localFecha);
-      } else {
-        setNeedsAcceptance(true);
-      }
-    } catch {
-      // ignore
+    // 1. Verificación síncrona scoped en localStorage para el usuario actual
+    const stored = getStoredAviso(user.id);
+    if (stored?.aceptado && stored.version === AVISO_PRIVACIDAD_VERSION_ACTUAL) {
+      setNeedsAcceptance(false);
+      setVersionAceptada(stored.version);
+      setFechaAceptacion(stored.fecha);
+    } else {
+      setNeedsAcceptance(true);
+      setVersionAceptada(null);
+      setFechaAceptacion(null);
     }
 
-    // 2. Fuente de verdad: Consulta a la tabla profiles en Supabase
+    // 2. Fuente de verdad: Consulta en Supabase
+    let bdAceptado = false;
+    let bdVersion: string | null = null;
+    let bdFecha: string | null = null;
+
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("aviso_privacidad_aceptado, aviso_privacidad_version, aviso_privacidad_fecha")
-        .eq("id", user.id)
+      // 2a. Consulta a la tabla avisos_aceptados
+      const { data: avisoData, error: avisoError } = await supabase
+        .from("avisos_aceptados")
+        .select("user_id, version_aviso, fecha_aceptacion")
+        .eq("user_id", user.id)
         .maybeSingle();
 
-      if (!error && data) {
-        const yaAcepto = data.aviso_privacidad_aceptado === true;
-        const versionCoincide = data.aviso_privacidad_version === AVISO_PRIVACIDAD_VERSION_ACTUAL;
-        const debeAceptar = !(yaAcepto && versionCoincide);
-
-        setNeedsAcceptance(debeAceptar);
-        setVersionAceptada(data.aviso_privacidad_version ?? null);
-        setFechaAceptacion(data.aviso_privacidad_fecha ?? null);
-
-        // Sincronizar en localStorage si ya está aceptado en BD
-        if (!debeAceptar) {
-          try {
-            localStorage.setItem("equilibra_aviso_privacidad_aceptado", "true");
-            localStorage.setItem(
-              "equilibra_aviso_privacidad_version",
-              data.aviso_privacidad_version || AVISO_PRIVACIDAD_VERSION_ACTUAL,
-            );
-            if (data.aviso_privacidad_fecha) {
-              localStorage.setItem("equilibra_aviso_privacidad_fecha", data.aviso_privacidad_fecha);
-            }
-          } catch {
-            // ignore
-          }
-        }
+      if (!avisoError && avisoData && avisoData.version_aviso) {
+        bdAceptado = true;
+        bdVersion = avisoData.version_aviso;
+        bdFecha = avisoData.fecha_aceptacion ?? null;
       }
-    } catch (err) {
-      console.warn("Aviso al verificar estado de aviso de privacidad en profiles:", err);
-    } finally {
-      setIsLoading(false);
+    } catch (e) {
+      console.warn("Aviso al consultar avisos_aceptados:", e);
     }
-  }, [user?.id]);
+
+    // 2b. Fallback a la tabla profiles si avisos_aceptados aún no tiene el registro
+    if (!bdAceptado) {
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("aviso_privacidad_aceptado, aviso_privacidad_version, aviso_privacidad_fecha")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!profileError && profileData && profileData.aviso_privacidad_aceptado === true) {
+          bdAceptado = true;
+          bdVersion = profileData.aviso_privacidad_version || AVISO_PRIVACIDAD_VERSION_ACTUAL;
+          bdFecha = profileData.aviso_privacidad_fecha ?? null;
+        }
+      } catch (e) {
+        console.warn("Aviso al consultar profiles:", e);
+      }
+    }
+
+    // 3. Evaluar necesidad de aceptación
+    const versionCoincide = bdVersion === AVISO_PRIVACIDAD_VERSION_ACTUAL;
+    const debeAceptar = !(bdAceptado && versionCoincide);
+
+    setNeedsAcceptance(debeAceptar);
+    setVersionAceptada(bdVersion);
+    setFechaAceptacion(bdFecha);
+
+    // Sincronizar localStorage con clave scoped
+    if (!debeAceptar && bdVersion) {
+      try {
+        localStorage.setItem(
+          getAvisoStorageKey(user.id),
+          JSON.stringify({
+            aceptado: true,
+            version: bdVersion,
+            fecha: bdFecha,
+          }),
+        );
+      } catch {
+        // ignore
+      }
+    } else {
+      try {
+        localStorage.removeItem(getAvisoStorageKey(user.id));
+      } catch {
+        // ignore
+      }
+    }
+
+    setIsLoading(false);
+  }, [user?.id, isAuthLoading]);
 
   useEffect(() => {
     checkAviso();
 
-    // FIX S4: Escuchar evento de sincronización para actualizar todas las instancias activas del hook simultáneamente
     const handleSync = (e: Event) => {
       const customEvent = e as CustomEvent<{
+        userId?: string;
         needsAcceptance: boolean;
         version?: string;
         fecha?: string;
       }>;
       if (customEvent.detail) {
-        setNeedsAcceptance(customEvent.detail.needsAcceptance);
-        if (customEvent.detail.version) setVersionAceptada(customEvent.detail.version);
-        if (customEvent.detail.fecha) setFechaAceptacion(customEvent.detail.fecha);
+        if (!customEvent.detail.userId || customEvent.detail.userId === user?.id) {
+          setNeedsAcceptance(customEvent.detail.needsAcceptance);
+          if (customEvent.detail.version !== undefined) {
+            setVersionAceptada(customEvent.detail.version);
+          }
+          if (customEvent.detail.fecha !== undefined) {
+            setFechaAceptacion(customEvent.detail.fecha);
+          }
+        }
       } else {
         checkAviso();
       }
@@ -137,20 +238,27 @@ export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
       window.removeEventListener(SYNC_EVENT_NAME, handleSync);
       window.removeEventListener("storage", handleSync);
     };
-  }, [checkAviso]);
+  }, [checkAviso, user?.id]);
 
   const acceptAviso = useCallback(
     async (
       version = AVISO_PRIVACIDAD_VERSION_ACTUAL,
       modoAcompanamiento?: boolean,
     ): Promise<boolean> => {
+      if (!user?.id) return false;
+
       const timestamp = new Date().toISOString();
 
-      // Guardar inmediatamente en localStorage
+      // 1. Guardar de inmediato en localStorage con la clave scoped al user_id
       try {
-        localStorage.setItem("equilibra_aviso_privacidad_aceptado", "true");
-        localStorage.setItem("equilibra_aviso_privacidad_version", version);
-        localStorage.setItem("equilibra_aviso_privacidad_fecha", timestamp);
+        localStorage.setItem(
+          getAvisoStorageKey(user.id),
+          JSON.stringify({
+            aceptado: true,
+            version,
+            fecha: timestamp,
+          }),
+        );
         if (modoAcompanamiento !== undefined) {
           localStorage.setItem(
             "equilibra_modo_acompanamiento",
@@ -161,16 +269,17 @@ export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
         // ignore
       }
 
-      // FIX S4: Actualizar estado local síncronamente
+      // 2. Actualizar estado local síncronamente
       setNeedsAcceptance(false);
       setVersionAceptada(version);
       setFechaAceptacion(timestamp);
 
-      // FIX S4: Notificar a todas las demás instancias activas del hook (RouteGuard, Header, etc.)
+      // 3. Notificar a todas las instancias activas del hook
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent(SYNC_EVENT_NAME, {
             detail: {
+              userId: user.id,
               needsAcceptance: false,
               version,
               fecha: timestamp,
@@ -179,8 +288,24 @@ export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
         );
       }
 
-      if (!user?.id) return true;
+      // 4. Persistir en la tabla avisos_aceptados en Supabase
+      try {
+        const { error: errorAviso } = await supabase.from("avisos_aceptados").upsert(
+          {
+            user_id: user.id,
+            version_aviso: version,
+            fecha_aceptacion: timestamp,
+          },
+          { onConflict: "user_id" },
+        );
+        if (errorAviso) {
+          console.warn("Aviso al registrar en avisos_aceptados:", errorAviso);
+        }
+      } catch (err) {
+        console.warn("Error al registrar en avisos_aceptados:", err);
+      }
 
+      // 5. Actualizar también en profiles para compatibilidad con la vista
       try {
         const updatePayload: Record<string, unknown> = {
           aviso_privacidad_aceptado: true,
@@ -193,9 +318,7 @@ export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
         }
 
         const { error } = await supabase.from("profiles").update(updatePayload).eq("id", user.id);
-
         if (error && error.message.includes("does not exist")) {
-          // Fallback tolerante si las columnas aún no existen en la BD
           if (modoAcompanamiento !== undefined) {
             await supabase
               .from("profiles")
@@ -203,11 +326,11 @@ export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
               .eq("id", user.id);
           }
         }
-        return true;
       } catch (err) {
-        console.warn("Error al registrar aceptación en Supabase:", err);
-        return false;
+        console.warn("Error al actualizar profiles:", err);
       }
+
+      return true;
     },
     [user?.id],
   );
@@ -218,6 +341,6 @@ export function useAvisoPrivacidad(): AvisoPrivacidadStatus {
     versionAceptada,
     fechaAceptacion,
     acceptAviso,
-    refetch: checkAviso, // FIX S4: Retornar refetch
+    refetch: checkAviso,
   };
 }

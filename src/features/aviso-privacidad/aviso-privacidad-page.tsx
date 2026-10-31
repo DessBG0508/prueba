@@ -21,7 +21,11 @@ import { Badge } from "@/components/ui/badge";
 import { PageShell } from "@/components/layout/page-shell";
 import { useAuth } from "@/lib/auth-context";
 import { rutaPorRol } from "@/lib/roles";
-import { useAvisoPrivacidad, AVISO_PRIVACIDAD_VERSION_ACTUAL } from "@/lib/use-aviso-privacidad";
+import {
+  useAvisoPrivacidad,
+  AVISO_PRIVACIDAD_VERSION_ACTUAL,
+  getStoredAviso,
+} from "@/lib/use-aviso-privacidad";
 import { AVISO_PRIVACIDAD_METADATA, AVISO_PRIVACIDAD_SECCIONES } from "./aviso-privacidad-content";
 
 export function AvisoPrivacidadPage() {
@@ -41,16 +45,20 @@ export function AvisoPrivacidadPage() {
   );
   const queryMode = searchParams.get("mode");
 
-  // FIX S4: Verificar también localStorage de forma síncrona para que isConsultationMode se active de inmediato tras aceptar
-  const localAceptado =
-    typeof window !== "undefined" &&
-    localStorage.getItem("equilibra_aviso_privacidad_aceptado") === "true";
+  // Consulta síncrona scoped al usuario actual
+  const userStoredAviso = user?.id ? getStoredAviso(user.id) : null;
+  const userYaAcepto =
+    userStoredAviso?.aceptado === true &&
+    userStoredAviso.version === AVISO_PRIVACIDAD_VERSION_ACTUAL;
 
-  // MODO 2 (Consulta): si viene con ?mode=consulta o si el usuario ya aceptó la versión actual
+  // MODO 2 (Consulta): si viene con ?mode=consulta o si el usuario autenticado ya aceptó y no requiere aceptación
   const isConsultationMode =
     queryMode === "consulta" ||
-    localAceptado || // FIX S4: Reconocer aceptación local inmediata
-    (!needsAcceptance && !isAvisoLoading && queryMode !== "forzar");
+    (Boolean(user) &&
+      !needsAcceptance &&
+      !isAvisoLoading &&
+      (userYaAcepto || Boolean(versionAceptada)) &&
+      queryMode !== "forzar");
 
   // Checkbox: en consulta aparece premarcado; en forzada inicia desmarcado
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -90,7 +98,7 @@ export function AvisoPrivacidadPage() {
     }
   };
 
-  const handleReturnToProfile = () => {
+  const handleGoHome = () => {
     if (user) {
       navigate({ to: rutaPorRol(user.role), replace: true });
     } else {
@@ -98,11 +106,27 @@ export function AvisoPrivacidadPage() {
     }
   };
 
-  const handleCancel = () => {
-    if (user) {
-      logout();
+  const handleReturnToProfile = () => {
+    if (user?.role === "estudiante") {
+      navigate({ to: "/perfil" });
+    } else if (window.history.length > 1) {
+      window.history.back();
+    } else if (user) {
+      navigate({ to: rutaPorRol(user.role), replace: true });
+    } else {
+      navigate({ to: "/", replace: true });
     }
-    toast.info("Registro cancelado. Regresando al inicio de sesión.");
+  };
+
+  const handleCancel = async () => {
+    try {
+      if (user) {
+        await logout();
+      }
+    } catch (e) {
+      console.error("Error al cerrar sesión al no aceptar aviso:", e);
+    }
+    toast.info("Has decidido no aceptar el Aviso de Privacidad. Sesión finalizada.");
     navigate({ to: "/login", replace: true });
   };
 
@@ -338,7 +362,7 @@ export function AvisoPrivacidadPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate({ to: "/", replace: true })} // FIX S4: replace: true para evitar ciclo en history
+                    onClick={handleGoHome}
                     className="rounded-xl border-border bg-card text-xs font-semibold text-foreground shadow-xs hover:bg-muted"
                   >
                     <span>Ir al Inicio</span>
@@ -363,7 +387,7 @@ export function AvisoPrivacidadPage() {
                     className="rounded-xl border-border bg-card text-xs font-semibold text-foreground shadow-xs hover:bg-muted"
                   >
                     <ArrowLeft className="mr-1.5 size-3.5" />
-                    <span>Cancelar</span>
+                    <span>No aceptar</span>
                   </Button>
 
                   <Button

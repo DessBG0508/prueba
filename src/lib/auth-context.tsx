@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { DEMO_MODE } from "./mock-data";
 import type { User, UserRole } from "./types";
+import { clearAllAvisoStorage } from "./use-aviso-privacidad";
 
 export interface RegisterInput {
   name: string;
@@ -143,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(LAST_ACTIVITY_KEY);
       localStorage.setItem("equilibra_logged_out", "true");
+      clearAllAvisoStorage();
     } catch (e) {
       console.error("Error al eliminar la sesión local", e);
     }
@@ -235,6 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
 
       if (event === "SIGNED_OUT" || !session) {
+        clearAllAvisoStorage();
         const hasManualLogout = localStorage.getItem("equilibra_logged_out") === "true";
         if (hasManualLogout) {
           setUser(null);
