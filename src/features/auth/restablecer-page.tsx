@@ -53,6 +53,7 @@ export function RestablecerPage() {
         authListener.subscription.unsubscribe();
       };
     }
+    return undefined;
   }, []);
 
   // TAREA 3 — Paso 1: Verificar el código de 6 dígitos con supabase.auth.verifyOtp

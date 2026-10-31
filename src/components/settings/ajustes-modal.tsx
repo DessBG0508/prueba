@@ -152,10 +152,11 @@ export function AjustesModal({
     }
   };
 
-  const userInitials = user?.nombre
-    ? user.nombre
+  const displayName = user?.name || "Usuario Institucional";
+  const userInitials = user?.name
+    ? user.name
         .split(" ")
-        .map((p) => p[0])
+        .map((p: string) => p[0])
         .join("")
         .slice(0, 2)
         .toUpperCase()
@@ -321,7 +322,7 @@ export function AjustesModal({
                   </Avatar>
                   <div className="flex flex-col min-w-0">
                     <span className="font-semibold text-foreground text-sm truncate">
-                      {user?.nombre || "Usuario Institucional"}
+                      {displayName}
                     </span>
                     <span className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
                       <Mail className="size-3" />

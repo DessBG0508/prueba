@@ -515,7 +515,7 @@ export function PsychologistDashboard() {
 
                     <button
                       type="button"
-                      onClick={() => setActiveTab("agenda")}
+                      onClick={() => setActiveSection("agenda")}
                       className="ethereal-card p-4 rounded-2xl border border-border hover:border-teal/50 transition-all text-left flex items-center justify-between"
                     >
                       <div>

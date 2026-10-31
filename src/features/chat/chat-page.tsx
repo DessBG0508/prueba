@@ -18,7 +18,11 @@ import {
   Copy,
   Ticket,
 } from "lucide-react";
-import { resetBackendScreeningState, type EliMessage } from "@/lib/api-client";
+import {
+  resetBackendScreeningState,
+  type EliMessage,
+  type TamizajeSubmissionPayload,
+} from "@/lib/api-client";
 import { supabase } from "@/integrations/supabase/client";
 import {
   INITIAL_SCREENING_STATE,
@@ -124,11 +128,8 @@ export function ChatPage() {
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [pendingSubmissionPayload, setPendingSubmissionPayload] = useState<{
-    paciente: { iniciales: string; edad: number; sexo: string; semestre: string };
-    GAD7: number[];
-    PHQ9: number[];
-  } | null>(null);
+  const [pendingSubmissionPayload, setPendingSubmissionPayload] =
+    useState<TamizajeSubmissionPayload | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 

@@ -1,5 +1,7 @@
 # Equilibra TESH — Plataforma de Apoyo Psicológico Universitario
 
+![CI](https://github.com/DessBG0508/prueba/actions/workflows/ci.yml/badge.svg)
+
 Sistema integral de salud mental y bienestar emocional desarrollado para la comunidad estudiantil del **Tecnológico de Estudios Superiores de Huixquilucan (TESH)**.
 
 ---

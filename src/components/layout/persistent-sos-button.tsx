@@ -22,7 +22,12 @@ export function PersistentSosButton() {
   }
 
   // No mostrar a personal administrativo/psicólogos en sus áreas
-  if (user?.role === "psicologo" || user?.role === "directivo") {
+  if (
+    user?.role === "psicologo" ||
+    (user?.role as string) === "directivo" ||
+    user?.role === "jefatura" ||
+    user?.role === "coordinador"
+  ) {
     return null;
   }
 
