@@ -43,6 +43,7 @@ import { CrisisProtocolDialog } from "./crisis-protocol-dialog";
 import { PsychologistAgenda } from "./psychologist-agenda";
 import { ClinicalNotesFeed } from "./clinical-notes-feed";
 import { SemaforoPacientes } from "./semaforo-pacientes";
+import { ResultadosEncuesta } from "./ResultadosEncuesta";
 import { AjustesModal } from "@/components/settings/ajustes-modal";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -355,6 +356,7 @@ export function PsychologistDashboard() {
               {activeSection === "expedientes" && "Expedientes Clínicos"}
               {activeSection === "agenda" && "Agenda de Citas"}
               {activeSection === "bitacora" && "Bitácora Clínica"}
+              {activeSection === "encuestas" && "Encuestas de Satisfacción PB-021"}
             </h1>
           </div>
 
@@ -871,6 +873,9 @@ export function PsychologistDashboard() {
               <ClinicalNotesFeed onSelectCase={handleOpenCaseById} />
             </div>
           )}
+
+          {/* SECCIÓN 6: RESULTADOS DE ENCUESTAS DE SATISFACCIÓN (PB-021) */}
+          {activeSection === "encuestas" && <ResultadosEncuesta />}
         </main>
       </div>
 

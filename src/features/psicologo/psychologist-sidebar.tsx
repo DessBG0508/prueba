@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Calendar,
   FileText,
+  Star,
   LogOut,
   Sparkles,
   ChevronLeft,
@@ -14,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { BRAND } from "@/lib/branding";
 
-export type PsychologistNavSection = "resumen" | "alertas" | "expedientes" | "agenda" | "bitacora";
+export type PsychologistNavSection =
+  "resumen" | "alertas" | "expedientes" | "agenda" | "bitacora" | "encuestas";
 
 interface PsychologistSidebarProps {
   activeSection: PsychologistNavSection;
@@ -66,6 +68,12 @@ export function PsychologistSidebar({
       id: "bitacora" as PsychologistNavSection,
       label: "Bitácora",
       icon: FileText,
+      badge: null,
+    },
+    {
+      id: "encuestas" as PsychologistNavSection,
+      label: "Encuestas PB-021",
+      icon: Star,
       badge: null,
     },
   ];

@@ -21,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { EscucharVozNota } from "@/components/voz/EscucharVozNota";
 import { NotasVozModal } from "./notas-voz-modal";
+import { ExpedienteClinico } from "./ExpedienteClinico";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -114,6 +115,10 @@ export function SemaforoPacientes() {
 
   // Estado del modal de notas de voz del paciente
   const [pacienteParaNotas, setPacienteParaNotas] = useState<PacienteParaPsicologo | null>(null);
+
+  // Estado del modal de Expediente Clínico de 5 páginas
+  const [pacienteParaExpediente, setPacienteParaExpediente] =
+    useState<PacienteParaPsicologo | null>(null);
 
   const fetchPacientes = useCallback(async () => {
     try {
@@ -648,7 +653,7 @@ export function SemaforoPacientes() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => navigate({ to: "/expedientes" })}
+                            onClick={() => setPacienteParaExpediente(paciente)}
                             className="h-8 rounded-xl border-border bg-card px-2.5 text-xs font-semibold text-foreground shadow-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-[#6857E4]"
                             aria-label={`Ver expediente del paciente ${paciente.iniciales || paciente.folio}`}
                           >
@@ -778,7 +783,7 @@ export function SemaforoPacientes() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => navigate({ to: "/expedientes" })}
+                        onClick={() => setPacienteParaExpediente(paciente)}
                         className="h-7 rounded-lg border-border text-[11px] font-semibold px-2"
                         aria-label={`Ver expediente de ${paciente.iniciales}`}
                       >
@@ -868,6 +873,36 @@ export function SemaforoPacientes() {
           if (!open) setPacienteParaNotas(null);
         }}
       />
+
+      {/* MODAL DEL EXPEDIENTE CLÍNICO OFICIAL DE 5 PÁGINAS */}
+      <Dialog
+        open={Boolean(pacienteParaExpediente)}
+        onOpenChange={(open) => {
+          if (!open) setPacienteParaExpediente(null);
+        }}
+      >
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto p-2 sm:p-4 sm:rounded-3xl border-[#d8d2ff] bg-card">
+          <DialogHeader className="px-4 pt-2">
+            <DialogTitle className="sr-only">
+              Expediente Clínico de{" "}
+              {pacienteParaExpediente?.iniciales || pacienteParaExpediente?.folio}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formato clínico oficial de 5 páginas de historia clínica, tamizajes y seguimiento
+            </DialogDescription>
+          </DialogHeader>
+          {pacienteParaExpediente && (
+            <ExpedienteClinico
+              folio={pacienteParaExpediente.folio}
+              onClose={() => setPacienteParaExpediente(null)}
+              onPacienteLiberado={() => {
+                fetchPacientes();
+                setPacienteParaExpediente(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

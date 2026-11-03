@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
@@ -17,6 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAuth } from "@/lib/auth-context";
+import { CalendarioCitas } from "@/features/agenda/CalendarioCitas";
+import { FormularioSolicitud } from "@/features/agenda/FormularioSolicitud";
+import { EstadoCita } from "@/features/agenda/EstadoCita";
+import {
+  getSolicitudesEstudiante,
+  crearSolicitudCita,
+  cancelarCitaEstudiante,
+} from "@/features/agenda/agenda-service";
+import type { SolicitudCita } from "@/features/agenda/types";
 
 const STORAGE_KEY = "equilibra_citas_v1";
 
@@ -119,6 +129,87 @@ export function CitasPage() {
       console.error("Error al persistir citas", e);
     }
   }, [appointments]);
+
+  // Estados del Flujo Oficial PB-009 (Canva)
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"pb009_solicitud" | "historial">("pb009_solicitud");
+  const [pbEtapa, setPbEtapa] = useState<"calendario" | "solicitud" | "estado">("calendario");
+  const [pbFecha, setPbFecha] = useState<string>("");
+  const [pbHora, setPbHora] = useState<string>("");
+  const [pbCitaActiva, setPbCitaActiva] = useState<SolicitudCita | null>(null);
+  const [isSubmittingPb, setIsSubmittingPb] = useState<boolean>(false);
+  const [isCancelingPb, setIsCancelingPb] = useState<boolean>(false);
+
+  const cargarCitasPb = useCallback(async () => {
+    if (!user) return;
+    const solicitudes = await getSolicitudesEstudiante(user.id, user.matricula);
+    const activa = solicitudes.find((s) => s.estado === "pendiente" || s.estado === "confirmada");
+    if (activa) {
+      setPbCitaActiva(activa);
+      setPbEtapa("estado");
+    } else if (solicitudes.length > 0) {
+      setPbCitaActiva(solicitudes[0]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    cargarCitasPb();
+  }, [cargarCitasPb]);
+
+  const handleSelectSlotPb = (fecha: string, hora: string) => {
+    setPbFecha(fecha);
+    setPbHora(hora);
+    setPbEtapa("solicitud");
+  };
+
+  const handleSubmitSolicitudPb = async (motivo: string) => {
+    if (!pbFecha || !pbHora) return;
+    setIsSubmittingPb(true);
+    try {
+      const res = await crearSolicitudCita({
+        folio: user?.matricula || "EQ-9374",
+        user_id: user?.id || "demo-student",
+        nombre_psicologo: "Dra. Marta Gómez",
+        iniciales_estudiante: user?.name ? user.name.slice(0, 2).toUpperCase() : "D.B.",
+        fecha_cita: pbFecha,
+        hora_cita: pbHora,
+        modalidad: "presencial",
+        estado: "pendiente",
+        motivo: motivo || undefined,
+      });
+
+      if (res.ok && res.cita) {
+        setPbCitaActiva(res.cita);
+        setPbEtapa("estado");
+        toast.success("Solicitud de cita presencial registrada exitosamente.");
+      } else {
+        toast.error(res.error || "No fue posible registrar la cita.");
+      }
+    } finally {
+      setIsSubmittingPb(false);
+    }
+  };
+
+  const handleCancelarCitaPb = async (citaId: string, motivo?: string) => {
+    if (!pbCitaActiva) return;
+    setIsCancelingPb(true);
+    try {
+      const res = await cancelarCitaEstudiante(
+        citaId,
+        pbCitaActiva.fecha_cita,
+        pbCitaActiva.hora_cita,
+        motivo,
+      );
+      if (res.ok) {
+        toast.info("Cita cancelada correctamente.");
+        setPbCitaActiva((prev) => (prev ? { ...prev, estado: "cancelada" } : null));
+      } else {
+        toast.error(res.error || "No es posible cancelar la cita.");
+      }
+    } finally {
+      setIsCancelingPb(false);
+    }
+  };
 
   const upcomingAppointments = appointments.filter(
     (a) => a.status === "confirmada" || a.status === "pendiente",
@@ -286,231 +377,293 @@ export function CitasPage() {
           </Button>
         </section>
 
-        {/* Sección 1: Próximas Citas */}
-        <section aria-labelledby="upcoming-title" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 id="upcoming-title" className="font-display text-xl font-bold text-foreground">
-              Próximas citas
-            </h2>
-            <span className="text-xs font-semibold text-muted-foreground">
-              {upcomingAppointments.length} agendada
-              {upcomingAppointments.length === 1 ? "" : "s"}
-            </span>
+        {/* Selector de Pestañas: PB-009 vs Historial */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("pb009_solicitud")}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+              activeTab === "pb009_solicitud"
+                ? "bg-[#1c2474] text-white shadow-xs"
+                : "border border-border bg-card text-foreground hover:bg-muted"
+            }`}
+          >
+            Agenda PB-009 · Solicitar Cita Presencial
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("historial")}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+              activeTab === "historial"
+                ? "bg-[#1c2474] text-white shadow-xs"
+                : "border border-border bg-card text-foreground hover:bg-muted"
+            }`}
+          >
+            Historial de Citas ({appointments.length})
+          </button>
+        </div>
+
+        {activeTab === "pb009_solicitud" ? (
+          <div className="space-y-6">
+            {pbEtapa === "calendario" && (
+              <CalendarioCitas
+                folioEstudiante={user?.matricula || "EQ-9374"}
+                nombrePsicologo="Dra. Marta Gómez"
+                fechaPrevia={pbFecha}
+                horaPrevia={pbHora}
+                onSelectSlot={handleSelectSlotPb}
+              />
+            )}
+
+            {pbEtapa === "solicitud" && (
+              <FormularioSolicitud
+                fechaCita={pbFecha}
+                horaCita={pbHora}
+                nombrePsicologo="Dra. Marta Gómez"
+                onSubmit={handleSubmitSolicitudPb}
+                onCancel={() => setPbEtapa("calendario")}
+                isSubmitting={isSubmittingPb}
+              />
+            )}
+
+            {pbEtapa === "estado" && pbCitaActiva && (
+              <EstadoCita
+                cita={pbCitaActiva}
+                onCancelarCita={handleCancelarCitaPb}
+                onNuevaSolicitud={() => setPbEtapa("calendario")}
+                isCanceling={isCancelingPb}
+              />
+            )}
           </div>
-
-          {upcomingAppointments.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {upcomingAppointments.map((apt) => (
-                <article
-                  key={apt.id}
-                  className="ethereal-card flex flex-col justify-between p-5 sm:p-6 transition-all hover:border-accent/30"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <Badge
-                        variant="outline"
-                        className={`rounded-xl px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
-                          apt.status === "confirmada"
-                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        }`}
-                      >
-                        {apt.status === "confirmada" ? "Confirmada" : "Pendiente"}
-                      </Badge>
-
-                      <Badge
-                        variant="secondary"
-                        className="gap-1 rounded-xl bg-muted/80 text-[11px] font-medium text-muted-foreground"
-                      >
-                        <appointmentIcons.mapPin className="size-3 text-accent" />
-                        <span>Presencial</span>
-                      </Badge>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-bold text-foreground capitalize">
-                        {formatDateDisplay(apt.date)}
-                      </h3>
-                      <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-accent">
-                        <appointmentIcons.clock className="size-3.5" />
-                        <span>{apt.timeSlot}</span>
-                      </div>
-
-                      {(apt.folio_tamizaje || apt.folioTamizaje) && (
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <Badge
-                            variant="outline"
-                            className="border-primary/40 bg-primary/10 text-primary font-mono text-[10px] font-bold py-0.5 px-2 rounded-lg"
-                          >
-                            Folio: {apt.folio_tamizaje || apt.folioTamizaje}
-                          </Badge>
-                          {apt.serviceType && (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] font-semibold bg-lavender-soft text-primary py-0.5 px-2 rounded-lg"
-                            >
-                              {apt.serviceType}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-1 rounded-xl bg-background/60 p-3 text-xs">
-                      <div className="flex items-center gap-1.5 font-bold text-foreground">
-                        <appointmentIcons.user className="size-3.5 text-accent" />
-                        <span>{apt.psychologistName}</span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        {apt.psychologistRole || "Psicología TESH"}
-                      </p>
-                      <p className="pt-1 text-[11px] text-muted-foreground/90 border-t border-border/40">
-                        {apt.locationOrLink}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-end gap-2 border-t border-border/50 pt-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setAppointmentToCancel(apt)}
-                      className="h-8 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <appointmentIcons.calendarX className="mr-1.5 size-3.5" />
-                      <span>Cancelar</span>
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenReschedule(apt)}
-                      className="h-8 rounded-xl border-accent/40 text-xs font-semibold text-accent hover:bg-accent/10"
-                    >
-                      <appointmentIcons.refresh className="mr-1.5 size-3.5" />
-                      <span>Reprogramar</span>
-                    </Button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            /* Estado vacío ilustrado con shape custom (nube suave) */
-            <div className="ethereal-card flex flex-col items-center justify-center p-8 text-center sm:p-12">
-              {/* Custom SVG soft cloud shape */}
-              <div
-                className="relative mb-5 flex size-28 items-center justify-center rounded-full bg-lavender-soft text-accent/80"
-                aria-hidden="true"
-              >
-                <svg
-                  viewBox="0 0 100 70"
-                  className="size-20 fill-accent/20 stroke-accent stroke-[2.5]"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M25,55 C12,55 5,45 8,33 C10,23 20,18 29,22 C34,10 49,6 60,15 C70,7 86,13 88,27 C96,30 98,42 92,50 C87,56 79,55 75,55 Z"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <appointmentIcons.calendar className="absolute size-8 text-accent" />
+        ) : (
+          <div className="space-y-8">
+            {/* Sección 1: Próximas Citas */}
+            <section aria-labelledby="upcoming-title" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 id="upcoming-title" className="font-display text-xl font-bold text-foreground">
+                  Próximas citas
+                </h2>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {upcomingAppointments.length} agendada
+                  {upcomingAppointments.length === 1 ? "" : "s"}
+                </span>
               </div>
 
-              <h3 className="font-display text-xl font-bold text-foreground">
-                Aún no tienes citas
-              </h3>
-              <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">
-                Dar el primer paso también es un acto de cuidado. Cuando sientas que es el momento,
-                aquí estaremos para ti.
-              </p>
-
-              <Button
-                type="button"
-                onClick={handleOpenNewAppointment}
-                className="mt-6 h-11 gap-2 rounded-2xl bg-[#6857E4] px-6 text-sm font-semibold text-white shadow-soft transition-transform hover:scale-105 active:scale-95"
-              >
-                <appointmentIcons.calendarPlus className="size-4" />
-                <span>Agendar primera cita</span>
-              </Button>
-            </div>
-          )}
-        </section>
-
-        {/* Sección 2: Historial de Citas */}
-        <section aria-labelledby="history-title" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 id="history-title" className="font-display text-xl font-bold text-foreground">
-              Historial de sesiones
-            </h2>
-            <span className="text-xs font-semibold text-muted-foreground">
-              {historyAppointments.length} anterior
-              {historyAppointments.length === 1 ? "" : "es"}
-            </span>
-          </div>
-
-          {historyAppointments.length > 0 ? (
-            <div className="space-y-3">
-              {historyAppointments.map((apt) => (
-                <div
-                  key={apt.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/75 p-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`grid size-10 shrink-0 place-items-center rounded-xl ${
-                        apt.status === "realizada"
-                          ? "bg-emerald-500/15 text-emerald-600"
-                          : "bg-destructive/15 text-destructive"
-                      }`}
+              {upcomingAppointments.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {upcomingAppointments.map((apt) => (
+                    <article
+                      key={apt.id}
+                      className="ethereal-card flex flex-col justify-between p-5 sm:p-6 transition-all hover:border-accent/30"
                     >
-                      {apt.status === "realizada" ? (
-                        <appointmentIcons.checkCircle className="size-5" />
-                      ) : (
-                        <appointmentIcons.xCircle className="size-5" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-foreground capitalize">
-                          {formatDateDisplay(apt.date)}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className={`rounded-lg px-2 py-0 text-[10px] font-bold uppercase tracking-wider ${
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <Badge
+                            variant="outline"
+                            className={`rounded-xl px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
+                              apt.status === "confirmada"
+                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            }`}
+                          >
+                            {apt.status === "confirmada" ? "Confirmada" : "Pendiente"}
+                          </Badge>
+
+                          <Badge
+                            variant="secondary"
+                            className="gap-1 rounded-xl bg-muted/80 text-[11px] font-medium text-muted-foreground"
+                          >
+                            <appointmentIcons.mapPin className="size-3 text-accent" />
+                            <span>Presencial</span>
+                          </Badge>
+                        </div>
+
+                        <div>
+                          <h3 className="text-lg font-bold text-foreground capitalize">
+                            {formatDateDisplay(apt.date)}
+                          </h3>
+                          <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-accent">
+                            <appointmentIcons.clock className="size-3.5" />
+                            <span>{apt.timeSlot}</span>
+                          </div>
+
+                          {(apt.folio_tamizaje || apt.folioTamizaje) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <Badge
+                                variant="outline"
+                                className="border-primary/40 bg-primary/10 text-primary font-mono text-[10px] font-bold py-0.5 px-2 rounded-lg"
+                              >
+                                Folio: {apt.folio_tamizaje || apt.folioTamizaje}
+                              </Badge>
+                              {apt.serviceType && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[10px] font-semibold bg-lavender-soft text-primary py-0.5 px-2 rounded-lg"
+                                >
+                                  {apt.serviceType}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1 rounded-xl bg-background/60 p-3 text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-foreground">
+                            <appointmentIcons.user className="size-3.5 text-accent" />
+                            <span>{apt.psychologistName}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            {apt.psychologistRole || "Psicología TESH"}
+                          </p>
+                          <p className="pt-1 text-[11px] text-muted-foreground/90 border-t border-border/40">
+                            {apt.locationOrLink}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-center justify-end gap-2 border-t border-border/50 pt-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAppointmentToCancel(apt)}
+                          className="h-8 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <appointmentIcons.calendarX className="mr-1.5 size-3.5" />
+                          <span>Cancelar</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenReschedule(apt)}
+                          className="h-8 rounded-xl border-accent/40 text-xs font-semibold text-accent hover:bg-accent/10"
+                        >
+                          <appointmentIcons.refresh className="mr-1.5 size-3.5" />
+                          <span>Reprogramar</span>
+                        </Button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                /* Estado vacío ilustrado con shape custom (nube suave) */
+                <div className="ethereal-card flex flex-col items-center justify-center p-8 text-center sm:p-12">
+                  {/* Custom SVG soft cloud shape */}
+                  <div
+                    className="relative mb-5 flex size-28 items-center justify-center rounded-full bg-lavender-soft text-accent/80"
+                    aria-hidden="true"
+                  >
+                    <svg
+                      viewBox="0 0 100 70"
+                      className="size-20 fill-accent/20 stroke-accent stroke-[2.5]"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M25,55 C12,55 5,45 8,33 C10,23 20,18 29,22 C34,10 49,6 60,15 C70,7 86,13 88,27 C96,30 98,42 92,50 C87,56 79,55 75,55 Z"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <appointmentIcons.calendar className="absolute size-8 text-accent" />
+                  </div>
+
+                  <h3 className="font-display text-xl font-bold text-foreground">
+                    Aún no tienes citas
+                  </h3>
+                  <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">
+                    Dar el primer paso también es un acto de cuidado. Cuando sientas que es el
+                    momento, aquí estaremos para ti.
+                  </p>
+
+                  <Button
+                    type="button"
+                    onClick={handleOpenNewAppointment}
+                    className="mt-6 h-11 gap-2 rounded-2xl bg-[#6857E4] px-6 text-sm font-semibold text-white shadow-soft transition-transform hover:scale-105 active:scale-95"
+                  >
+                    <appointmentIcons.calendarPlus className="size-4" />
+                    <span>Agendar primera cita</span>
+                  </Button>
+                </div>
+              )}
+            </section>
+
+            {/* Sección 2: Historial de Citas */}
+            <section aria-labelledby="history-title" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 id="history-title" className="font-display text-xl font-bold text-foreground">
+                  Historial de sesiones
+                </h2>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {historyAppointments.length} anterior
+                  {historyAppointments.length === 1 ? "" : "es"}
+                </span>
+              </div>
+
+              {historyAppointments.length > 0 ? (
+                <div className="space-y-3">
+                  {historyAppointments.map((apt) => (
+                    <div
+                      key={apt.id}
+                      className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/75 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`grid size-10 shrink-0 place-items-center rounded-xl ${
                             apt.status === "realizada"
-                              ? "bg-emerald-500/10 text-emerald-600"
-                              : "bg-destructive/10 text-destructive"
+                              ? "bg-emerald-500/15 text-emerald-600"
+                              : "bg-destructive/15 text-destructive"
                           }`}
                         >
-                          {apt.status === "realizada" ? "Realizada" : "Cancelada"}
-                        </Badge>
+                          {apt.status === "realizada" ? (
+                            <appointmentIcons.checkCircle className="size-5" />
+                          ) : (
+                            <appointmentIcons.xCircle className="size-5" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-foreground capitalize">
+                              {formatDateDisplay(apt.date)}
+                            </span>
+                            <Badge
+                              variant="secondary"
+                              className={`rounded-lg px-2 py-0 text-[10px] font-bold uppercase tracking-wider ${
+                                apt.status === "realizada"
+                                  ? "bg-emerald-500/10 text-emerald-600"
+                                  : "bg-destructive/10 text-destructive"
+                              }`}
+                            >
+                              {apt.status === "realizada" ? "Realizada" : "Cancelada"}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {apt.timeSlot} • Con {apt.psychologistName} (Presencial)
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {apt.timeSlot} • Con {apt.psychologistName} (Presencial)
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex justify-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenReschedule(apt)}
-                      className="h-8 rounded-xl text-xs font-semibold text-accent hover:bg-accent/10"
-                    >
-                      <appointmentIcons.calendarPlus className="mr-1.5 size-3.5" />
-                      <span>Volver a agendar</span>
-                    </Button>
-                  </div>
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenReschedule(apt)}
+                          className="h-8 rounded-xl text-xs font-semibold text-accent hover:bg-accent/10"
+                        >
+                          <appointmentIcons.calendarPlus className="mr-1.5 size-3.5" />
+                          <span>Volver a agendar</span>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground italic">
-              No tienes sesiones anteriores registradas en tu historial.
-            </p>
-          )}
-        </section>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  No tienes sesiones anteriores registradas en tu historial.
+                </p>
+              )}
+            </section>
+          </div>
+        )}
       </main>
 
       {/* Modal / Dialog de Agendamiento y Reprogramación */}

@@ -103,3 +103,167 @@ ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Usuarios ven y gestionan sus citas"
   ON public.appointments FOR ALL
   USING (true);
+
+-- 6. Tabla de Expedientes Clínicos
+CREATE TABLE IF NOT EXISTS public.expedientes_clinicos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  folio TEXT NOT NULL,
+  psicologo_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  campos_clinicos JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT expedientes_clinicos_folio_psicologo_unique UNIQUE (folio, psicologo_id)
+);
+
+ALTER TABLE public.expedientes_clinicos ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Psicólogo puede ver sus propios expedientes"
+  ON public.expedientes_clinicos FOR SELECT
+  TO authenticated
+  USING (psicologo_id = auth.uid());
+
+CREATE POLICY "Psicólogo puede registrar expedientes"
+  ON public.expedientes_clinicos FOR INSERT
+  TO authenticated
+  WITH CHECK (psicologo_id = auth.uid());
+
+CREATE POLICY "Psicólogo puede actualizar sus expedientes"
+  ON public.expedientes_clinicos FOR UPDATE
+  TO authenticated
+  USING (psicologo_id = auth.uid())
+  WITH CHECK (psicologo_id = auth.uid());
+
+-- 7. Tabla de Solicitudes de Citas Presenciales (PB-009)
+CREATE TABLE IF NOT EXISTS public.solicitudes_cita (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  folio TEXT NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  psicologo_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  fecha_solicitud TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  fecha_cita DATE NOT NULL,
+  hora_cita TIME NOT NULL,
+  modalidad TEXT NOT NULL DEFAULT 'presencial' CHECK (modalidad = 'presencial'),
+  estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (
+    estado IN ('pendiente', 'confirmada', 'cancelada', 'completada', 'no_asistio')
+  ),
+  motivo TEXT CHECK (motivo IS NULL OR char_length(motivo) <= 200),
+  cancelado_por TEXT CHECK (
+    cancelado_por IS NULL OR cancelado_por IN ('estudiante', 'psicologo', 'sistema')
+  ),
+  motivo_cancelacion TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.solicitudes_cita ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Estudiante puede ver sus propias solicitudes"
+  ON public.solicitudes_cita FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Estudiante puede registrar solicitud"
+  ON public.solicitudes_cita FOR INSERT
+  TO authenticated
+  WITH CHECK (user_id = auth.uid() AND modalidad = 'presencial' AND estado = 'pendiente');
+
+CREATE POLICY "Estudiante puede cancelar con +2h de anticipacion"
+  ON public.solicitudes_cita FOR UPDATE
+  TO authenticated
+  USING (user_id = auth.uid() AND estado IN ('pendiente', 'confirmada'))
+  WITH CHECK (user_id = auth.uid() AND estado = 'cancelada' AND cancelado_por = 'estudiante');
+
+CREATE POLICY "Psicólogo puede ver solicitudes de pacientes"
+  ON public.solicitudes_cita FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('psicologo', 'directivo')
+    )
+  );
+
+CREATE POLICY "Psicólogo gestiona estado de citas"
+  ON public.solicitudes_cita FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'psicologo'
+    )
+  );
+
+-- ==============================================================================
+-- 7. PB-021: Encuesta de Satisfacción (20 campos reglamentarios y RLS)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.respuestas_encuesta (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  folio TEXT NOT NULL,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  trigger_tipo TEXT NOT NULL CHECK (trigger_tipo IN ('alta', 'abandono')),
+  trigger_fecha TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  enviada_en TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  respondida_en TIMESTAMPTZ,
+  q1_satisfaccion INTEGER CHECK (q1_satisfaccion BETWEEN 1 AND 5),
+  q2_escuchado INTEGER CHECK (q2_escuchado BETWEEN 1 AND 5),
+  q3_claridad INTEGER CHECK (q3_claridad BETWEEN 1 AND 5),
+  q4_respeto INTEGER CHECK (q4_respeto BETWEEN 1 AND 5),
+  q5_tiempo_espera INTEGER CHECK (q5_tiempo_espera BETWEEN 1 AND 5),
+  q6_utilidad INTEGER CHECK (q6_utilidad BETWEEN 1 AND 5),
+  q7_mejoria INTEGER CHECK (q7_mejoria BETWEEN 1 AND 5),
+  q8_recomendar INTEGER CHECK (q8_recomendar BETWEEN 1 AND 5),
+  q9_comentarios TEXT,
+  q10a_facilidad_eli INTEGER CHECK (q10a_facilidad_eli BETWEEN 1 AND 5),
+  q10b_util_eli INTEGER CHECK (q10b_util_eli BETWEEN 1 AND 5),
+  hash_auditoria TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS idx_respuestas_encuesta_folio ON public.respuestas_encuesta(folio);
+CREATE INDEX IF NOT EXISTS idx_respuestas_encuesta_trigger ON public.respuestas_encuesta(trigger_tipo);
+CREATE INDEX IF NOT EXISTS idx_respuestas_encuesta_respondida ON public.respuestas_encuesta(respondida_en);
+
+ALTER TABLE public.respuestas_encuesta ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Estudiante puede ver su propia encuesta"
+  ON public.respuestas_encuesta FOR SELECT
+  TO authenticated
+  USING (
+    user_id = auth.uid() OR
+    folio IN (
+      SELECT folio FROM public.respuestas_tamizaje WHERE user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Estudiante puede registrar o actualizar su encuesta"
+  ON public.respuestas_encuesta FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    user_id = auth.uid() OR user_id IS NULL
+  );
+
+CREATE POLICY "Estudiante puede responder su encuesta pendiente"
+  ON public.respuestas_encuesta FOR UPDATE
+  TO authenticated
+  USING (
+    user_id = auth.uid() OR
+    folio IN (
+      SELECT folio FROM public.respuestas_tamizaje WHERE user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    user_id = auth.uid() OR user_id IS NULL
+  );
+
+CREATE POLICY "Psicólogos y directivos ven resultados de encuestas"
+  ON public.respuestas_encuesta FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('psicologo', 'directivo')
+    )
+  );
+
+
+

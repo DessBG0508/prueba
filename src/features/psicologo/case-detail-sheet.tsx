@@ -19,6 +19,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ExpedienteClinico } from "./ExpedienteClinico";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,6 +88,7 @@ export function CaseDetailSheet({
   const [newNoteCategory, setNewNoteCategory] = useState<ClinicalNote["category"]>("seguimiento");
   const [currentRisk, setCurrentRisk] = useState<RiskLevel>(item?.riskLevel || "verde");
   const [currentStatus, setCurrentStatus] = useState<CaseStatus>(item?.status || "por_contactar");
+  const [openExpedienteOficial, setOpenExpedienteOficial] = useState<boolean>(false);
 
   useEffect(() => {
     if (item) {
@@ -249,6 +258,18 @@ export function CaseDetailSheet({
           )}
         </div>
 
+        {/* Botón para abrir el Expediente Clínico Oficial de 5 páginas */}
+        <div className="mt-4">
+          <Button
+            type="button"
+            onClick={() => setOpenExpedienteOficial(true)}
+            className="w-full rounded-2xl bg-[#1c2474] text-white hover:bg-[#28328c] font-bold text-xs h-11 gap-2 shadow-xs transition-all"
+          >
+            <FileText className="size-4 text-indigo-200" />
+            <span>Abrir Expediente Clínico Oficial (5 Páginas)</span>
+          </Button>
+        </div>
+
         {/* Resumen del estudiante */}
         <div className="mt-6 space-y-2">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -390,6 +411,26 @@ export function CaseDetailSheet({
           </div>
         </section>
       </SheetContent>
+
+      {/* Modal del Expediente Clínico Oficial de 5 Páginas */}
+      <Dialog open={openExpedienteOficial} onOpenChange={setOpenExpedienteOficial}>
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto p-2 sm:p-4 sm:rounded-3xl border-[#d8d2ff] bg-card">
+          <DialogHeader className="px-4 pt-2">
+            <DialogTitle className="sr-only">
+              Expediente Clínico Oficial de {item?.studentName || item?.initials}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formato clínico oficial de 5 páginas de historia clínica, tamizajes y seguimiento
+            </DialogDescription>
+          </DialogHeader>
+          {item && (
+            <ExpedienteClinico
+              folio={item.matricula || `EQ-${item.id.slice(0, 4)}`}
+              onClose={() => setOpenExpedienteOficial(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }
