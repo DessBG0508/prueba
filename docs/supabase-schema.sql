@@ -265,5 +265,28 @@ CREATE POLICY "Psicólogos y directivos ven resultados de encuestas"
     )
   );
 
+-- ==============================================================================
+-- 8. AVISOS_ACEPTADOS: Registro formal de aceptación de Aviso de Privacidad
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.avisos_aceptados (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  version_aviso TEXT NOT NULL,
+  fecha_aceptacion TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.avisos_aceptados ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Usuarios pueden consultar su propia aceptación de aviso"
+  ON public.avisos_aceptados FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Usuarios pueden registrar o actualizar su aceptación de aviso"
+  ON public.avisos_aceptados FOR ALL
+  TO authenticated
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+
 
 

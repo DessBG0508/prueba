@@ -329,6 +329,22 @@ export function HomePage() {
             </p>
           </motion.section>
         </motion.div>
+
+        <footer className="mt-8 border-t border-border/50 pt-4 pb-2 text-center text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <span>
+              Tus datos de tamizaje y notas están protegidos bajo estricta confidencialidad médica
+              (LFPDPPP).
+            </span>
+            <Link
+              to="/aviso-privacidad"
+              search={{ mode: "consulta" }}
+              className="font-semibold text-primary underline hover:text-accent transition-colors"
+            >
+              Consultar Aviso de Privacidad
+            </Link>
+          </div>
+        </footer>
       </main>
     </PageShell>
   );

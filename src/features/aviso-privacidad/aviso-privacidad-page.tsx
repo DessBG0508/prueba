@@ -45,8 +45,8 @@ export function AvisoPrivacidadPage() {
   );
   const queryMode = searchParams.get("mode");
 
-  // Consulta síncrona scoped al usuario actual
-  const userStoredAviso = user?.id ? getStoredAviso(user.id) : null;
+  // Consulta síncrona scoped al usuario actual (por ID o Email)
+  const userStoredAviso = user?.id ? getStoredAviso(user.id, user.email) : null;
   const userYaAcepto =
     userStoredAviso?.aceptado === true &&
     userStoredAviso.version === AVISO_PRIVACIDAD_VERSION_ACTUAL;
@@ -90,7 +90,8 @@ export function AvisoPrivacidadPage() {
       setIsSubmitting(true);
       await acceptAviso(AVISO_PRIVACIDAD_VERSION_ACTUAL, modoAcompanamientoConsent);
       toast.success("Aviso de Privacidad aceptado. Bienvenido/a a Equilibra TESH.");
-      navigate({ to: "/", replace: true }); // FIX S4: Reemplazar historia para evitar bucle de retorno
+      const destino = user ? rutaPorRol(user.role) : "/";
+      navigate({ to: destino, replace: true });
     } catch {
       toast.error("Ocurrió un error al procesar tu consentimiento. Intenta nuevamente.");
     } finally {

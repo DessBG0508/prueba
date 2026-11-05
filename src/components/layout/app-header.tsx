@@ -1,4 +1,4 @@
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Shield } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
@@ -83,6 +83,13 @@ export function AppHeader() {
                 <span>Mi Perfil</span>
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem
+              onClick={() => navigate({ to: "/aviso-privacidad", search: { mode: "consulta" } })}
+              className="cursor-pointer gap-2 rounded-xl text-xs font-semibold text-foreground focus:bg-accent/10 focus:text-accent"
+            >
+              <Shield className="size-4" />
+              <span>Aviso de Privacidad</span>
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={handleLogout}
               className="cursor-pointer gap-2 rounded-xl text-xs font-semibold text-destructive focus:bg-destructive/10 focus:text-destructive"
