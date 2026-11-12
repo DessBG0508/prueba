@@ -9,6 +9,7 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  Library,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { BRAND } from "@/lib/branding";
 
 export type PsychologistNavSection =
-  "resumen" | "alertas" | "expedientes" | "agenda" | "bitacora" | "encuestas";
+  "resumen" | "alertas" | "expedientes" | "agenda" | "bitacora" | "encuestas" | "recursos";
 
 interface PsychologistSidebarProps {
   activeSection: PsychologistNavSection;
@@ -74,6 +75,12 @@ export function PsychologistSidebar({
       id: "encuestas" as PsychologistNavSection,
       label: "Encuestas PB-021",
       icon: Star,
+      badge: null,
+    },
+    {
+      id: "recursos" as PsychologistNavSection,
+      label: "Recursos y Videos",
+      icon: Library,
       badge: null,
     },
   ];

@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
+import { Play, Video } from "lucide-react";
 import { PageShell } from "@/components/layout/page-shell";
 import { resourceIcons } from "@/config/icons";
-import { psychoResources } from "@/lib/resources-data";
+import { getStoredResources, fetchResourcesAsync } from "./recursos-service";
+import { VideoPlayerView } from "./video-player-view";
 import type { PsychoResource, ResourceCategory } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
@@ -62,20 +64,31 @@ function getIconComponent(iconName: PsychoResource["iconName"]) {
 }
 
 export function RecursosPage() {
+  const [resources, setResources] = useState<PsychoResource[]>(() => getStoredResources());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"Todos" | ResourceCategory>("Todos");
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<"all" | "under5" | "over5">("all");
   const [activeResource, setActiveResource] = useState<PsychoResource | null>(null);
 
+  useEffect(() => {
+    async function load() {
+      const data = await fetchResourcesAsync();
+      setResources(data);
+    }
+    load();
+  }, []);
+
   const filteredResources = useMemo(() => {
-    return psychoResources.filter((rec) => {
+    return resources.filter((rec) => {
+      if (rec.active === false) return false;
       const matchesCategory = selectedCategory === "Todos" || rec.category === selectedCategory;
       const query = searchQuery.trim().toLowerCase();
       const matchesSearch =
         query === "" ||
         rec.title.toLowerCase().includes(query) ||
         rec.shortDescription.toLowerCase().includes(query) ||
-        rec.category.toLowerCase().includes(query);
+        rec.category.toLowerCase().includes(query) ||
+        (rec.author && rec.author.toLowerCase().includes(query));
 
       const minutes = parseInt(rec.readTime, 10) || 3;
       const matchesTime =
@@ -85,7 +98,7 @@ export function RecursosPage() {
 
       return matchesCategory && matchesSearch && matchesTime;
     });
-  }, [searchQuery, selectedCategory, selectedTimeFilter]);
+  }, [resources, searchQuery, selectedCategory, selectedTimeFilter]);
 
   return (
     <PageShell>
@@ -134,7 +147,38 @@ export function RecursosPage() {
                 <p className="text-base text-muted-foreground leading-relaxed">
                   {activeResource.shortDescription}
                 </p>
+                {activeResource.author && (
+                  <p className="text-xs font-semibold text-accent/90">
+                    Material validado por: {activeResource.author}
+                  </p>
+                )}
               </div>
+
+              {/* Video demostrativo si existe */}
+              {activeResource.videoUrl && (
+                <div className="space-y-2 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 p-4 sm:p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-rose-700 dark:text-rose-400">
+                      <Play className="size-4 fill-current" />
+                      <span>{activeResource.videoTitle || "Video Demostrativo Guiado"}</span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-rose-500/30 text-rose-600 bg-rose-500/10"
+                    >
+                      Instrucción Práctica
+                    </Badge>
+                  </div>
+
+                  <VideoPlayerView
+                    videoUrl={activeResource.videoUrl}
+                    title={activeResource.videoTitle || activeResource.title}
+                  />
+                  <p className="text-[11px] text-muted-foreground italic text-center pt-1">
+                    Sigue las indicaciones del video y acompaña el ejercicio a tu propio ritmo.
+                  </p>
+                </div>
+              )}
 
               {/* Contenido en párrafos cómodos */}
               <div className="ethereal-card space-y-5 p-6 sm:p-8 text-foreground/90 leading-relaxed text-sm sm:text-base">
@@ -333,14 +377,25 @@ export function RecursosPage() {
                                 <IconComponent className="size-5" />
                               </div>
 
-                              <Badge
-                                variant="secondary"
-                                className={`rounded-xl px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getCategoryTone(
-                                  resource.category,
-                                )}`}
-                              >
-                                {resource.category}
-                              </Badge>
+                              <div className="flex flex-col items-end gap-1">
+                                <Badge
+                                  variant="secondary"
+                                  className={`rounded-xl px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getCategoryTone(
+                                    resource.category,
+                                  )}`}
+                                >
+                                  {resource.category}
+                                </Badge>
+                                {resource.videoUrl && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] font-bold rounded-md border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 gap-1 px-1.5 py-0"
+                                  >
+                                    <Play className="size-2.5 fill-current" />
+                                    <span>Video</span>
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
 
                             <div>
@@ -360,7 +415,7 @@ export function RecursosPage() {
                             </span>
 
                             <span className="font-semibold text-accent group-hover:underline">
-                              Leer técnica →
+                              {resource.videoUrl ? "Ver video y técnica →" : "Leer técnica →"}
                             </span>
                           </div>
                         </article>

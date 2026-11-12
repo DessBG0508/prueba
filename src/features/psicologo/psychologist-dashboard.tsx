@@ -43,6 +43,7 @@ import { ContactPatientDialog } from "./contact-patient-dialog";
 import { CrisisProtocolDialog } from "./crisis-protocol-dialog";
 import { PsychologistAgenda } from "./psychologist-agenda";
 import { ClinicalNotesFeed } from "./clinical-notes-feed";
+import { GestionRecursos } from "./recursos/gestion-recursos";
 import { SemaforoPacientes } from "./semaforo-pacientes";
 import { ResultadosEncuesta } from "./ResultadosEncuesta";
 import { AjustesModal } from "@/components/settings/ajustes-modal";
@@ -402,6 +403,7 @@ export function PsychologistDashboard() {
                 {activeSection === "agenda" && "Agenda de Citas"}
                 {activeSection === "bitacora" && "Bitácora Clínica"}
                 {activeSection === "encuestas" && "Encuestas de Satisfacción PB-021"}
+                {activeSection === "recursos" && "Gestión de Recursos y Videos Psicoeducativos"}
               </h1>
             </div>
 
@@ -441,6 +443,7 @@ export function PsychologistDashboard() {
                 {activeSection === "agenda" && "Agenda de Citas"}
                 {activeSection === "bitacora" && "Bitácora Clínica"}
                 {activeSection === "encuestas" && "Encuestas PB-021"}
+                {activeSection === "recursos" && "Recursos y Videos"}
               </button>
 
               {selectedCaseForDetail && (
@@ -977,6 +980,9 @@ export function PsychologistDashboard() {
 
           {/* SECCIÓN 6: RESULTADOS DE ENCUESTAS DE SATISFACCIÓN (PB-021) */}
           {activeSection === "encuestas" && <ResultadosEncuesta />}
+
+          {/* SECCIÓN 7: GESTIÓN DE RECURSOS Y VIDEOS PSICOEDUCATIVOS */}
+          {activeSection === "recursos" && <GestionRecursos />}
         </main>
       </div>
 

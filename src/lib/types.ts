@@ -103,6 +103,8 @@ export interface Appointment {
 
 export type ResourceCategory = "Ansiedad" | "Estrés" | "Sueño" | "Ánimo" | "Respiración";
 
+export type ResourceFormat = "video" | "lectura" | "ejercicio" | "audio" | "infografia";
+
 export interface PsychoResource {
   id: string;
   title: string;
@@ -114,4 +116,10 @@ export interface PsychoResource {
   tone: "teal" | "cyan" | "mint" | "lavender" | "rose";
   content: string[];
   keyTakeaway?: string;
+  videoUrl?: string;
+  videoTitle?: string;
+  format?: ResourceFormat;
+  author?: string;
+  updatedAt?: string;
+  active?: boolean;
 }

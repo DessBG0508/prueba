@@ -24,6 +24,7 @@ import type { MoodId } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 import { useMoodStats, getTodayMoodCheckIn } from "@/lib/mood-store";
 import { useAuth } from "@/lib/auth-context";
+import { BreathingModal } from "@/features/bienestar/breathing-modal";
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -70,6 +71,7 @@ export function HomePage() {
     const today = getTodayMoodCheckIn();
     return today ? today.moodId : "regular";
   });
+  const [isBreathingModalOpen, setIsBreathingModalOpen] = useState(false);
 
   // Sincronía inversa: si se edita desde el panel de métricas o cambia hoy, actualizar el emocionómetro
   useEffect(() => {
@@ -231,7 +233,30 @@ export function HomePage() {
                         </Link>
                       </Button>
                     </TiltCard>
-                  ) : title === "Ejercicios de respiración" || title === "Recursos" ? (
+                  ) : title === "Ejercicios de respiración" ? (
+                    <TiltCard key={title} className="h-full">
+                      <button
+                        type="button"
+                        onClick={() => setIsBreathingModalOpen(true)}
+                        className="ethereal-card group h-full w-full min-h-36 flex flex-col items-start justify-between whitespace-normal p-4 text-left sm:min-h-40 sm:p-5 rounded-3xl border border-border/80 bg-card/80 hover:border-primary/40 transition-all cursor-pointer"
+                        aria-label="Iniciar ejercicio interactivo de respiración"
+                      >
+                        <span
+                          className={`grid size-11 place-items-center rounded-2xl ${tone} text-primary transition-transform group-hover:-rotate-3 group-hover:scale-105`}
+                        >
+                          <Icon />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-bold leading-snug text-primary sm:text-base">
+                            {title}
+                          </span>
+                          <span className="mt-1 block text-xs font-medium text-muted-foreground">
+                            {detail}
+                          </span>
+                        </span>
+                      </button>
+                    </TiltCard>
+                  ) : title === "Recursos" ? (
                     <TiltCard key={title} className="h-full">
                       <Button
                         asChild
@@ -350,6 +375,11 @@ export function HomePage() {
           </div>
         </footer>
       </main>
+
+      <BreathingModal
+        isOpen={isBreathingModalOpen}
+        onClose={() => setIsBreathingModalOpen(false)}
+      />
     </PageShell>
   );
 }
