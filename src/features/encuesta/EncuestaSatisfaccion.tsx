@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Star,
   CheckCircle2,
@@ -6,21 +6,27 @@ import {
   Clock,
   Sparkles,
   ShieldCheck,
+  ShieldAlert,
   Send,
   MessageSquare,
   Bot,
   ArrowRight,
   Home,
+  Calendar,
+  Lock,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { TriggerEncuestaTipo } from "./types";
 import { PREGUNTAS_ENCUESTA } from "./types";
-import { guardarRespuestaEncuesta } from "./encuesta-service";
+import { guardarRespuestaEncuesta, validarFolioUsuario } from "./encuesta-service";
+import { useAuth } from "@/lib/auth-context";
+import type { User } from "@/lib/types";
 
 interface EncuestaSatisfaccionProps {
   folio?: string;
   triggerTipo?: TriggerEncuestaTipo;
   userId?: string;
+  user?: User | null;
   onCompletada?: (hash: string) => void;
 }
 
@@ -28,8 +34,32 @@ export const EncuestaSatisfaccion: React.FC<EncuestaSatisfaccionProps> = ({
   folio = "TESH-2026-0842",
   triggerTipo = "alta",
   userId,
+  user: userProp,
   onCompletada,
 }) => {
+  const { user: authUser } = useAuth();
+  const activeUser = userProp !== undefined ? userProp : authUser;
+
+  const [validandoFolio, setValidandoFolio] = useState(true);
+  const [folioValido, setFolioValido] = useState(false);
+  const [motivoInvalido, setMotivoInvalido] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function verificar() {
+      setValidandoFolio(true);
+      const res = await validarFolioUsuario(folio, activeUser);
+      if (!isMounted) return;
+      setFolioValido(res.valido);
+      setMotivoInvalido(res.motivo || null);
+      setValidandoFolio(false);
+    }
+    verificar();
+    return () => {
+      isMounted = false;
+    };
+  }, [folio, activeUser]);
+
   // Estado de respuestas (valores 1 a 5)
   const [respuestas, setRespuestas] = useState<Record<string, number>>({
     q1_satisfaccion: 0,
@@ -116,6 +146,75 @@ export const EncuestaSatisfaccion: React.FC<EncuestaSatisfaccionProps> = ({
     }
   };
 
+  // PANTALLA DE CARGA DURANTE VALIDACIÓN DE FOLIO (P0 #9)
+  if (validandoFolio) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center space-y-4">
+        <div className="size-10 animate-spin rounded-full border-3 border-[#6857E4] border-t-transparent mx-auto" />
+        <p className="text-sm font-semibold text-foreground">Verificando enlace institucional...</p>
+        <p className="text-xs text-muted-foreground">
+          Validando pertinencia del folio conforme a los lineamientos de confidencialidad
+          institucional (P0 #9).
+        </p>
+      </div>
+    );
+  }
+
+  // PANTALLA DE ERROR SI EL FOLIO NO PERTENECE AL USUARIO (P0 #9)
+  if (!folioValido) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <div className="overflow-hidden rounded-3xl border border-rose-200 bg-card p-8 shadow-xl text-center space-y-6 dark:border-rose-950/60">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+            <ShieldAlert className="size-9" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-block rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700 uppercase tracking-wider dark:bg-rose-950/50 dark:text-rose-300">
+              Seguridad Institucional · P0 #9
+            </span>
+            <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-foreground">
+              Enlace no válido
+            </h2>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+              {motivoInvalido ||
+                "El folio especificado en este enlace no pertenece a tu cuenta activa o no se encuentra registrado en el sistema."}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-border/80 bg-muted/40 p-4 text-xs text-muted-foreground text-left space-y-1.5">
+            <div className="flex items-center gap-2 font-semibold text-foreground">
+              <Lock className="size-4 text-[#6857E4]" />
+              <span>Protección y Confidencialidad de Datos Clínicos</span>
+            </div>
+            <p>
+              Por normatividad oficial y ética clínica, las encuestas de satisfacción PB-021
+              únicamente pueden ser respondidas por el estudiante titular del folio emitido en el
+              tamizaje o en su agenda de citas.
+            </p>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              to="/citas"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#6857E4] px-6 py-3 text-sm font-bold text-white shadow-md hover:bg-[#6857E4]/90 transition-all w-full sm:w-auto"
+            >
+              <Calendar className="size-4" />
+              <span>Ver mis Citas</span>
+            </Link>
+            <Link
+              to="/"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border bg-card px-5 py-3 text-sm font-bold text-foreground hover:bg-muted/50 transition-all w-full sm:w-auto"
+            >
+              <Home className="size-4" />
+              <span>Volver al Inicio</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // PANTALLA DE ÉXITO FINAL
   if (completada) {
     return (
@@ -195,11 +294,10 @@ export const EncuestaSatisfaccion: React.FC<EncuestaSatisfaccionProps> = ({
 
           <div>
             <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
-              Encuesta de Satisfacción y Acompañamiento
+              Encuesta de Satisfacción PB-021
             </h1>
             <p className="mt-1.5 text-xs sm:text-sm text-[#D8D2FF] leading-relaxed max-w-2xl">
-              Tecnológico de Estudios Superiores de Huixquilucan. Esta encuesta nos permite evaluar
-              la calidez, efectividad y pertinencia de la atención psicológica recibida.
+              Tu opinión nos ayuda a mejorar el servicio de Bienestar del TESH.
             </p>
           </div>
 

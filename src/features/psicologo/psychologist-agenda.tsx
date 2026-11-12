@@ -166,8 +166,14 @@ export function PsychologistAgenda({
   };
 
   const handleCompletar = async (id: string) => {
-    await actualizarEstadoCitaPsicologo(id, "completada");
-    toast.success("Sesión completada y registrada en el expediente clínico.");
+    const res = await actualizarEstadoCitaPsicologo(id, "completada");
+    if (res.triggerEncuestaAlta) {
+      toast.success(
+        "Sesión completada. Se activó el trigger PB-021 (Encuesta de Satisfacción por Alta Clínica).",
+      );
+    } else {
+      toast.success("Sesión completada y registrada en el expediente clínico.");
+    }
     fetchSolicitudes();
     if (selectedCita?.id === id) {
       setSelectedCita((prev) => (prev ? { ...prev, estado: "completada" } : null));

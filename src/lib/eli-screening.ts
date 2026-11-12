@@ -6,21 +6,24 @@ export interface ScreeningPatientData {
   iniciales: string;
   edad: number;
   sexo: string;
-  semestre: string;
+  fecha: string;
+  semestre?: string;
 }
 
+export type ScreeningStep =
+  | "not_started"
+  | "waiting_consent"
+  | "declined"
+  | "waiting_initials"
+  | "waiting_age"
+  | "waiting_sex"
+  | "waiting_fecha"
+  | "gad7"
+  | "phq9"
+  | "completed";
+
 export interface ScreeningState {
-  step:
-    | "not_started"
-    | "waiting_consent"
-    | "declined"
-    | "waiting_initials"
-    | "waiting_age"
-    | "waiting_sex"
-    | "waiting_semestre"
-    | "gad7"
-    | "phq9"
-    | "completed";
+  step: ScreeningStep;
   currentQuestionIndex: number;
   paciente: ScreeningPatientData;
   gad7Items: number[];
@@ -30,17 +33,20 @@ export interface ScreeningState {
 }
 
 export const INITIAL_SCREENING_STATE: ScreeningState = {
-  step: "not_started",
+  step: "waiting_consent",
   currentQuestionIndex: 0,
   paciente: {
     iniciales: "",
     edad: 0,
     sexo: "",
-    semestre: "",
+    fecha: "",
   },
   gad7Items: [],
   phq9Items: [],
 };
+
+export const ELI_WELCOME_MESSAGE =
+  "Soy Eli, asistente de tamizaje. No doy diagnóstico. Tus respuestas serán confidenciales y un profesional las revisará. ¿Aceptas participar? (Sí/No)";
 
 export const GAD7_QUESTIONS = [
   "1. Se ha sentido nervioso/a, ansioso/a o muy tenso/a.",
@@ -65,20 +71,20 @@ export const PHQ9_QUESTIONS = [
 ];
 
 export const GAD7_ANUNCIO =
-  "Listo. Ahora 7 preguntas sobre ansiedad. Durante las últimas 2 semanas, ¿con qué frecuencia le han molestado los siguientes problemas? Responde: Nunca / Varios días / Más de la mitad de los días / Casi todos los días.";
+  "Ahora 7 preguntas sobre ansiedad. Durante las últimas 2 semanas, ¿con qué frecuencia le han molestado los siguientes problemas? Responde con: Nunca / Varios días / Más de la mitad de los días / Casi todos los días.";
 
 export const PHQ9_ANUNCIO =
   "Ahora 9 preguntas sobre estado de ánimo, mismas opciones de respuesta.";
 
 export const CRISIS_MESSAGE =
-  "Tu seguridad es importante. Te recomiendo contactar ahora a Línea de la Vida 800 911 2000 / SAPTEL 800 472 7835 o acudir a urgencias.";
+  "Tu seguridad es importante. Te recomiendo contactar ahora a Línea de la Vida 800 911 2000 / SAPTEL 800 472 7835 o acudir a urgencias. Un profesional revisará tus respuestas.";
 
 export function generateFolio(): string {
   const randomNum = Math.floor(1000 + Math.random() * 9000);
   return `EQ-${randomNum}`;
 }
 
-function normalize(text: string): string {
+export function normalize(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -87,7 +93,63 @@ function normalize(text: string): string {
 }
 
 /**
- * Convierte respuestas: Nunca=0, Varios días=1, Más de la mitad de los días=2, Casi todos los días=3.
+ * Lista canónica de palabras y frases críticas de riesgo de autolesión o crisis suicida.
+ * Detección heurística en el cliente (SIN Gemini) para mostrar inmediatamente Línea de la Vida y SAPTEL.
+ */
+export const CRISIS_KEYWORDS: string[] = [
+  "suicidio",
+  "suicida",
+  "suicidarme",
+  "suicidarse",
+  "morir",
+  "morirme",
+  "quiero morir",
+  "deseo morir",
+  "preferiria morir",
+  "mejor muerto",
+  "mejor muerta",
+  "matarme",
+  "matar",
+  "quitarme la vida",
+  "quitar la vida",
+  "hacerme dano",
+  "hacerse dano",
+  "danarme",
+  "cortarme",
+  "autolesion",
+  "autolesionarme",
+  "lastimarme",
+  "acabar con todo",
+  "terminar con todo",
+  "acabar con mi vida",
+  "poner fin a todo",
+  "poner fin a mi vida",
+  "no quiero vivir",
+  "ya no quiero vivir",
+  "no vale la pena vivir",
+  "no tiene sentido vivir",
+  "desaparecer",
+  "no despertar",
+  "ojala no despertara",
+  "ya no puedo mas",
+];
+
+export function detectCrisisKeywords(text: string): boolean {
+  if (!text) return false;
+  const norm = normalize(text);
+
+  return CRISIS_KEYWORDS.some((kw) => {
+    if (kw.includes(" ")) {
+      return norm.includes(kw);
+    }
+    const regex = new RegExp(`\\b${kw}\\b`, "i");
+    return regex.test(norm);
+  });
+}
+
+/**
+ * Convierte respuestas a puntaje Likert:
+ * Nunca = 0, Varios días = 1, Más de la mitad de los días = 2, Casi todos los días = 3.
  */
 export function parseLikertOption(text: string): number | null {
   const norm = normalize(text);
@@ -115,6 +177,7 @@ export function parseLikertOption(text: string): number | null {
   if (
     norm === "2" ||
     norm.includes("mas de la mitad") ||
+    norm === "mas de la mitad de los dias" ||
     norm === "frecuente" ||
     norm === "frecuentemente"
   ) {
@@ -124,6 +187,7 @@ export function parseLikertOption(text: string): number | null {
   if (
     norm === "3" ||
     norm.includes("casi todos") ||
+    norm.includes("casi todos los dias") ||
     norm.includes("todos los dias") ||
     norm === "diario" ||
     norm === "siempre"
@@ -139,7 +203,7 @@ export interface ScreeningFinalJson {
     iniciales: string;
     edad: number;
     sexo: string;
-    semestre: string;
+    fecha: string;
   };
   GAD_7: {
     total: number;
@@ -171,21 +235,24 @@ export interface EliStepResult {
       iniciales: string;
       edad: number;
       sexo: string;
-      semestre: string;
+      fecha?: string;
+      semestre?: string;
     };
     GAD7: number[];
     PHQ9: number[];
   };
 }
 
+/**
+ * Motor central de la aplicación de tamizaje por Eli conforme al protocolo oficial.
+ */
 export function processEliMessage(userText: string, currentState: ScreeningState): EliStepResult {
   const trimmed = userText.trim();
 
   // PASO 0 — Mensaje de bienvenida EXACTO
   if (currentState.step === "not_started") {
     return {
-      replyText:
-        "Hola. Soy Eli, asistente del Área de Psicología. La atención psicológica es un proceso en el que recibes apoyo y orientación profesional; a veces sabemos qué nos pasa y otras veces cuesta más identificarlo. Aquí responderás un tamizaje breve y confidencial. No doy diagnósticos: un profesional revisará tus respuestas. ¿Aceptas participar? (Sí/No)",
+      replyText: ELI_WELCOME_MESSAGE,
       nextState: {
         ...currentState,
         step: "waiting_consent",
@@ -214,10 +281,12 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       norm === "ok" ||
       norm === "claro" ||
       norm === "de acuerdo" ||
-      norm === "adelante"
+      norm === "adelante" ||
+      norm === "iniciar" ||
+      norm === "iniciar tamizaje"
     ) {
       return {
-        replyText: "Perfecto. ¿Cuáles son tus iniciales? (p. ej. A.P.)",
+        replyText: "Perfecto. ¿Cuáles son tus iniciales?",
         nextState: {
           ...currentState,
           step: "waiting_initials",
@@ -225,7 +294,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // Redirección
+    // Redirección con "Anotado." y pregunta pendiente
     return {
       replyText: "Anotado. ¿Aceptas participar? (Sí/No)",
       nextState: currentState,
@@ -233,11 +302,10 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // Si ya había terminado o declinado, reiniciar
+  // Si ya había declinado o completado, reiniciar desde PASO 0
   if (currentState.step === "declined" || currentState.step === "completed") {
     return {
-      replyText:
-        "Hola. Soy Eli, asistente del Área de Psicología. La atención psicológica es un proceso en el que recibes apoyo y orientación profesional; a veces sabemos qué nos pasa y otras veces cuesta más identificarlo. Aquí responderás un tamizaje breve y confidencial. No doy diagnósticos: un profesional revisará tus respuestas. ¿Aceptas participar? (Sí/No)",
+      replyText: ELI_WELCOME_MESSAGE,
       nextState: {
         ...INITIAL_SCREENING_STATE,
         step: "waiting_consent",
@@ -250,10 +318,16 @@ export function processEliMessage(userText: string, currentState: ScreeningState
   if (currentState.step === "waiting_initials") {
     if (!trimmed || trimmed.length > 50) {
       return {
-        replyText: "Anotado. ¿Cuáles son tus iniciales? (p. ej. A.P.)",
+        replyText: "Anotado. ¿Cuáles son tus iniciales?",
         nextState: currentState,
       };
     }
+
+    const cleanInitials =
+      trimmed
+        .toUpperCase()
+        .replace(/[^A-ZÁÉÍÓÚÑ.\s]/g, "")
+        .slice(0, 10) || trimmed.slice(0, 10).toUpperCase();
 
     return {
       replyText: "¿Qué edad tienes?",
@@ -261,7 +335,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         ...currentState,
         paciente: {
           ...currentState.paciente,
-          iniciales: trimmed.toUpperCase(),
+          iniciales: cleanInitials,
         },
         step: "waiting_age",
       },
@@ -279,7 +353,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     }
 
     return {
-      replyText: "¿Tu sexo? (Hombre / Mujer / Otro)",
+      replyText: "¿Tu sexo? (Femenino / Masculino / Otro)",
       nextState: {
         ...currentState,
         paciente: {
@@ -288,7 +362,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         },
         step: "waiting_sex",
       },
-      quickReplies: ["Hombre", "Mujer", "Otro"],
+      quickReplies: ["Femenino", "Masculino", "Otro"],
     };
   }
 
@@ -296,10 +370,10 @@ export function processEliMessage(userText: string, currentState: ScreeningState
   if (currentState.step === "waiting_sex") {
     const norm = normalize(trimmed);
     let resolvedSex = "";
-    if (norm.startsWith("hom") || norm === "h" || norm === "masculino" || norm === "m") {
-      resolvedSex = "Hombre";
-    } else if (norm.startsWith("muj") || norm === "femenino" || norm === "f") {
-      resolvedSex = "Mujer";
+    if (norm.startsWith("fem") || norm === "f" || norm === "mujer") {
+      resolvedSex = "Femenino";
+    } else if (norm.startsWith("masc") || norm === "m" || norm === "hombre") {
+      resolvedSex = "Masculino";
     } else if (
       norm.includes("otro") ||
       norm.includes("no binario") ||
@@ -311,48 +385,55 @@ export function processEliMessage(userText: string, currentState: ScreeningState
 
     if (!resolvedSex) {
       return {
-        replyText: "Anotado. ¿Tu sexo? (Hombre / Mujer / Otro)",
+        replyText: "Anotado. ¿Tu sexo? (Femenino / Masculino / Otro)",
         nextState: currentState,
-        quickReplies: ["Hombre", "Mujer", "Otro"],
+        quickReplies: ["Femenino", "Masculino", "Otro"],
       };
     }
 
+    const todayStr = new Date().toLocaleDateString("es-MX", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
     return {
-      replyText: "¿Qué semestre cursas actualmente? (responde del 1 al 9, o escribe Otro)",
+      replyText: "¿Fecha de hoy?",
       nextState: {
         ...currentState,
         paciente: {
           ...currentState.paciente,
           sexo: resolvedSex,
         },
-        step: "waiting_semestre",
+        step: "waiting_fecha",
       },
-      quickReplies: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Otro"],
+      quickReplies: [todayStr, "Hoy"],
     };
   }
 
-  // PASO 4 -> PASO 5: Semestre
-  if (currentState.step === "waiting_semestre") {
+  // PASO 4 -> PASO 5: Fecha de hoy
+  if (currentState.step === "waiting_fecha") {
     const norm = normalize(trimmed);
-    let resolvedSemestre = "";
-
-    const matchDigit = norm.match(/\b([1-9])\b/);
-    if (matchDigit && matchDigit[1]) {
-      resolvedSemestre = `${matchDigit[1]}º Semestre`;
-    } else if (norm.includes("otro") || norm.includes("egresad") || norm.includes("posgrado")) {
-      resolvedSemestre = "Otro";
-    } else if (/^[1-9]$/.test(trimmed)) {
-      resolvedSemestre = `${trimmed}º Semestre`;
-    } else if (trimmed.length > 0 && trimmed.length <= 30) {
-      resolvedSemestre = trimmed;
+    let resolvedFecha = trimmed;
+    if (norm === "hoy" || norm === "fecha de hoy") {
+      resolvedFecha = new Date().toLocaleDateString("es-MX", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
     }
 
-    if (!resolvedSemestre) {
+    if (!resolvedFecha || resolvedFecha.length > 50) {
       return {
-        replyText:
-          "Anotado. ¿Qué semestre cursas actualmente? (responde del 1 al 9, o escribe Otro)",
+        replyText: "Anotado. ¿Fecha de hoy?",
         nextState: currentState,
-        quickReplies: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Otro"],
+        quickReplies: [
+          new Date().toLocaleDateString("es-MX", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }),
+        ],
       };
     }
 
@@ -360,7 +441,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       ...currentState,
       paciente: {
         ...currentState.paciente,
-        semestre: resolvedSemestre,
+        fecha: resolvedFecha,
       },
       step: "gad7",
       currentQuestionIndex: 0,
@@ -394,7 +475,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
 
     const updatedItems = [...currentState.gad7Items, score];
 
-    // ¿Faltan más preguntas de GAD-7?
+    // ¿Faltan preguntas de GAD-7?
     if (qIndex + 1 < GAD7_QUESTIONS.length) {
       const nextQIndex = qIndex + 1;
       return {
@@ -413,7 +494,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // Terminó GAD-7 -> Pasar a PHQ-9 (PASO 6)
+    // Terminó GAD-7 -> Anunciar PHQ-9 y primera pregunta (PASO 6)
     return {
       replyText: `${PHQ9_ANUNCIO}\n\n${PHQ9_QUESTIONS[0]}`,
       nextState: {
@@ -447,7 +528,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
 
     const updatedItems = [...currentState.phq9Items, score];
 
-    // ¿Faltan más preguntas de PHQ-9?
+    // ¿Faltan preguntas de PHQ-9?
     if (qIndex + 1 < PHQ9_QUESTIONS.length) {
       const nextQIndex = qIndex + 1;
       return {
@@ -466,14 +547,16 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    // Reactivo 9 de PHQ-9 respondido: evaluar el tamizaje de acuerdo con las instrucciones clínicas oficiales
+    // Reactivo 9 de PHQ-9 respondido: aplicar regla de crisis y generar JSON final
     const gad7Total = currentState.gad7Items.reduce((acc, v) => acc + v, 0);
     const phq9Total = updatedItems.reduce((acc, v) => acc + v, 0);
     const item9Score = score;
 
-    // Árbol de decisión clínico:
-    // REGLA DE CRISIS (prioridad máxima) -> ROJO si item 9 > 0, PHQ-9 total >= 20 o GAD-7 total >= 15
-    const isCrisis = item9Score > 0 || phq9Total >= 20 || gad7Total >= 15;
+    // REGLA DE CRISIS (prioridad máxima):
+    // Si la respuesta al ítem 9 del PHQ-9 es "Varios días", "Más de la mitad de los días" o "Casi todos los días" (score > 0)
+    const hasCrisisItem9 = item9Score > 0;
+    const isCrisis = hasCrisisItem9 || phq9Total >= 20 || gad7Total >= 15;
+
     let nivel: ScreeningNivel = "verde";
     if (isCrisis) {
       nivel = "rojo";
@@ -485,13 +568,44 @@ export function processEliMessage(userText: string, currentState: ScreeningState
 
     const folio = generateFolio();
 
+    const recomendaciones =
+      nivel === "rojo"
+        ? "Atención prioritaria inmediata en Terapia Psicológica"
+        : nivel === "amarillo"
+          ? "Orientación o Terapia Psicológica recomendada"
+          : "Consejería preventiva opcional";
+
+    // FORMATO JSON FINAL (claves exactas, sin acentos, al terminar el ítem 9)
+    const jsonOutput = JSON.stringify({
+      paciente: {
+        iniciales: currentState.paciente.iniciales || "",
+        edad: currentState.paciente.edad || 0,
+        sexo: currentState.paciente.sexo || "",
+        fecha: currentState.paciente.fecha || new Date().toLocaleDateString("es-MX"),
+      },
+      GAD_7: {
+        total: gad7Total,
+        items: currentState.gad7Items,
+      },
+      PHQ_9: {
+        total: phq9Total,
+        items: updatedItems,
+        item9: item9Score,
+      },
+      alerta: isCrisis,
+      recomendaciones,
+    });
+
+    // Construcción de la respuesta de Eli
     let replyText = "";
-    if (nivel === "rojo") {
-      replyText = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita HOY MISMO en el apartado "Agenda de Citas" de esta plataforma y elige TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
+    if (hasCrisisItem9) {
+      replyText = `${CRISIS_MESSAGE}\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario de la Agenda para vincular tus resultados.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
+    } else if (nivel === "rojo") {
+      replyText = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita hoy mismo en el apartado 'Agenda de Citas' de esta plataforma y elige TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
     } else if (nivel === "amarillo") {
-      replyText = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado "Agenda de Citas" de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
+      replyText = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado 'Agenda de Citas' de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
     } else {
-      replyText = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado "Agenda de Citas" de esta plataforma.\n\nTu folio de tamizaje es: ${folio} por si deseas vincularlo.\n\nGracias. Un profesional revisará tus respuestas.`;
+      replyText = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado 'Agenda de Citas' de esta plataforma.\n\nTu folio de tamizaje es: ${folio} por si deseas vincularlo.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
     }
 
     const finalJson: ScreeningFinalJson = {
@@ -499,7 +613,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         iniciales: currentState.paciente.iniciales || "",
         edad: currentState.paciente.edad || 0,
         sexo: currentState.paciente.sexo || "",
-        semestre: currentState.paciente.semestre || "",
+        fecha: currentState.paciente.fecha || new Date().toLocaleDateString("es-MX"),
       },
       GAD_7: {
         total: gad7Total,
@@ -513,12 +627,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       folio,
       nivel,
       alerta: isCrisis,
-      recomendaciones:
-        nivel === "rojo"
-          ? "Atención prioritaria y terapia psicológica inmediata"
-          : nivel === "amarillo"
-            ? "Orientación o terapia psicológica recomendada"
-            : "Consejería preventiva opcional",
+      recomendaciones,
     };
 
     return {
@@ -542,7 +651,8 @@ export function processEliMessage(userText: string, currentState: ScreeningState
           iniciales: currentState.paciente.iniciales || "",
           edad: currentState.paciente.edad || 0,
           sexo: currentState.paciente.sexo || "",
-          semestre: currentState.paciente.semestre || "",
+          fecha: currentState.paciente.fecha || new Date().toLocaleDateString("es-MX"),
+          semestre: currentState.paciente.semestre,
         },
         GAD7: currentState.gad7Items,
         PHQ9: updatedItems,
@@ -550,10 +660,9 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // Fallback seguro
+  // Fallback de seguridad: reiniciar en bienvenida
   return {
-    replyText:
-      "Hola. Soy Eli, asistente del Área de Psicología. La atención psicológica es un proceso en el que recibes apoyo y orientación profesional; a veces sabemos qué nos pasa y otras veces cuesta más identificarlo. Aquí responderás un tamizaje breve y confidencial. No doy diagnósticos: un profesional revisará tus respuestas. ¿Aceptas participar? (Sí/No)",
+    replyText: ELI_WELCOME_MESSAGE,
     nextState: {
       ...INITIAL_SCREENING_STATE,
       step: "waiting_consent",

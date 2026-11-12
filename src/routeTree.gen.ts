@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AlertaRouteImport } from './routes/alerta'
 import { Route as AuditoriaRouteImport } from './routes/auditoria'
+import { Route as AvisoPrivacidadRouteImport } from './routes/aviso-privacidad'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CheckinRouteImport } from './routes/checkin'
 import { Route as CitasRouteImport } from './routes/citas'
 import { Route as DirectivoRouteImport } from './routes/directivo'
+import { Route as EncuestaRouteImport } from './routes/encuesta'
 import { Route as ExpedientesRouteImport } from './routes/expedientes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PerfilRouteImport } from './routes/perfil'
@@ -23,7 +25,7 @@ import { Route as PsicologoRouteImport } from './routes/psicologo'
 import { Route as RecuperarRouteImport } from './routes/recuperar'
 import { Route as RecursosRouteImport } from './routes/recursos'
 import { Route as RegistroRouteImport } from './routes/registro'
-import { Route as RestablecerRouteImport } from './routes/restablecer'
+import { Route as ResetRouteImport } from './routes/reset'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -38,6 +40,11 @@ const AlertaRoute = AlertaRouteImport.update({
 const AuditoriaRoute = AuditoriaRouteImport.update({
   id: '/auditoria',
   path: '/auditoria',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AvisoPrivacidadRoute = AvisoPrivacidadRouteImport.update({
+  id: '/aviso-privacidad',
+  path: '/aviso-privacidad',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -58,6 +65,11 @@ const CitasRoute = CitasRouteImport.update({
 const DirectivoRoute = DirectivoRouteImport.update({
   id: '/directivo',
   path: '/directivo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EncuestaRoute = EncuestaRouteImport.update({
+  id: '/encuesta',
+  path: '/encuesta',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExpedientesRoute = ExpedientesRouteImport.update({
@@ -95,9 +107,9 @@ const RegistroRoute = RegistroRouteImport.update({
   path: '/registro',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RestablecerRoute = RestablecerRouteImport.update({
-  id: '/restablecer',
-  path: '/restablecer',
+const ResetRoute = ResetRouteImport.update({
+  id: '/reset',
+  path: '/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -105,10 +117,12 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/alerta': typeof AlertaRoute
   '/auditoria': typeof AuditoriaRoute
+  '/aviso-privacidad': typeof AvisoPrivacidadRoute
   '/chat': typeof ChatRoute
   '/checkin': typeof CheckinRoute
   '/citas': typeof CitasRoute
   '/directivo': typeof DirectivoRoute
+  '/encuesta': typeof EncuestaRoute
   '/expedientes': typeof ExpedientesRoute
   '/login': typeof LoginRoute
   '/perfil': typeof PerfilRoute
@@ -116,16 +130,18 @@ export interface FileRoutesByFullPath {
   '/recuperar': typeof RecuperarRoute
   '/recursos': typeof RecursosRoute
   '/registro': typeof RegistroRoute
-  '/restablecer': typeof RestablecerRoute
+  '/reset': typeof ResetRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/alerta': typeof AlertaRoute
   '/auditoria': typeof AuditoriaRoute
+  '/aviso-privacidad': typeof AvisoPrivacidadRoute
   '/chat': typeof ChatRoute
   '/checkin': typeof CheckinRoute
   '/citas': typeof CitasRoute
   '/directivo': typeof DirectivoRoute
+  '/encuesta': typeof EncuestaRoute
   '/expedientes': typeof ExpedientesRoute
   '/login': typeof LoginRoute
   '/perfil': typeof PerfilRoute
@@ -133,17 +149,19 @@ export interface FileRoutesByTo {
   '/recuperar': typeof RecuperarRoute
   '/recursos': typeof RecursosRoute
   '/registro': typeof RegistroRoute
-  '/restablecer': typeof RestablecerRoute
+  '/reset': typeof ResetRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/alerta': typeof AlertaRoute
   '/auditoria': typeof AuditoriaRoute
+  '/aviso-privacidad': typeof AvisoPrivacidadRoute
   '/chat': typeof ChatRoute
   '/checkin': typeof CheckinRoute
   '/citas': typeof CitasRoute
   '/directivo': typeof DirectivoRoute
+  '/encuesta': typeof EncuestaRoute
   '/expedientes': typeof ExpedientesRoute
   '/login': typeof LoginRoute
   '/perfil': typeof PerfilRoute
@@ -151,7 +169,7 @@ export interface FileRoutesById {
   '/recuperar': typeof RecuperarRoute
   '/recursos': typeof RecursosRoute
   '/registro': typeof RegistroRoute
-  '/restablecer': typeof RestablecerRoute
+  '/reset': typeof ResetRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -159,10 +177,12 @@ export interface FileRouteTypes {
     | '/'
     | '/alerta'
     | '/auditoria'
+    | '/aviso-privacidad'
     | '/chat'
     | '/checkin'
     | '/citas'
     | '/directivo'
+    | '/encuesta'
     | '/expedientes'
     | '/login'
     | '/perfil'
@@ -170,16 +190,18 @@ export interface FileRouteTypes {
     | '/recuperar'
     | '/recursos'
     | '/registro'
-    | '/restablecer'
+    | '/reset'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/alerta'
     | '/auditoria'
+    | '/aviso-privacidad'
     | '/chat'
     | '/checkin'
     | '/citas'
     | '/directivo'
+    | '/encuesta'
     | '/expedientes'
     | '/login'
     | '/perfil'
@@ -187,16 +209,18 @@ export interface FileRouteTypes {
     | '/recuperar'
     | '/recursos'
     | '/registro'
-    | '/restablecer'
+    | '/reset'
   id:
     | '__root__'
     | '/'
     | '/alerta'
     | '/auditoria'
+    | '/aviso-privacidad'
     | '/chat'
     | '/checkin'
     | '/citas'
     | '/directivo'
+    | '/encuesta'
     | '/expedientes'
     | '/login'
     | '/perfil'
@@ -204,17 +228,19 @@ export interface FileRouteTypes {
     | '/recuperar'
     | '/recursos'
     | '/registro'
-    | '/restablecer'
+    | '/reset'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AlertaRoute: typeof AlertaRoute
   AuditoriaRoute: typeof AuditoriaRoute
+  AvisoPrivacidadRoute: typeof AvisoPrivacidadRoute
   ChatRoute: typeof ChatRoute
   CheckinRoute: typeof CheckinRoute
   CitasRoute: typeof CitasRoute
   DirectivoRoute: typeof DirectivoRoute
+  EncuestaRoute: typeof EncuestaRoute
   ExpedientesRoute: typeof ExpedientesRoute
   LoginRoute: typeof LoginRoute
   PerfilRoute: typeof PerfilRoute
@@ -222,7 +248,7 @@ export interface RootRouteChildren {
   RecuperarRoute: typeof RecuperarRoute
   RecursosRoute: typeof RecursosRoute
   RegistroRoute: typeof RegistroRoute
-  RestablecerRoute: typeof RestablecerRoute
+  ResetRoute: typeof ResetRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -246,6 +272,13 @@ declare module '@tanstack/react-router' {
       path: '/auditoria'
       fullPath: '/auditoria'
       preLoaderRoute: typeof AuditoriaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aviso-privacidad': {
+      id: '/aviso-privacidad'
+      path: '/aviso-privacidad'
+      fullPath: '/aviso-privacidad'
+      preLoaderRoute: typeof AvisoPrivacidadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -274,6 +307,13 @@ declare module '@tanstack/react-router' {
       path: '/directivo'
       fullPath: '/directivo'
       preLoaderRoute: typeof DirectivoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/encuesta': {
+      id: '/encuesta'
+      path: '/encuesta'
+      fullPath: '/encuesta'
+      preLoaderRoute: typeof EncuestaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/expedientes': {
@@ -325,11 +365,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegistroRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/restablecer': {
-      id: '/restablecer'
-      path: '/restablecer'
-      fullPath: '/restablecer'
-      preLoaderRoute: typeof RestablecerRouteImport
+    '/reset': {
+      id: '/reset'
+      path: '/reset'
+      fullPath: '/reset'
+      preLoaderRoute: typeof ResetRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -339,10 +379,12 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AlertaRoute: AlertaRoute,
   AuditoriaRoute: AuditoriaRoute,
+  AvisoPrivacidadRoute: AvisoPrivacidadRoute,
   ChatRoute: ChatRoute,
   CheckinRoute: CheckinRoute,
   CitasRoute: CitasRoute,
   DirectivoRoute: DirectivoRoute,
+  EncuestaRoute: EncuestaRoute,
   ExpedientesRoute: ExpedientesRoute,
   LoginRoute: LoginRoute,
   PerfilRoute: PerfilRoute,
@@ -350,7 +392,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecuperarRoute: RecuperarRoute,
   RecursosRoute: RecursosRoute,
   RegistroRoute: RegistroRoute,
-  RestablecerRoute: RestablecerRoute,
+  ResetRoute: ResetRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

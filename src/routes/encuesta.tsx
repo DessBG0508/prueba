@@ -3,11 +3,13 @@ import { EncuestaSatisfaccion } from "@/features/encuesta/EncuestaSatisfaccion";
 import { BRAND } from "@/lib/branding";
 import { useAuth } from "@/lib/auth-context";
 
+import { getStoredUserFolio } from "@/lib/screening-storage";
+
 function EncuestaRouteComponent() {
   const { user } = useAuth();
 
   // Leer parámetros de la URL (?folio=TESH-2026-0842&tipo=alta)
-  let folio = "TESH-2026-0842";
+  let folio = "";
   let tipo: "alta" | "abandono" = "alta";
 
   if (typeof window !== "undefined") {
@@ -15,13 +17,17 @@ function EncuestaRouteComponent() {
     const urlFolio = params.get("folio");
     const urlTipo = params.get("tipo");
 
-    if (urlFolio) folio = urlFolio;
+    if (urlFolio) {
+      folio = urlFolio;
+    } else if (user) {
+      folio = getStoredUserFolio(user.id, user.email) || "";
+    }
     if (urlTipo === "abandono") tipo = "abandono";
   }
 
   return (
     <main className="min-h-screen bg-background py-8">
-      <EncuestaSatisfaccion folio={folio} triggerTipo={tipo} userId={user?.id} />
+      <EncuestaSatisfaccion folio={folio} triggerTipo={tipo} user={user} userId={user?.id} />
     </main>
   );
 }

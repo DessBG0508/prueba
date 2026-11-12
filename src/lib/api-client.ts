@@ -355,7 +355,8 @@ export interface TamizajeSubmissionPayload {
     iniciales: string;
     edad: number;
     sexo: string;
-    semestre: string;
+    fecha?: string;
+    semestre?: string;
   };
   GAD7: number[]; // number[7], valores 0-3
   PHQ9: number[]; // number[9], valores 0-3

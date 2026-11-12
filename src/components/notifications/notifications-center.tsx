@@ -27,25 +27,66 @@ import {
   markAllNotificationsAsRead,
   type AppNotification,
 } from "@/lib/notifications";
+import { supabase } from "@/integrations/supabase/client";
 import type { UserRole } from "@/lib/types";
 
 interface NotificationsCenterProps {
   role: UserRole;
   onSelectCase?: (caseId: string) => void;
   onOpenAgenda?: () => void;
+  redAlertsCount?: number;
+}
+
+interface RedAlertItem {
+  folio: string;
+  iniciales: string;
+  carrera?: string;
+  semestre?: string | number;
+  ultimo_nivel?: string;
+  phq9_total?: number;
+  gad7_total?: number;
+  bloqueado?: boolean;
+  tiene_alerta_activa?: boolean;
+  ultimo_tamizaje?: string;
 }
 
 export function NotificationsCenter({
   role,
   onSelectCase,
   onOpenAgenda,
+  redAlertsCount: propRedAlertsCount,
 }: NotificationsCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [filter, setFilter] = useState<"all" | "alerts" | "citas">("all");
+  const [redAlertsViewCount, setRedAlertsViewCount] = useState<number | null>(null);
+  const [realtimeRedCases, setRealtimeRedCases] = useState<RedAlertItem[]>([]);
 
   const loadNotifications = useCallback(() => {
     setNotifications(getNotificationsForRole(role));
+  }, [role]);
+
+  // Consulta en tiempo real a la vista oficial para_psicologo
+  const fetchRedAlertsFromView = useCallback(async () => {
+    if (role !== "psicologo") return;
+    try {
+      const { data, error } = await supabase
+        .from("para_psicologo")
+        .select(
+          "folio, iniciales, carrera, semestre, ultimo_nivel, phq9_total, gad7_total, bloqueado, tiene_alerta_activa, ultimo_tamizaje",
+        )
+        .eq("ultimo_nivel", "rojo");
+
+      if (!error && Array.isArray(data)) {
+        // Alertas de nivel 'rojo' pendientes de atención (bloqueado !== false o alerta activa)
+        const pending = data.filter((p) => p.bloqueado !== false || p.tiene_alerta_activa === true);
+        const count = pending.length > 0 ? pending.length : data.length;
+        setRedAlertsViewCount(count);
+        setRealtimeRedCases(data as RedAlertItem[]);
+      }
+    } catch (err) {
+      console.warn("Aviso al consultar vista para_psicologo en notificaciones:", err);
+    }
   }, [role]);
 
   useEffect(() => {
@@ -53,6 +94,32 @@ export function NotificationsCenter({
     const interval = setInterval(loadNotifications, 5000);
     return () => clearInterval(interval);
   }, [loadNotifications]);
+
+  useEffect(() => {
+    if (role !== "psicologo") return;
+    fetchRedAlertsFromView();
+
+    const interval = setInterval(fetchRedAlertsFromView, 10000);
+
+    const channel = supabase
+      .channel("psicologo-notifs-para-psicologo")
+      .on("postgres_changes", { event: "*", schema: "public", table: "pacientes" }, () => {
+        fetchRedAlertsFromView();
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "respuestas_tamizaje" },
+        () => {
+          fetchRedAlertsFromView();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [role, fetchRedAlertsFromView]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -109,6 +176,14 @@ export function NotificationsCenter({
     }
   };
 
+  // Para psicólogo: contador oficial de alertas nivel "rojo" pendientes de atención
+  const pendingRedCount =
+    redAlertsViewCount !== null
+      ? redAlertsViewCount
+      : propRedAlertsCount !== undefined
+        ? propRedAlertsCount
+        : notifications.filter((n) => n.type === "alerta_roja" && !n.read).length;
+
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
@@ -120,11 +195,20 @@ export function NotificationsCenter({
           className="relative rounded-full bg-card/80 transition-colors hover:bg-card shadow-sm"
         >
           <Bell className="size-5 text-foreground" />
-          {unreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-card animate-pulse">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
+          {role === "psicologo"
+            ? pendingRedCount > 0 && (
+                <span
+                  className="absolute -right-1 -top-1 flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white shadow-md ring-2 ring-card animate-pulse"
+                  title={`${pendingRedCount} alertas de nivel rojo pendientes de atención`}
+                >
+                  {pendingRedCount > 9 ? "9+" : pendingRedCount}
+                </span>
+              )
+            : unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-card animate-pulse">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
         </Button>
       </SheetTrigger>
 
@@ -140,12 +224,16 @@ export function NotificationsCenter({
               </div>
               <div>
                 <SheetTitle className="text-lg font-bold text-foreground">
-                  Notificaciones
+                  {role === "psicologo" ? "Alertas y Notificaciones" : "Notificaciones"}
                 </SheetTitle>
                 <SheetDescription className="text-xs text-muted-foreground">
-                  {unreadCount > 0
-                    ? `${unreadCount} pendientes de atención`
-                    : "Estás al día con tus avisos"}
+                  {role === "psicologo"
+                    ? pendingRedCount > 0
+                      ? `${pendingRedCount} alerta(s) nivel rojo pendientes (para_psicologo)`
+                      : "Sin alertas críticas pendientes"
+                    : unreadCount > 0
+                      ? `${unreadCount} pendientes de atención`
+                      : "Estás al día con tus avisos"}
                 </SheetDescription>
               </div>
             </div>
@@ -162,6 +250,24 @@ export function NotificationsCenter({
               </Button>
             )}
           </div>
+
+          {role === "psicologo" && pendingRedCount > 0 && (
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="size-2 rounded-full bg-rose-600 animate-ping" />
+                <span className="font-bold text-rose-700 dark:text-rose-300">
+                  {pendingRedCount}{" "}
+                  {pendingRedCount === 1 ? "caso en nivel rojo" : "casos en nivel rojo"} por atender
+                </span>
+              </div>
+              <Badge
+                variant="destructive"
+                className="bg-rose-600 text-[10px] font-bold text-white px-2 py-0.5"
+              >
+                Alta Prioridad
+              </Badge>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 pt-3">
             <Button

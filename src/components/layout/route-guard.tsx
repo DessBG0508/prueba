@@ -42,9 +42,12 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Aviso obligatorio para TODOS los roles en su primer inicio de sesión
-    // (estudiante, psicólogo, jefatura, coordinador) — privacidad por defecto LFPDPPP
-    if (needsAcceptance && !isResetPage) {
+    // El Aviso de Privacidad SOLO se muestra de forma forzada 1 sola vez en el PRIMER INGRESO
+    // tras registrar cuenta nueva. En inicios de sesión normales el usuario entra directo a su panel.
+    const esPrimerIngreso =
+      typeof window !== "undefined" && localStorage.getItem("equilibra_primer_ingreso") === "true";
+
+    if (esPrimerIngreso && needsAcceptance && !isResetPage) {
       navigate({ to: "/aviso-privacidad", replace: true });
       return;
     }
@@ -57,18 +60,29 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 3. Rol Psicólogo: solo puede ver /psicologo y /expedientes
+    // 3. Rol Psicólogo: puede ver /psicologo, /expedientes, /directivo, /perfil, / y /citas
     if (user.role === "psicologo") {
-      if (!pathname.startsWith("/psicologo") && !pathname.startsWith("/expedientes")) {
+      if (
+        !pathname.startsWith("/psicologo") &&
+        !pathname.startsWith("/expedientes") &&
+        !pathname.startsWith("/directivo") &&
+        pathname !== "/perfil" &&
+        pathname !== "/"
+      ) {
         toast.info("Redirigido al panel de psicología correspondiente a tu rol.");
         navigate({ to: "/psicologo", replace: true });
       }
       return;
     }
 
-    // 4. Roles Jefatura / Coordinador: solo pueden ver /directivo y /auditoria
+    // 4. Roles Jefatura / Coordinador: puede ver /directivo, /auditoria, /perfil y /
     if (user.role === "jefatura" || user.role === "coordinador") {
-      if (!pathname.startsWith("/directivo") && !pathname.startsWith("/auditoria")) {
+      if (
+        !pathname.startsWith("/directivo") &&
+        !pathname.startsWith("/auditoria") &&
+        pathname !== "/perfil" &&
+        pathname !== "/"
+      ) {
         toast.info("Redirigido al panel directivo correspondiente a tu rol.");
         navigate({ to: "/directivo", replace: true });
       }
@@ -111,7 +125,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   // Si hay usuario y está en una ruta que no le corresponde, no renderizar mientras redirige
   if (user) {
     const enReset = pathname === "/reset";
-    if (needsAcceptance && pathname !== "/aviso-privacidad" && !enReset) {
+    const esPrimerIngreso =
+      typeof window !== "undefined" && localStorage.getItem("equilibra_primer_ingreso") === "true";
+    if (esPrimerIngreso && needsAcceptance && pathname !== "/aviso-privacidad" && !enReset) {
       return null;
     }
     if (PUBLIC_ROUTES.includes(pathname) && !enReset && pathname !== "/aviso-privacidad")
@@ -119,13 +135,18 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     if (
       user.role === "psicologo" &&
       pathname !== "/aviso-privacidad" &&
+      pathname !== "/perfil" &&
+      pathname !== "/" &&
       !pathname.startsWith("/psicologo") &&
-      !pathname.startsWith("/expedientes")
+      !pathname.startsWith("/expedientes") &&
+      !pathname.startsWith("/directivo")
     )
       return null;
     if (
       (user.role === "jefatura" || user.role === "coordinador") &&
       pathname !== "/aviso-privacidad" &&
+      pathname !== "/perfil" &&
+      pathname !== "/" &&
       !pathname.startsWith("/directivo") &&
       !pathname.startsWith("/auditoria")
     )

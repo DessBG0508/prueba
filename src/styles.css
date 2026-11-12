@@ -467,9 +467,16 @@ button:not(:disabled):active,
     -webkit-print-color-adjust: exact !important;
   }
   .print-hidden,
+  .print\:hidden,
   nav,
   aside,
-  header.screen-only-header {
+  header,
+  header.screen-only-header,
+  [role="navigation"],
+  .bottom-nav,
+  #persistent-sos-button,
+  [data-sonner-toaster],
+  button:not(.print-include) {
     display: none !important;
   }
   .print-only-block {
@@ -478,6 +485,11 @@ button:not(:disabled):active,
   .print-break-inside-avoid {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+  }
+  .print-page-break,
+  .print\:break-after-page {
+    break-after: page !important;
+    page-break-after: always !important;
   }
 }
 

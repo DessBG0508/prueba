@@ -233,13 +233,13 @@ export const AVISO_PRIVACIDAD_SECCIONES: PrivacySection[] = [
     title: "Proveedores Tecnológicos y Transferencias Internacionales",
     icon: <Globe className="size-4.5 text-primary" aria-hidden="true" />,
     content: (
-      <div className="space-y-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+      <div className="space-y-3 text-xs leading-relaxed text-muted-foreground sm:text-sm">
         <p>
           Para la operación de la infraestructura tecnológica, Equilibra TESH hace uso de
           proveedores de nube especializados sujetos a estrictas cláusulas de confidencialidad y
           estándares internacionales de seguridad:
         </p>
-        <ul className="space-y-1.5 pl-2">
+        <ul className="space-y-2 pl-2">
           <li className="flex items-start gap-2">
             <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <span>
@@ -247,24 +247,23 @@ export const AVISO_PRIVACIDAD_SECCIONES: PrivacySection[] = [
                 Supabase Inc. (PostgreSQL, Auth y Edge Functions):
               </strong>{" "}
               Servidores ubicados en Estados Unidos de América para alojamiento seguro de bases de
-              datos bajo cifrado en reposo.
+              datos bajo cifrado en reposo y ejecución aislada de funciones backend.
             </span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <span>
-              <strong className="text-foreground">Google Cloud / Gemini API:</strong> Procesamiento
-              de lenguaje natural en tiempo real en servidores de Estados Unidos para la guía
-              conversacional de Eli, sin almacenamiento ni entrenamiento de modelos con datos de los
-              estudiantes.
+              <strong className="text-foreground">Google Cloud / Google AI Studio:</strong> Modelo
+              Gemini 3.8 Flash para el procesamiento conversacional y soporte contextual en tiempo
+              real, sin utilización de datos de estudiantes para entrenamiento de modelos públicos.
             </span>
           </li>
           <li className="flex items-start gap-2">
             <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
             <span>
-              <strong className="text-foreground">OpenAI Whisper API (módulo a futuro):</strong>{" "}
-              Transcripción opcional de notas de voz en servidores de alta seguridad en Estados
-              Unidos.
+              <strong className="text-foreground">OpenAI Inc. (Whisper API):</strong> Servicio de
+              conversión fonética automatizada de audio a texto para notas de voz en servidores de
+              alta seguridad.
             </span>
           </li>
           <li className="flex items-start gap-2">
@@ -280,6 +279,62 @@ export const AVISO_PRIVACIDAD_SECCIONES: PrivacySection[] = [
             </span>
           </li>
         </ul>
+
+        {/* Cláusula específica sobre transferencia de audio y servicios de IA a terceros */}
+        <div className="rounded-2xl border border-primary/25 bg-primary/5 p-3.5 sm:p-4 space-y-2.5">
+          <h4 className="font-semibold text-foreground text-xs sm:text-sm flex items-center gap-2">
+            <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+            Cláusula de Transferencia de Audio y Servicios de IA a Terceros
+          </h4>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Respecto al uso de notas de voz y funciones del asistente Eli:
+          </p>
+          <ul className="space-y-2 pl-2 text-xs">
+            <li className="flex items-start gap-2">
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-teal" aria-hidden="true" />
+              <span>
+                <strong className="text-foreground">
+                  Las notas de voz se transcriben con Whisper API (OpenAI):
+                </strong>{" "}
+                El audio grabado por el usuario se envía a la API de Whisper de OpenAI
+                exclusivamente para su transcripción fonética precisa a texto.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-teal" aria-hidden="true" />
+              <span>
+                <strong className="text-foreground">
+                  El chat usa Gemini 3.8 Flash (Google AI Studio):
+                </strong>{" "}
+                La interacción contextual y el soporte guiado de Eli se procesan mediante el modelo
+                Gemini 3.8 Flash a través de Google AI Studio.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-teal" aria-hidden="true" />
+              <span>
+                <strong className="text-foreground">
+                  Ambos son proveedores que cumplen con estándares de seguridad:
+                </strong>{" "}
+                Tanto OpenAI como Google cumplen con estrictos estándares internacionales de
+                seguridad de la información (SOC 2, ISO 27001), políticas de no retención comercial
+                y cifrado TLS 1.3 en tránsito.
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1 size-1.5 shrink-0 rounded-full bg-teal" aria-hidden="true" />
+              <span>
+                <strong className="text-foreground">
+                  El audio no se almacena, solo la transcripción:
+                </strong>{" "}
+                El archivo de audio no se almacena en los servidores de los proveedores ni en la
+                base de datos de Equilibra TESH; se procesa de forma efímera en memoria y se
+                descarta de inmediato, resguardándose únicamente la transcripción en texto
+                resultante.
+              </span>
+            </li>
+          </ul>
+        </div>
       </div>
     ),
   },

@@ -43,6 +43,33 @@ export const DetalleCita: React.FC<DetalleCitaProps> = ({
   const phq9 = cita.puntaje_phq9 ?? 9;
   const gad7 = cita.puntaje_gad7 ?? 14;
 
+  const handleAceptarClick = async () => {
+    try {
+      setIsProcessing(true);
+      await onAceptar();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCompletarClick = async () => {
+    try {
+      setIsProcessing(true);
+      await onCompletar();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNoAsistioClick = async () => {
+    try {
+      setIsProcessing(true);
+      await onNoAsistio();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleConfirmCancel = async () => {
     try {
       setIsProcessing(true);
@@ -55,28 +82,23 @@ export const DetalleCita: React.FC<DetalleCitaProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Encabezado Canva Style */}
-      <div className="rounded-2xl bg-[#1c2474] p-4 text-white shadow-md sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="rounded-xl bg-white/10 p-1.5 text-white hover:bg-white/20"
-              aria-label="Volver a la lista"
-            >
-              <ArrowLeft className="size-4" />
-            </button>
-            <div>
-              <h2 className="font-display text-lg font-bold tracking-tight text-white">
-                Flujo del psicólogo
-              </h2>
-              <p className="text-xs text-indigo-200">Pantalla 2 — Detalle de cita + acciones</p>
-            </div>
-          </div>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-indigo-100">
-            Página 3 de 6
-          </span>
+      {/* Cabecera limpia con botón de regreso */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-xl border border-border bg-card p-2 text-foreground hover:bg-muted transition-colors shadow-xs"
+          aria-label="Volver a la lista"
+        >
+          <ArrowLeft className="size-4" />
+        </button>
+        <div>
+          <h2 className="font-display text-lg font-bold tracking-tight text-foreground">
+            Detalle de la Cita
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Información del paciente, actualización de estado y seguimiento clínico
+          </p>
         </div>
       </div>
 
@@ -92,6 +114,21 @@ export const DetalleCita: React.FC<DetalleCitaProps> = ({
               El estudiante ha acumulado 2 inasistencias consecutivas marcadas como &ldquo;No
               asistió&rdquo;. Se ha enviado automáticamente el formulario PB-021 para identificar
               barreras de acceso o desvinculación escolar.
+            </p>
+          </div>
+        )}
+
+        {/* Banner de Cita Completada y Trigger PB-021 Alta Clínica */}
+        {cita.estado === "completada" && (
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200 space-y-1">
+            <div className="flex items-center gap-2 font-bold">
+              <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Sesión Completada — Trigger PB-021 Enviado</span>
+            </div>
+            <p>
+              La cita ha sido marcada como completada en el expediente clínico. Se disparó
+              automáticamente la encuesta de satisfacción por alta (PB-021 / MIN-008, disponible en
+              ventana de 24h para el estudiante).
             </p>
           </div>
         )}
@@ -209,38 +246,38 @@ export const DetalleCita: React.FC<DetalleCitaProps> = ({
             {cita.estado === "pendiente" && (
               <button
                 type="button"
-                onClick={onAceptar}
+                onClick={handleAceptarClick}
                 disabled={isProcessing}
-                className="inline-flex items-center gap-1.5 rounded-2xl bg-teal px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-teal/90"
+                className="inline-flex items-center gap-1.5 rounded-2xl bg-teal px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-teal/90 disabled:opacity-50"
               >
                 <CheckCircle2 className="size-4" />
-                <span>Aceptar cita (confirmar)</span>
+                <span>{isProcessing ? "Confirmando..." : "Aceptar cita (confirmar)"}</span>
               </button>
             )}
 
-            {/* 2. Botón Completar cita -> estado = completada */}
-            {cita.estado === "confirmada" && (
+            {/* 2. Botón Completar cita -> estado = completada (Trigger PB-021) */}
+            {(cita.estado === "confirmada" || cita.estado === "pendiente") && (
               <button
                 type="button"
-                onClick={onCompletar}
+                onClick={handleCompletarClick}
                 disabled={isProcessing}
-                className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
+                className="inline-flex items-center gap-1.5 rounded-2xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
               >
                 <CheckCircle2 className="size-4" />
-                <span>Marcar como completada</span>
+                <span>{isProcessing ? "Completando..." : "Marcar como completada"}</span>
               </button>
             )}
 
             {/* 3. Botón No asistió -> estado = no_asistio */}
-            {cita.estado === "confirmada" && (
+            {(cita.estado === "confirmada" || cita.estado === "pendiente") && (
               <button
                 type="button"
-                onClick={onNoAsistio}
+                onClick={handleNoAsistioClick}
                 disabled={isProcessing}
-                className="inline-flex items-center gap-1.5 rounded-2xl border border-purple-300 bg-purple-50 px-4 py-2.5 text-xs font-bold text-purple-800 hover:bg-purple-100 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-300"
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-purple-300 bg-purple-50 px-4 py-2.5 text-xs font-bold text-purple-800 hover:bg-purple-100 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-300 disabled:opacity-50"
               >
                 <UserX className="size-4" />
-                <span>No asistió</span>
+                <span>{isProcessing ? "Registrando..." : "No asistió"}</span>
               </button>
             )}
 

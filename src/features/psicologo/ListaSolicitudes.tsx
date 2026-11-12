@@ -78,28 +78,6 @@ export const ListaSolicitudes: React.FC<ListaSolicitudesProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Encabezado Canva Style */}
-      <div className="rounded-2xl bg-[#1c2474] p-4 text-white shadow-md sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#3942a0] text-sm font-black text-white">
-              02
-            </span>
-            <div>
-              <h2 className="font-display text-lg font-bold tracking-tight text-white">
-                Flujo del psicólogo
-              </h2>
-              <p className="text-xs text-indigo-200">
-                2 pantallas: lista de solicitudes → detalle de cita
-              </p>
-            </div>
-          </div>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-indigo-100">
-            Pantalla 1 — Lista de solicitudes
-          </span>
-        </div>
-      </div>
-
       <div className="rounded-3xl border border-[#d8d2ff] bg-white p-5 shadow-xs dark:border-indigo-950/60 dark:bg-[#1a1b35] sm:p-7 space-y-6">
         {/* Barra de Filtros con Badges (PSICÓLOGO) */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 pb-5">

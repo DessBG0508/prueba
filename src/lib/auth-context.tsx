@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { DEMO_MODE } from "./mock-data";
 import type { User, UserRole } from "./types";
+import { clearLegacyUnscopedScreeningData } from "./screening-storage";
 
 export interface RegisterInput {
   name: string;
@@ -143,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(LAST_ACTIVITY_KEY);
       localStorage.setItem("equilibra_logged_out", "true");
+      clearLegacyUnscopedScreeningData();
     } catch (e) {
       console.error("Error al eliminar la sesión local", e);
     }

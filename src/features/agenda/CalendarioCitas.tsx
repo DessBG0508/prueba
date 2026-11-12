@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AgendaBadge } from "./AgendaBadge";
 import { HORARIOS_CONFIGURADOS, type HorarioSlot } from "./types";
+import { getCitasOcupadasPorFecha, normalizarHoraSlot } from "./agenda-service";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -13,6 +14,7 @@ import {
 
 interface CalendarioCitasProps {
   folioEstudiante?: string;
+  psicologoId?: string;
   nombrePsicologo?: string;
   onSelectSlot: (fecha: string, hora: string) => void;
   fechaPrevia?: string;
@@ -21,6 +23,7 @@ interface CalendarioCitasProps {
 
 export const CalendarioCitas: React.FC<CalendarioCitasProps> = ({
   folioEstudiante = "EQ-9374",
+  psicologoId = "psy-001",
   nombrePsicologo = "Dra. Marta Gómez",
   onSelectSlot,
   fechaPrevia,
@@ -30,6 +33,38 @@ export const CalendarioCitas: React.FC<CalendarioCitasProps> = ({
   const [currentMonthDate, setCurrentMonthDate] = useState<Date>(() => new Date(2026, 10, 1));
   const [selectedDateStr, setSelectedDateStr] = useState<string>(fechaPrevia || "");
   const [selectedHora, setSelectedHora] = useState<string>(horaPrevia || "");
+  const [horasOcupadas, setHorasOcupadas] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(false);
+
+  // Sincronizar citas ocupadas en tiempo real con Supabase y localStorage
+  useEffect(() => {
+    let isCurrent = true;
+    if (!selectedDateStr) {
+      setHorasOcupadas([]);
+      return;
+    }
+
+    setIsLoadingSlots(true);
+    getCitasOcupadasPorFecha(selectedDateStr, psicologoId)
+      .then((ocupadas) => {
+        if (!isCurrent) return;
+        setHorasOcupadas(ocupadas);
+        // Si el horario seleccionado previamente ahora está ocupado, deseleccionarlo
+        if (selectedHora && ocupadas.includes(normalizarHoraSlot(selectedHora))) {
+          setSelectedHora("");
+        }
+      })
+      .catch((err) => {
+        console.error("Error al consultar citas ocupadas en Supabase:", err);
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingSlots(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedDateStr, psicologoId, selectedHora]);
 
   const year = currentMonthDate.getFullYear();
   const month = currentMonthDate.getMonth();
@@ -76,28 +111,6 @@ export const CalendarioCitas: React.FC<CalendarioCitasProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Encabezado de Sección Canva Style */}
-      <div className="rounded-2xl bg-[#1c2474] p-4 text-white shadow-md sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#3942a0] text-sm font-black text-white">
-              01
-            </span>
-            <div>
-              <h2 className="font-display text-lg font-bold tracking-tight text-white">
-                Flujo del estudiante
-              </h2>
-              <p className="text-xs text-indigo-200">
-                3 pantallas: calendario → solicitud → confirmación
-              </p>
-            </div>
-          </div>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-indigo-100">
-            Pantalla 1 — Calendario con horarios disponibles
-          </span>
-        </div>
-      </div>
-
       {/* Tarjeta de Datos Iniciales (AUTO) */}
       <div className="rounded-3xl border border-[#d8d2ff] bg-white p-5 shadow-xs dark:border-indigo-950/60 dark:bg-[#1a1b35] sm:p-7">
         <div className="grid grid-cols-1 gap-4 divide-y divide-border/60 sm:grid-cols-2 sm:divide-y-0 sm:divide-x">
@@ -231,61 +244,100 @@ export const CalendarioCitas: React.FC<CalendarioCitasProps> = ({
                 Horarios disponibles
               </h3>
             </div>
+            {isLoadingSlots && (
+              <span className="text-[10px] font-bold text-teal animate-pulse">
+                Consultando Supabase...
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground">
-            9:00-13:00 y 15:00-18:00 (50 min por sesión, configurados por psicólogo)
+            9:00-13:00 y 15:00-18:00 (50 min por sesión, sincronizados en tiempo real)
           </p>
 
-          {/* Lista de horas */}
-          <div className="space-y-2 pt-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Turno Matutino:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {HORARIOS_CONFIGURADOS.filter((h) => h.turno === "matutino").map((slot) => {
-                const isSelected = selectedHora === slot.hora;
-                return (
-                  <button
-                    key={slot.hora}
-                    type="button"
-                    onClick={() => setSelectedHora(slot.hora)}
-                    className={`flex items-center justify-between rounded-xl border p-2.5 text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[#6857E4] ${
-                      isSelected
-                        ? "border-[#6857E4] bg-[#6857E4] text-white shadow-sm"
-                        : "border-border bg-card text-foreground hover:border-[#6857E4]/60 hover:bg-muted/50"
-                    }`}
-                  >
-                    <span>{slot.label}</span>
-                    <Clock className="size-3.5 opacity-70" />
-                  </button>
-                );
-              })}
+          {!selectedDateStr ? (
+            <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-4 text-center text-xs text-muted-foreground space-y-1">
+              <Clock className="size-5 mx-auto opacity-40 mb-1" />
+              <p className="font-semibold text-foreground">Selecciona un día en el calendario</p>
+              <p className="text-[11px]">
+                El sistema consultará los horarios disponibles y ocupados con Supabase.
+              </p>
             </div>
+          ) : (
+            /* Lista de horas */
+            <div className="space-y-2 pt-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Turno Matutino:
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {HORARIOS_CONFIGURADOS.filter((h) => h.turno === "matutino").map((slot) => {
+                  const isOcupado = horasOcupadas.includes(normalizarHoraSlot(slot.hora));
+                  const isSelected = selectedHora === slot.hora;
+                  return (
+                    <button
+                      key={slot.hora}
+                      type="button"
+                      disabled={isOcupado}
+                      onClick={() => !isOcupado && setSelectedHora(slot.hora)}
+                      aria-label={`${slot.label}${isOcupado ? " - Horario ocupado" : ""}`}
+                      className={`flex items-center justify-between rounded-xl border p-2.5 text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[#6857E4] ${
+                        isOcupado
+                          ? "cursor-not-allowed border-dashed border-border/60 bg-muted/40 text-muted-foreground/50 opacity-60"
+                          : isSelected
+                            ? "border-[#6857E4] bg-[#6857E4] text-white shadow-sm"
+                            : "border-border bg-card text-foreground hover:border-[#6857E4]/60 hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{slot.label}</span>
+                        {isOcupado && (
+                          <span className="rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-1 py-0.5 text-[9px] font-bold shrink-0">
+                            Ocupado
+                          </span>
+                        )}
+                      </div>
+                      <Clock className="size-3.5 opacity-70 shrink-0 ml-1" />
+                    </button>
+                  );
+                })}
+              </div>
 
-            <span className="block pt-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Turno Vespertino:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {HORARIOS_CONFIGURADOS.filter((h) => h.turno === "vespertino").map((slot) => {
-                const isSelected = selectedHora === slot.hora;
-                return (
-                  <button
-                    key={slot.hora}
-                    type="button"
-                    onClick={() => setSelectedHora(slot.hora)}
-                    className={`flex items-center justify-between rounded-xl border p-2.5 text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[#6857E4] ${
-                      isSelected
-                        ? "border-[#6857E4] bg-[#6857E4] text-white shadow-sm"
-                        : "border-border bg-card text-foreground hover:border-[#6857E4]/60 hover:bg-muted/50"
-                    }`}
-                  >
-                    <span>{slot.label}</span>
-                    <Clock className="size-3.5 opacity-70" />
-                  </button>
-                );
-              })}
+              <span className="block pt-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Turno Vespertino:
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {HORARIOS_CONFIGURADOS.filter((h) => h.turno === "vespertino").map((slot) => {
+                  const isOcupado = horasOcupadas.includes(normalizarHoraSlot(slot.hora));
+                  const isSelected = selectedHora === slot.hora;
+                  return (
+                    <button
+                      key={slot.hora}
+                      type="button"
+                      disabled={isOcupado}
+                      onClick={() => !isOcupado && setSelectedHora(slot.hora)}
+                      aria-label={`${slot.label}${isOcupado ? " - Horario ocupado" : ""}`}
+                      className={`flex items-center justify-between rounded-xl border p-2.5 text-xs font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[#6857E4] ${
+                        isOcupado
+                          ? "cursor-not-allowed border-dashed border-border/60 bg-muted/40 text-muted-foreground/50 opacity-60"
+                          : isSelected
+                            ? "border-[#6857E4] bg-[#6857E4] text-white shadow-sm"
+                            : "border-border bg-card text-foreground hover:border-[#6857E4]/60 hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{slot.label}</span>
+                        {isOcupado && (
+                          <span className="rounded-md bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 px-1 py-0.5 text-[9px] font-bold shrink-0">
+                            Ocupado
+                          </span>
+                        )}
+                      </div>
+                      <Clock className="size-3.5 opacity-70 shrink-0 ml-1" />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Resumen de selección actual */}
           <div className="mt-4 rounded-2xl bg-indigo-50/70 p-3 text-xs dark:bg-indigo-950/30">

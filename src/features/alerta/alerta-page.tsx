@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
-import { ChevronDown, HeartHandshake, MessageCircle, Phone, ShieldCheck } from "lucide-react";
+import { ChevronDown, HeartHandshake, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { BreathingSphereView } from "@/components/effects/breathing-sphere-view";
 import type { CrisisResource, RiskLevel } from "@/lib/types";
-import { BRAND } from "@/lib/branding";
 
 const ALERT_LEVEL: RiskLevel = "rojo";
 
@@ -17,31 +16,39 @@ const crisisResources: CrisisResource[] = [
     name: "Línea de la Vida",
     contact: "800 911 2000",
     kind: "phone",
-    available: "Disponible las 24 horas",
+    available: "Disponible las 24 horas · Gratuita",
+  },
+  {
+    id: "saptel",
+    name: "SAPTEL (Cruz Roja)",
+    contact: "800 472 7835",
+    kind: "phone",
+    available: "Apoyo y contención psicológica 24h",
   },
   {
     id: "emergencias",
     name: "Emergencias",
     contact: "911",
     kind: "emergency",
-    available: "Atención inmediata",
+    available: "Atención inmediata 24/7",
   },
   {
-    id: "eli",
-    name: `Chat con ${BRAND.assistant}`,
-    contact: "Próximamente",
-    kind: "chat",
-    available: "Acompañamiento por chat 24/7",
+    id: "tesh-bienestar",
+    name: "Bienestar / Psicología TESH",
+    contact: "55 5829 0000",
+    kind: "phone",
+    available: "Edif. Tutorías · Ext. 109 (L-V 8:00 a 18:00 hrs)",
   },
 ];
 
 export function AlertaPage() {
-  const [showResources, setShowResources] = useState(false);
+  const [showResources, setShowResources] = useState(true);
   const reduceMotion = useReducedMotion();
 
   const handleContact = () => {
-    toast("Estamos preparando el contacto", {
-      description: "En esta demostración, la solicitud quedó registrada.",
+    window.location.href = "tel:8009112000";
+    toast("Conectando con Línea de la Vida (800 911 2000)", {
+      description: "Atención gratuita, confidencial y especializada disponible 24/7.",
     });
   };
 
@@ -103,7 +110,7 @@ export function AlertaPage() {
                 onClick={() => setShowResources((current) => !current)}
                 className="w-full border-card bg-card text-primary hover:bg-card/90"
               >
-                Ver recursos de apoyo
+                {showResources ? "Ocultar recursos" : "Ver recursos de apoyo"}
                 <ChevronDown
                   className={`transition-transform ${showResources ? "rotate-180" : ""}`}
                   aria-hidden="true"
@@ -118,42 +125,41 @@ export function AlertaPage() {
             id="crisis-resources"
             initial={reduceMotion ? false : { opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-4 grid gap-3 sm:grid-cols-3"
+            className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
             aria-label="Recursos de apoyo"
           >
             {crisisResources.map((resource) => {
-              const Icon = resource.kind === "chat" ? MessageCircle : Phone;
+              const Icon = resource.kind === "emergency" ? ShieldCheck : Phone;
+              const cleanDigits = resource.contact.replace(/[^\d+]/g, "");
+              const phoneHref = resource.id === "emergencias" ? "tel:911" : `tel:${cleanDigits}`;
+
               const content = (
-                <>
-                  <span className="grid size-10 place-items-center rounded-2xl bg-mint-soft text-teal">
-                    <Icon aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-semibold text-primary">{resource.name}</span>
-                    <span className="mt-0.5 block text-base font-bold text-foreground">
-                      {resource.contact}
+                <div className="flex flex-col justify-between h-full space-y-2">
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-mint-soft text-teal">
+                      <Icon className="size-5" aria-hidden="true" />
                     </span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      {resource.available}
-                    </span>
+                    <div className="min-w-0">
+                      <span className="block font-semibold text-primary text-sm leading-snug">
+                        {resource.name}
+                      </span>
+                      <span className="mt-0.5 block text-base font-bold font-mono text-foreground">
+                        {resource.contact}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="block text-xs text-muted-foreground pt-1 border-t border-border/40">
+                    {resource.available}
                   </span>
-                </>
+                </div>
               );
 
-              return resource.kind === "chat" ? (
-                <Link
-                  key={resource.id}
-                  to="/chat"
-                  className="ethereal-card flex items-center gap-3 p-4 hover:border-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
-                  aria-label={`Chat con ${BRAND.assistant} — Próximamente`}
-                >
-                  {content}
-                </Link>
-              ) : (
+              return (
                 <a
                   key={resource.id}
-                  href={`tel:${resource.contact.replace(/\s/g, "")}`}
-                  className="ethereal-card flex items-center gap-3 p-4 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+                  href={phoneHref}
+                  className="ethereal-card p-4 hover:border-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+                  aria-label={`Llamar a ${resource.name} al ${resource.contact}`}
                 >
                   {content}
                 </a>
@@ -185,11 +191,23 @@ export function AlertaPage() {
           </div>
         </section>
 
-        <footer className="mt-8 text-center text-sm text-muted-foreground">
+        <footer className="mt-8 border-t border-border/70 pt-6 text-center space-y-3 text-sm text-muted-foreground">
+          {/* Leyenda clínica obligatoria */}
+          <div className="inline-flex items-center justify-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-primary shadow-xs">
+            <ShieldCheck className="size-4 text-primary" aria-hidden="true" />
+            <span>Tamizaje, no diagnóstico</span>
+          </div>
+
+          <p className="max-w-xl mx-auto text-xs text-muted-foreground leading-relaxed">
+            Esta plataforma ofrece detección preventiva y orientación psicológica inicial para la
+            comunidad universitaria del TESH. Ningún resultado emitido por Equilibra TESH sustituye
+            una evaluación clínica formal ni constituye un diagnóstico médico.
+          </p>
+
           <p>Cuando te sientas listo/a, puedes volver cuando quieras</p>
           <Link
             to="/"
-            className="mt-2 inline-block font-semibold text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
+            className="inline-block font-semibold text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/35"
           >
             Volver al inicio
           </Link>

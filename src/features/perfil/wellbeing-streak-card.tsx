@@ -271,18 +271,6 @@ export function WellbeingStreakCard() {
               </Link>
             </Button>
           )}
-
-          <Button
-            asChild
-            variant="ghost"
-            size="sm"
-            className="rounded-xl text-xs font-semibold text-primary hover:bg-muted"
-          >
-            <Link to="/checkin">
-              <span>Ir al check-in</span>
-              <ArrowRight className="size-3.5 ml-1" />
-            </Link>
-          </Button>
         </div>
       </div>
     </section>

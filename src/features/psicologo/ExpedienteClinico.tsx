@@ -101,7 +101,7 @@ const DEFAULT_CAMPOS: CamposClinicos = {
   hipotesis_trabajo: "",
 
   objetivos_sesion: {
-    consentimiento_firmado: true,
+    consentimiento_firmado: false,
     frecuencia_acordada: "Semanal",
     proxima_cita: "",
     estado_bloqueo: "bloqueado",
@@ -327,12 +327,40 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
   // Guardar en Supabase y localStorage
   const handleGuardar = async () => {
+    // 1. VALIDACIÓN DE CONSENTIMIENTO (CRÍTICO)
+    if (!campos.objetivos_sesion.consentimiento_firmado) {
+      toast.error(
+        "Para guardar el expediente se requiere confirmar el Consentimiento Informado (Página 5).",
+      );
+      return;
+    }
+
     try {
       setIsSaving(true);
 
+      // 2. GENERACIÓN DE FOLIO DE EXPEDIENTE (EXP-2026-XXXX) si se guarda por primera vez
+      const camposParaGuardar = { ...campos };
+      if (!camposParaGuardar.numero_expediente) {
+        const cleanFolio = folio.replace(/[^0-9]/g, "");
+        const numPart =
+          cleanFolio.length >= 4
+            ? cleanFolio.slice(-4)
+            : Math.floor(1000 + Math.random() * 9000).toString();
+        const nuevoIdExpediente = `EXP-2026-${numPart}`;
+        camposParaGuardar.numero_expediente = nuevoIdExpediente;
+        if (!camposParaGuardar.fecha_apertura) {
+          camposParaGuardar.fecha_apertura = new Date().toLocaleDateString("es-MX", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
+        }
+        setCampos(camposParaGuardar);
+      }
+
       // Guardado local inmediato de seguridad
       try {
-        localStorage.setItem(storageKey, JSON.stringify(campos));
+        localStorage.setItem(storageKey, JSON.stringify(camposParaGuardar));
       } catch {
         // Ignore
       }
@@ -341,7 +369,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
       const recordPayload: Partial<ExpedienteDbRecord> = {
         folio,
         psicologo_id: user?.id,
-        campos_clinicos: campos,
+        campos_clinicos: camposParaGuardar,
         updated_at: new Date().toISOString(),
       };
 
@@ -351,9 +379,13 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
       if (error) {
         console.warn("Aviso al guardar en expedientes_clinicos de Supabase:", error);
-        toast.success("Expediente guardado localmente (copia segura protegida).");
+        toast.success(
+          `Expediente ${camposParaGuardar.numero_expediente} guardado localmente (copia segura protegida).`,
+        );
       } else {
-        toast.success("Expediente clínico guardado exitosamente en Supabase.");
+        toast.success(
+          `Expediente ${camposParaGuardar.numero_expediente} guardado exitosamente en Supabase.`,
+        );
       }
 
       setUltimaGuardado(new Date());
@@ -366,7 +398,15 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
   };
 
   const handlePrint = () => {
-    window.print();
+    // Si no está en vista continua, activamos para que las 5 páginas se monten en el DOM al imprimir
+    if (!vistaContinua) {
+      setVistaContinua(true);
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } else {
+      window.print();
+    }
   };
 
   // Sub-títulos de páginas según Canva
@@ -380,7 +420,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
   return (
     <div
-      className={`mx-auto max-w-4xl space-y-6 p-4 sm:p-6 lg:p-8 ${className}`}
+      className={`mx-auto max-w-4xl space-y-6 p-4 sm:p-6 lg:p-8 print:m-0 print:w-full print:max-w-none print:space-y-6 print:p-0 ${className}`}
       id="expediente-clinico-container"
     >
       {/* Barra de Acciones y Herramientas del Profesional */}
@@ -425,19 +465,34 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
             <span>Imprimir / PDF</span>
           </button>
 
+          {/* Indicador de Consentimiento si no está firmado */}
+          {!campos.objetivos_sesion.consentimiento_firmado && (
+            <span
+              className="hidden text-[11px] font-semibold text-amber-700 dark:text-amber-400 sm:inline"
+              title="Marca el consentimiento informado en la Página 5 para habilitar el guardado"
+            >
+              Falta consentimiento (Pág. 5)
+            </span>
+          )}
+
           {/* Botón Guardar */}
           <button
             type="button"
             onClick={handleGuardar}
-            disabled={isSaving}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#1c2474] px-4 py-1.5 text-xs font-bold text-white shadow-float transition-all hover:bg-[#28328c] disabled:opacity-50"
+            disabled={isSaving || !campos.objetivos_sesion.consentimiento_firmado}
+            title={
+              !campos.objetivos_sesion.consentimiento_firmado
+                ? "El botón se habilitará al marcar el consentimiento informado en la Página 5"
+                : "Guardar expediente clínico"
+            }
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#1c2474] px-4 py-1.5 text-xs font-bold text-white shadow-float transition-all hover:bg-[#28328c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? (
               <RotateCcw className="size-3.5 animate-spin" />
             ) : (
               <Save className="size-3.5" />
             )}
-            <span>{isSaving ? "Guardando..." : "Guardar"}</span>
+            <span>{isSaving ? "Guardando..." : "Guardar expediente"}</span>
           </button>
 
           {/* Botón Cerrar si fue invocado en modal */}
@@ -501,7 +556,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
       <div className="space-y-12">
         {/* PÁGINA 1: 01 Identificación + 02 Motivo de consulta */}
         {(vistaContinua || paginaActiva === 1) && (
-          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8">
+          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8 print:border-none print:bg-white print:p-0 print:shadow-none print:break-after-page print:space-y-4">
             {/* Header de Página Canva Style */}
             <header className="flex items-start justify-between border-b border-border/60 pb-5">
               <div>
@@ -530,7 +585,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
               transcriptVoz={transcriptVoz}
             />
 
-            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground">
+            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground print:text-black print:pt-2">
               Equilibra TESH · Plantilla Expediente Clínico · 30 de octubre de 2026
             </footer>
           </article>
@@ -538,7 +593,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
         {/* PÁGINA 2: 03 Historia del problema + 04 Antecedentes */}
         {(vistaContinua || paginaActiva === 2) && (
-          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8">
+          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8 print:border-none print:bg-white print:p-0 print:shadow-none print:break-after-page print:space-y-4">
             <header className="flex items-start justify-between border-b border-border/60 pb-5">
               <div>
                 <h1 className="font-display text-2xl font-black uppercase tracking-tight text-[#1c2474] dark:text-indigo-200 sm:text-3xl">
@@ -575,7 +630,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
         {/* PÁGINA 3: 05 Contexto psicosocial + 06 Exploración del estado mental */}
         {(vistaContinua || paginaActiva === 3) && (
-          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8">
+          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8 print:border-none print:bg-white print:p-0 print:shadow-none print:break-after-page print:space-y-4">
             <header className="flex items-start justify-between border-b border-border/60 pb-5">
               <div>
                 <h1 className="font-display text-2xl font-black uppercase tracking-tight text-[#1c2474] dark:text-indigo-200 sm:text-3xl">
@@ -607,7 +662,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
               }
             />
 
-            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground">
+            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground print:text-black print:pt-2">
               Equilibra TESH · Plantilla Expediente Clínico · 30 de octubre de 2026
             </footer>
           </article>
@@ -615,7 +670,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
         {/* PÁGINA 4: 07 Valoración de riesgo + 08 Hipótesis de trabajo */}
         {(vistaContinua || paginaActiva === 4) && (
-          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8">
+          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8 print:border-none print:bg-white print:p-0 print:shadow-none print:break-after-page print:space-y-4">
             <header className="flex items-start justify-between border-b border-border/60 pb-5">
               <div>
                 <h1 className="font-display text-2xl font-black uppercase tracking-tight text-[#1c2474] dark:text-indigo-200 sm:text-3xl">
@@ -643,7 +698,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
               onChange={(hipotesis) => updateCampos({ hipotesis_trabajo: hipotesis })}
             />
 
-            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground">
+            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground print:text-black print:pt-2">
               Equilibra TESH · Plantilla Expediente Clínico · 30 de octubre de 2026
             </footer>
           </article>
@@ -651,7 +706,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
 
         {/* PÁGINA 5: 09 Objetivos iniciales y próxima sesión + 10 Trazabilidad blockchain */}
         {(vistaContinua || paginaActiva === 5) && (
-          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8">
+          <article className="space-y-6 rounded-3xl border border-[#d8d2ff]/80 bg-[#fbfbff] p-6 shadow-sm dark:border-indigo-950/60 dark:bg-[#131427] sm:p-8 print:border-none print:bg-white print:p-0 print:shadow-none print:space-y-4">
             <header className="flex items-start justify-between border-b border-border/60 pb-5">
               <div>
                 <h1 className="font-display text-2xl font-black uppercase tracking-tight text-[#1c2474] dark:text-indigo-200 sm:text-3xl">
@@ -680,7 +735,7 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
               nombrePsicologo={user?.name}
             />
 
-            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground">
+            <footer className="border-t border-border/60 pt-4 text-center text-[11px] text-muted-foreground print:text-black print:pt-2">
               Equilibra TESH · Plantilla Expediente Clínico · 30 de octubre de 2026
             </footer>
           </article>

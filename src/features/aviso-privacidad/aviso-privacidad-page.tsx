@@ -89,6 +89,11 @@ export function AvisoPrivacidadPage() {
     try {
       setIsSubmitting(true);
       await acceptAviso(AVISO_PRIVACIDAD_VERSION_ACTUAL, modoAcompanamientoConsent);
+      try {
+        localStorage.removeItem("equilibra_primer_ingreso");
+      } catch {
+        // ignore
+      }
       toast.success("Aviso de Privacidad aceptado. Bienvenido/a a Equilibra TESH.");
       const destino = user ? rutaPorRol(user.role) : "/";
       navigate({ to: destino, replace: true });
@@ -100,23 +105,11 @@ export function AvisoPrivacidadPage() {
   };
 
   const handleGoHome = () => {
-    if (user) {
-      navigate({ to: rutaPorRol(user.role), replace: true });
-    } else {
-      navigate({ to: "/", replace: true });
-    }
+    navigate({ to: "/" });
   };
 
   const handleReturnToProfile = () => {
-    if (user?.role === "estudiante") {
-      navigate({ to: "/perfil" });
-    } else if (window.history.length > 1) {
-      window.history.back();
-    } else if (user) {
-      navigate({ to: rutaPorRol(user.role), replace: true });
-    } else {
-      navigate({ to: "/", replace: true });
-    }
+    navigate({ to: "/perfil" });
   };
 
   const handleCancel = async () => {

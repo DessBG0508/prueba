@@ -30,6 +30,10 @@ export interface SolicitudCita {
   motivo?: string | null;
   cancelado_por?: CanceladoPor | null;
   motivo_cancelacion?: string | null;
+  email?: string;
+  matricula?: string;
+  nombre_estudiante?: string;
+  folio_tamizaje?: string;
   created_at?: string;
   updated_at?: string;
 }

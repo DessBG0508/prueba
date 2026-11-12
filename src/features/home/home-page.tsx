@@ -121,9 +121,13 @@ export function HomePage() {
             >
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
-                  {/* Avatar de Eli: Círculo con gradiente canónico (#1B198F a #6857E4) */}
-                  <div className="relative flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-soft ring-2 ring-card">
-                    <Sparkles className="size-6 text-white" />
+                  {/* Avatar de Eli: Mascota oficial */}
+                  <div className="relative size-11 shrink-0">
+                    <img
+                      src="/img/Frame 1 ELI.png"
+                      alt="Eli, asistente de tamizaje emocional"
+                      className="size-full rounded-full object-cover shadow-soft"
+                    />
                     <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 ring-2 ring-card" />
                   </div>
                   <div>

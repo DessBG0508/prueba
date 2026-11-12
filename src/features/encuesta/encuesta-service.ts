@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { sha256 } from "@/lib/blockchain-audit";
 import type { RespuestaEncuesta, MetricasEncuesta, TriggerEncuestaTipo } from "./types";
 import { enviarNotificacionEncuestaResend } from "./resend-service";
+import type { User } from "@/lib/types";
+import { getStoredUserFolio } from "@/lib/screening-storage";
 
 const LOCAL_STORAGE_KEY = "equilibra_respuestas_encuesta_pb021";
 
@@ -403,10 +405,129 @@ export function calcularMetricasEncuesta(respuestas: RespuestaEncuesta[]): Metri
 }
 
 /**
+ * Valida si el folio proporcionado pertenece al usuario actualmente autenticado (P0 #9).
+ * Reglas de negocio:
+ * 1. El usuario debe estar autenticado con su cuenta institucional.
+ * 2. Si el rol es 'psicologo' o 'directivo', se permite revisar la encuesta con fines de calidad y auditoría.
+ * 3. Se valida contra el folio de tamizaje activo en screening-storage (getStoredUserFolio).
+ * 4. Se valida contra las citas del estudiante en Supabase o localStorage (solicitudes_cita).
+ * 5. Se valida contra los tamizajes registrados en Supabase.
+ * 6. Soporte para cuentas demo estudiantiles (Dess Bautista / demo student).
+ */
+export async function validarFolioUsuario(
+  folio: string | null | undefined,
+  user: User | null | undefined,
+): Promise<{ valido: boolean; motivo?: string }> {
+  if (!user) {
+    return {
+      valido: false,
+      motivo: "Debes iniciar sesión con tu cuenta institucional para responder la encuesta.",
+    };
+  }
+
+  if (!folio || !folio.trim()) {
+    return {
+      valido: false,
+      motivo: "No se proporcionó un folio institucional válido en el enlace.",
+    };
+  }
+
+  const cleanFolio = folio.trim().toUpperCase();
+
+  // Roles administrativos o psicólogos tienen acceso de supervisión y prueba
+  if (user.role === "psicologo" || user.role === "directivo") {
+    return { valido: true };
+  }
+
+  // 1. Verificar contra el folio de tamizaje almacenado para el usuario en sesión
+  const storedFolio = getStoredUserFolio(user.id, user.email);
+  if (storedFolio && storedFolio.trim().toUpperCase() === cleanFolio) {
+    return { valido: true };
+  }
+
+  // 2. Verificar contra solicitudes de citas locales (localStorage)
+  try {
+    const rawCitas = localStorage.getItem("equilibra_solicitudes_cita_v1");
+    if (rawCitas) {
+      const citas = JSON.parse(rawCitas);
+      if (Array.isArray(citas)) {
+        const match = citas.some((c) => {
+          const isUser =
+            c.user_id === user.id ||
+            (c.email && c.email.toLowerCase() === user.email.toLowerCase()) ||
+            (c.matricula && c.matricula === user.matricula);
+          const hasFolio =
+            (c.folio && c.folio.trim().toUpperCase() === cleanFolio) ||
+            (c.folio_tamizaje && c.folio_tamizaje.trim().toUpperCase() === cleanFolio);
+          return isUser && hasFolio;
+        });
+        if (match) return { valido: true };
+      }
+    }
+  } catch {
+    // Continuar con verificación en Supabase
+  }
+
+  // 3. Verificar en Supabase solicitudes_cita
+  try {
+    const { data: citasDb } = await supabase
+      .from("solicitudes_cita")
+      .select("id, folio, folio_tamizaje, user_id, email, matricula")
+      .or(`folio.eq.${cleanFolio},folio_tamizaje.eq.${cleanFolio}`)
+      .limit(10);
+
+    if (citasDb && citasDb.length > 0) {
+      const isOwner = citasDb.some(
+        (c) =>
+          c.user_id === user.id ||
+          (c.email && c.email.toLowerCase() === user.email.toLowerCase()) ||
+          (c.matricula && c.matricula === user.matricula),
+      );
+      if (isOwner) return { valido: true };
+    }
+  } catch {
+    // Continuar si falla la conexión
+  }
+
+  // 4. Verificar en Supabase tamizajes
+  try {
+    const { data: tamizDb } = await supabase
+      .from("tamizajes")
+      .select("id, folio, user_id")
+      .eq("folio", cleanFolio)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (tamizDb) return { valido: true };
+  } catch {
+    // Continuar si falla
+  }
+
+  // 5. Cuentas de demostración estudiantil (Dess Bautista / demo-user-student)
+  // con folios institucionales de prueba (TESH-2026-0842, EQ-9374, EQ-1234, TESH-2026-0915)
+  const isDemoStudent =
+    user.id === "demo-student-dess" ||
+    user.email === "dess@tesh.mx" ||
+    user.id === "demo-user-student" ||
+    user.id === "demo-student-01";
+
+  const foliosDemoValidos = ["TESH-2026-0842", "EQ-9374", "EQ-1234", "TESH-2026-0915"];
+  if (isDemoStudent && foliosDemoValidos.includes(cleanFolio)) {
+    return { valido: true };
+  }
+
+  return {
+    valido: false,
+    motivo:
+      "El folio especificado en este enlace no pertenece a tu cuenta activa. Por lineamientos de confidencialidad institucional (P0 #9), las encuestas de satisfacción únicamente pueden ser contestadas por el titular asignado.",
+  };
+}
+
+/**
  * Disparador de envío institucional de la encuesta (confirmado MIN-008):
  * - Alta: psicólogo marca 'completada' -> enviar enlace en 24h
  * - Abandono: 2 'no_asistio' consecutivos -> enviar en ventana 15 días
- * - NO ventanas 30/60/90 días
+ * - Conexión principal: Supabase Edge Function 'enviar-encuesta' con fallback a Resend directo/local
  */
 export async function triggerEnvioEncuesta(params: {
   folio: string;
@@ -415,13 +536,43 @@ export async function triggerEnvioEncuesta(params: {
   email?: string;
   nombre?: string;
 }): Promise<{ ok: boolean; mensaje: string; idEnvio?: string }> {
-  const ahora = new Date().toISOString();
   const urlBase =
     typeof window !== "undefined" ? window.location.origin : "https://equilibra-tesh.edu.mx";
   const enlace = `${urlBase}/encuesta?folio=${encodeURIComponent(params.folio)}&tipo=${params.trigger_tipo}`;
+  const destinoEmail =
+    params.email ||
+    `${params.folio.toLowerCase().replace(/[^a-z0-9_-]/g, "")}@comunidad.tesh.edu.mx`;
+  const textoTipo =
+    params.trigger_tipo === "alta" ? "alta de proceso (enlace 24h)" : "abandono (ventana 15 días)";
 
-  // Enviar vía Resend SMTP
-  const destinoEmail = params.email || `${params.folio.toLowerCase()}@comunidad.tesh.edu.mx`;
+  // 1. Intento primario: Invocación de la Edge Function 'enviar-encuesta'
+  try {
+    const { data, error } = await supabase.functions.invoke("enviar-encuesta", {
+      body: {
+        folio: params.folio,
+        user_id: params.user_id,
+        trigger_tipo: params.trigger_tipo,
+        destinatarioEmail: destinoEmail,
+        destinatarioNombre: params.nombre,
+        enlaceEncuesta: enlace,
+      },
+    });
+
+    if (!error && (data?.ok || data?.status === "enviado")) {
+      return {
+        ok: true,
+        idEnvio: data.message_id || data.id,
+        mensaje: `Disparador PB-021 activado por ${textoTipo}. Notificación enviada vía Edge Function 'enviar-encuesta' a ${destinoEmail}.`,
+      };
+    }
+  } catch (edgeErr) {
+    console.warn(
+      "[triggerEnvioEncuesta] Aviso: Edge Function no disponible o sin conexión. Ejecutando fallback:",
+      edgeErr,
+    );
+  }
+
+  // 2. Fallback: Envío directo mediante Resend SMTP / REST API o cola local
   const emailRes = await enviarNotificacionEncuestaResend({
     destinatarioEmail: destinoEmail,
     destinatarioNombre: params.nombre,
@@ -429,9 +580,6 @@ export async function triggerEnvioEncuesta(params: {
     triggerTipo: params.trigger_tipo,
     enlaceEncuesta: enlace,
   });
-
-  const textoTipo =
-    params.trigger_tipo === "alta" ? "alta de proceso (enlace 24h)" : "abandono (ventana 15 días)";
 
   return {
     ok: emailRes.ok,

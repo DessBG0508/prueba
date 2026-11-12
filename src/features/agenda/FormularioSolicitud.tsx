@@ -28,26 +28,6 @@ export const FormularioSolicitud: React.FC<FormularioSolicitudProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Encabezado Canva Style */}
-      <div className="rounded-2xl bg-[#1c2474] p-4 text-white shadow-md sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#3942a0] text-sm font-black text-white">
-              01
-            </span>
-            <div>
-              <h2 className="font-display text-lg font-bold tracking-tight text-white">
-                Flujo del estudiante
-              </h2>
-              <p className="text-xs text-indigo-200">Pantalla 2 — Formulario de solicitud</p>
-            </div>
-          </div>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-indigo-100">
-            Página 2 de 6
-          </span>
-        </div>
-      </div>
-
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="rounded-3xl border border-[#d8d2ff] bg-white p-5 shadow-xs dark:border-indigo-950/60 dark:bg-[#1a1b35] sm:p-7">
           {/* Resumen de cita seleccionada */}

@@ -17,25 +17,38 @@ import {
   AlertTriangle,
   Copy,
   Ticket,
+  Mic,
 } from "lucide-react";
+import { VoiceNoteRecorder } from "@/components/chat/voice-note-recorder";
 import {
   resetBackendScreeningState,
   type EliMessage,
   type TamizajeSubmissionPayload,
 } from "@/lib/api-client";
 import { supabase } from "@/integrations/supabase/client";
+import { DEMO_MODE } from "@/lib/mock-data";
 import {
   INITIAL_SCREENING_STATE,
+  ELI_WELCOME_MESSAGE,
   type ScreeningState,
   type ScreeningNivel,
   processEliMessage,
   generateFolio,
   parseLikertOption,
   CRISIS_MESSAGE,
+  detectCrisisKeywords,
 } from "@/lib/eli-screening";
 import { sanitizeText } from "@/lib/security";
 import { useAuth } from "@/lib/auth-context";
 import { BRAND } from "@/lib/branding";
+import {
+  getChatSessionsStorageKey,
+  getActiveSessionStorageKey,
+  getStoredUserFolio,
+  setStoredUserFolio,
+  removeStoredUserFolio,
+  clearLegacyUnscopedScreeningData,
+} from "@/lib/screening-storage";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -56,34 +69,70 @@ export interface ChatSession {
   screeningState: ScreeningState;
 }
 
-const CHAT_SESSIONS_STORAGE_KEY = "equilibra_eli_screening_sessions_v5";
-const ACTIVE_SESSION_STORAGE_KEY = "equilibra_eli_active_session_id_v5";
-
-// Limpiar versiones obsoletas de almacenamiento para garantizar un reinicio limpio
+// Limpiar versiones obsoletas y datos no-scoped residuales
 if (typeof window !== "undefined") {
-  try {
-    [
-      "equilibra_eli_screening_sessions_v4",
-      "equilibra_eli_active_session_id_v4",
-      "equilibra_eli_screening_sessions_v3",
-      "equilibra_eli_chat_messages_v2",
-      "equilibra_eli_chat_messages_v1",
-    ].forEach((k) => localStorage.removeItem(k));
-  } catch {
-    // ignore
+  clearLegacyUnscopedScreeningData();
+}
+
+function ensureSessionHasWelcome(session: ChatSession): ChatSession {
+  if (!session.messages || session.messages.length === 0) {
+    const welcomeMsg: EliMessage = {
+      id: crypto.randomUUID(),
+      sender: "eli",
+      text: ELI_WELCOME_MESSAGE,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    return {
+      ...session,
+      preview: ELI_WELCOME_MESSAGE.slice(0, 60),
+      messages: [welcomeMsg],
+      screeningState: {
+        ...(session.screeningState || INITIAL_SCREENING_STATE),
+        step: "waiting_consent",
+      },
+    };
   }
+  return session;
 }
 
 function createFreshSession(): ChatSession {
   const id = `session-${Date.now()}`;
+  const initialMsg: EliMessage = {
+    id: crypto.randomUUID(),
+    sender: "eli",
+    text: ELI_WELCOME_MESSAGE,
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  };
   return {
     id,
     title: "Nuevo tamizaje",
     updatedAt: "Ahora",
-    preview: "Cuestionario de tamizaje clínico...",
-    messages: [],
-    screeningState: { ...INITIAL_SCREENING_STATE },
+    preview: ELI_WELCOME_MESSAGE.slice(0, 60),
+    messages: [initialMsg],
+    screeningState: {
+      ...INITIAL_SCREENING_STATE,
+      step: "waiting_consent",
+    },
   };
+}
+
+function loadUserSessions(userIdOrEmail?: string | null): ChatSession[] {
+  clearLegacyUnscopedScreeningData();
+  if (typeof window === "undefined" || !userIdOrEmail) return [createFreshSession()];
+
+  try {
+    const key = getChatSessionsStorageKey(userIdOrEmail);
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(ensureSessionHasWelcome);
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return [createFreshSession()];
 }
 
 export function ChatPage() {
@@ -93,30 +142,20 @@ export function ChatPage() {
 
   // RD-07: Bloqueo persistente desde la base de datos (Supabase)
   const [isBlockedByBackend, setIsBlockedByBackend] = useState(false);
-  // Gating intra-sesión: nivel amarillo/rojo de la conversación ACTUAL (solo durante la sesión en curso)
-  const [intraSessionRiskBlocked, setIntraSessionRiskBlocked] = useState(false);
 
-  // Inicializar sesiones
+  // Inicializar sesiones scoped por usuario
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    try {
-      const stored = localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return [createFreshSession()];
+    return loadUserSessions(user?.id || user?.email);
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
     try {
-      const storedId = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-      if (storedId && sessions.some((s) => s.id === storedId)) {
-        return storedId;
+      const userIdOrEmail = user?.id || user?.email;
+      if (userIdOrEmail) {
+        const storedId = localStorage.getItem(getActiveSessionStorageKey(userIdOrEmail));
+        if (storedId && sessions.some((s) => s.id === storedId)) {
+          return storedId;
+        }
       }
     } catch {
       // fallback
@@ -124,9 +163,29 @@ export function ChatPage() {
     return sessions[0]?.id || "default-session";
   });
 
+  // Reaccionar al cambio de usuario (o login) para cargar exclusivamente sus sesiones
+  useEffect(() => {
+    const userIdOrEmail = user?.id || user?.email;
+    const loaded = loadUserSessions(userIdOrEmail);
+    setSessions(loaded);
+    let activeId = loaded[0]?.id || "default-session";
+    if (userIdOrEmail) {
+      try {
+        const storedId = localStorage.getItem(getActiveSessionStorageKey(userIdOrEmail));
+        if (storedId && loaded.some((s) => s.id === storedId)) {
+          activeId = storedId;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    setActiveSessionId(activeId);
+  }, [user?.id, user?.email]);
+
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [pendingSubmissionPayload, setPendingSubmissionPayload] =
     useState<TamizajeSubmissionPayload | null>(null);
@@ -139,16 +198,12 @@ export function ChatPage() {
   const messages = activeSession.messages;
   const screeningState = activeSession.screeningState || INITIAL_SCREENING_STATE;
 
-  // RD-07: Evaluación de nivel de riesgo (amarillo o rojo)
-  const isRiskNivel = screeningState.nivel === "amarillo" || screeningState.nivel === "rojo";
-
-  // Fuente única de verdad del bloqueo de reinicio (gated si el tamizaje es amarillo o rojo, o bloqueado en BD)
-  const isGatedByRisk =
-    isBlockedByBackend ||
-    intraSessionRiskBlocked ||
-    (screeningState.step === "completed" && isRiskNivel);
-
-  const isEffectiveBlocked = isGatedByRisk;
+  // RD-07: Fix definitivo de bloqueo:
+  // 1. isEffectiveBlocked depende ÚNICAMENTE de isBlockedByBackend (que consulta Supabase).
+  // 2. Si estamos en modo demo (DEMO_MODE === true) o Supabase no está configurado, isEffectiveBlocked se fuerza a false.
+  // 3. Se elimina cualquier bloqueo basado en el estado local de la sesión (intraSessionRiskBlocked o screeningState.step === "completed").
+  const isEffectiveBlocked = DEMO_MODE ? false : isBlockedByBackend;
+  const isGatedByRisk = isEffectiveBlocked;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -159,13 +214,17 @@ export function ChatPage() {
     scrollToBottom();
   }, [messagesCount, isTyping, scrollToBottom]);
 
-  // Persistir sesiones
+  // Persistir sesiones scoped al usuario activo
   const persistSessions = (newSessions: ChatSession[], newActiveId?: string) => {
     setSessions(newSessions);
+    const userIdOrEmail = user?.id || user?.email;
+    if (!userIdOrEmail) return;
     try {
-      localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(newSessions));
+      const sessionsKey = getChatSessionsStorageKey(userIdOrEmail);
+      localStorage.setItem(sessionsKey, JSON.stringify(newSessions));
       if (newActiveId) {
-        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, newActiveId);
+        const activeKey = getActiveSessionStorageKey(userIdOrEmail);
+        localStorage.setItem(activeKey, newActiveId);
       }
     } catch {
       // ignore storage errors
@@ -179,6 +238,12 @@ export function ChatPage() {
   useEffect(() => {
     let isMounted = true;
     async function checkBlockedStatus() {
+      // En modo demo, no bloquear jamás
+      if (DEMO_MODE) {
+        if (isMounted) setIsBlockedByBackend(false);
+        return;
+      }
+
       let authUserId = user?.id;
       try {
         const { data: authData } = await supabase.auth.getUser();
@@ -189,21 +254,26 @@ export function ChatPage() {
         // usar id de contexto si existe
       }
 
-      // Solo sesión real con UUID (no sesión de demostración)
+      // Si no es un UUID de Supabase Auth (p. ej. demo o registro local), no bloquear
       const UUID_REGEX =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       if (!authUserId || !UUID_REGEX.test(authUserId)) {
+        if (isMounted) setIsBlockedByBackend(false);
         return;
       }
 
       try {
-        let patientRow: { id?: string | number; bloqueado?: boolean | null } | null = null;
+        let patientRow: {
+          id?: string | number;
+          bloqueado?: boolean | null;
+          folio?: string | null;
+        } | null = null;
         let queryCompleted = false;
 
         // Intentar consultar ordenando por fecha_registro, created_at, o id
         const q1 = await supabase
           .from("pacientes")
-          .select("id, bloqueado, fecha_registro")
+          .select("id, bloqueado, folio, fecha_registro")
           .eq("user_id", authUserId)
           .order("fecha_registro", { ascending: false })
           .limit(1)
@@ -215,7 +285,7 @@ export function ChatPage() {
         } else {
           const q2 = await supabase
             .from("pacientes")
-            .select("id, bloqueado, created_at")
+            .select("id, bloqueado, folio, created_at")
             .eq("user_id", authUserId)
             .order("created_at", { ascending: false })
             .limit(1)
@@ -227,28 +297,15 @@ export function ChatPage() {
           } else {
             const q3 = await supabase
               .from("pacientes")
-              .select("id, bloqueado, fecha")
+              .select("id, bloqueado, folio")
               .eq("user_id", authUserId)
-              .order("fecha", { ascending: false })
+              .order("id", { ascending: false })
               .limit(1)
               .maybeSingle();
 
             if (!q3.error) {
               patientRow = q3.data;
               queryCompleted = true;
-            } else {
-              const q4 = await supabase
-                .from("pacientes")
-                .select("id, bloqueado")
-                .eq("user_id", authUserId)
-                .order("id", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-              if (!q4.error) {
-                patientRow = q4.data;
-                queryCompleted = true;
-              }
             }
           }
         }
@@ -256,27 +313,29 @@ export function ChatPage() {
         if (queryCompleted && isMounted) {
           if (patientRow && patientRow.bloqueado === true) {
             setIsBlockedByBackend(true);
-          } else if (!patientRow || patientRow.bloqueado === false) {
-            // FUENTE ÚNICA DE VERDAD: Si bloqueado=false en BD, ningún gating.
-            setIsBlockedByBackend(false);
-            setIntraSessionRiskBlocked(false);
-
-            // Ignorar y limpiar cualquier estado local de "tamizaje completado" persistido del navegador
-            try {
-              localStorage.removeItem("equilibra_ultimo_folio_tamizaje");
-            } catch {
-              // ignore
+            if (patientRow.folio) {
+              setStoredUserFolio(authUserId, patientRow.folio, user?.email);
             }
+          } else if (!patientRow || patientRow.bloqueado === false) {
+            // FUENTE ÚNICA DE VERDAD: Si no hay registro en BD o bloqueado=false, NO hay gating
+            setIsBlockedByBackend(false);
 
             setSessions((prevSessions) => {
               const hasCompleted = prevSessions.some((s) => s.screeningState?.step === "completed");
               if (hasCompleted || prevSessions.length === 0) {
                 const fresh = createFreshSession();
-                try {
-                  localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify([fresh]));
-                  localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, fresh.id);
-                } catch {
-                  // ignore
+                const userIdOrEmail = authUserId || user?.email;
+                if (userIdOrEmail) {
+                  removeStoredUserFolio(authUserId, user?.email);
+                  try {
+                    localStorage.setItem(
+                      getChatSessionsStorageKey(userIdOrEmail),
+                      JSON.stringify([fresh]),
+                    );
+                    localStorage.setItem(getActiveSessionStorageKey(userIdOrEmail), fresh.id);
+                  } catch {
+                    // ignore
+                  }
                 }
                 setActiveSessionId(fresh.id);
                 return [fresh];
@@ -287,6 +346,7 @@ export function ChatPage() {
         }
       } catch (err) {
         console.warn("Aviso al consultar estado de bloqueo de paciente:", err);
+        if (isMounted) setIsBlockedByBackend(false);
       }
     }
 
@@ -294,7 +354,7 @@ export function ChatPage() {
     return () => {
       isMounted = false;
     };
-  }, [user?.id]);
+  }, [user?.id, user?.email]);
 
   // RECUPERACIÓN AUTOMÁTICA: Si el usuario respondió el reactivo 9 pero no se generó el mensaje de Eli con el folio
   useEffect(() => {
@@ -333,7 +393,7 @@ export function ChatPage() {
           ? "amarillo"
           : "verde";
       const existingFolio =
-        st.folio || localStorage.getItem("equilibra_ultimo_folio_tamizaje") || generateFolio();
+        st.folio || getStoredUserFolio(user?.id, user?.email) || generateFolio();
 
       let replyText = "";
       if (nivel === "rojo") {
@@ -360,10 +420,9 @@ export function ChatPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
 
-      try {
-        localStorage.setItem("equilibra_ultimo_folio_tamizaje", existingFolio);
-      } catch {
-        // ignore
+      const userIdOrEmail = user?.id || user?.email;
+      if (userIdOrEmail) {
+        setStoredUserFolio(userIdOrEmail, existingFolio);
       }
 
       const updatedState: ScreeningState = {
@@ -383,35 +442,41 @@ export function ChatPage() {
 
       setSessions((prev) => {
         const nextSessions = prev.map((s) => (s.id === activeSession.id ? updatedSession : s));
-        try {
-          localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(nextSessions));
-        } catch {
-          // ignore
+        if (userIdOrEmail) {
+          try {
+            localStorage.setItem(
+              getChatSessionsStorageKey(userIdOrEmail),
+              JSON.stringify(nextSessions),
+            );
+          } catch {
+            // ignore
+          }
         }
         return nextSessions;
       });
-      if (nivel === "rojo" || nivel === "amarillo") {
-        setIntraSessionRiskBlocked(true);
-      }
     }
-  }, [activeSessionId, activeSession]);
+  }, [activeSessionId, activeSession, user?.id, user?.email]);
 
-  // REINICIAR CHAT COMPLETAMENTE (Bloqueado solo si hay gating efectivo)
-  const handleResetChat = () => {
-    if (isEffectiveBlocked) {
-      toast.warning(
-        "Tu tamizaje está en resguardo. Solo el psicólogo del TESH puede reactivar o autorizar una nueva evaluación.",
-      );
-      return;
-    }
-    resetBackendScreeningState();
-    setSubmissionError(null);
-    setPendingSubmissionPayload(null);
+  // REINICIAR CHAT COMPLETAMENTE: Permite al estudiante iniciar una evaluación limpia
+  const handleResetChat = async () => {
     try {
-      localStorage.removeItem("equilibra_ultimo_folio_tamizaje");
+      let authUserId = user?.id;
+      if (!authUserId) {
+        const { data: authData } = await supabase.auth.getUser();
+        authUserId = authData?.user?.id;
+      }
+      if (authUserId && !DEMO_MODE) {
+        await supabase.from("pacientes").update({ bloqueado: false }).eq("user_id", authUserId);
+      }
     } catch {
       // ignore
     }
+    setIsBlockedByBackend(false);
+    resetBackendScreeningState();
+    setSubmissionError(null);
+    setPendingSubmissionPayload(null);
+    removeStoredUserFolio(user?.id, user?.email);
+    clearLegacyUnscopedScreeningData();
     const freshSession = createFreshSession();
     persistSessions([freshSession], freshSession.id);
     setActiveSessionId(freshSession.id);
@@ -500,10 +565,9 @@ export function ChatPage() {
 
         const finalMessages = [...messages, eliMsg];
 
-        try {
-          localStorage.setItem("equilibra_ultimo_folio_tamizaje", data.data.folio);
-        } catch {
-          // ignore
+        const userIdOrEmail = user?.id || user?.email;
+        if (userIdOrEmail && data.data?.folio) {
+          setStoredUserFolio(userIdOrEmail, data.data.folio);
         }
 
         const updatedState: ScreeningState = {
@@ -525,11 +589,43 @@ export function ChatPage() {
           s.id === activeSession.id ? updatedSessionFinal : s,
         );
         persistSessions(finalSessions);
-        if (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado) {
+        if (
+          !DEMO_MODE &&
+          (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado)
+        ) {
           setIsBlockedByBackend(true);
-          setIntraSessionRiskBlocked(true);
         }
         toast.success("Tamizaje registrado correctamente");
+
+        if (data.data.nivel === "rojo" || isCrisis) {
+          (async () => {
+            try {
+              const gad7Items = finalPayload.GAD7 || [];
+              const phq9Items = finalPayload.PHQ9 || [];
+              const gad7Total = gad7Items.reduce((a, b) => a + b, 0);
+              const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
+              const item9Score = phq9Items[8] ?? 0;
+
+              await supabase.functions.invoke("notificar-psicologo-rojo", {
+                body: {
+                  folio: data.data.folio,
+                  paciente: finalPayload.paciente,
+                  gad7_total: gad7Total,
+                  gad7_items: gad7Items,
+                  phq9_total: phq9Total,
+                  phq9_items: phq9Items,
+                  item9_score: item9Score,
+                  estudiante_id: finalPayload.user_id || undefined,
+                  estudiante_email: user?.email || undefined,
+                  estudiante_nombre: user?.name || undefined,
+                  fecha: new Date().toISOString(),
+                },
+              });
+            } catch (retryAlertErr) {
+              console.warn("[AlertaRojo] Aviso al reintentar alerta al psicólogo:", retryAlertErr);
+            }
+          })();
+        }
       }
     } catch (err: unknown) {
       const msg =
@@ -542,14 +638,10 @@ export function ChatPage() {
     }
   };
 
-  // NUEVA CONVERSACIÓN (Restringido solo si el bloqueo está activo)
+  // NUEVA CONVERSACIÓN
   const handleNewConversation = () => {
-    if (isEffectiveBlocked) {
-      toast.warning(
-        "Tu tamizaje está en revisión. Solo el psicólogo del TESH puede autorizar uno nuevo tras revisar tus respuestas.",
-      );
-      return;
-    }
+    setIsBlockedByBackend(false);
+    resetBackendScreeningState();
     const freshSession = createFreshSession();
     const updated = [freshSession, ...sessions];
     persistSessions(updated, freshSession.id);
@@ -572,12 +664,8 @@ export function ChatPage() {
 
   // BORRAR HISTORIAL COMPLETO
   const handleClearAllHistory = () => {
-    if (isGatedByRisk) {
-      toast.warning(
-        "Tu tamizaje está en resguardo clínico. No se puede reiniciar mientras esté en revisión.",
-      );
-      return;
-    }
+    setIsBlockedByBackend(false);
+    resetBackendScreeningState();
     const freshSession = createFreshSession();
     persistSessions([freshSession], freshSession.id);
     setActiveSessionId(freshSession.id);
@@ -587,14 +675,19 @@ export function ChatPage() {
 
   // DETERMINAR OPCIONES RÁPIDAS
   const getQuickReplies = (): string[] => {
-    if (screeningState.step === "waiting_consent") {
+    if (screeningState.step === "waiting_consent" || screeningState.step === "not_started") {
       return ["Sí", "No"];
     }
     if (screeningState.step === "waiting_sex") {
-      return ["Hombre", "Mujer", "Otro"];
+      return ["Femenino", "Masculino", "Otro"];
     }
-    if (screeningState.step === "waiting_semestre") {
-      return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Otro"];
+    if (screeningState.step === "waiting_fecha") {
+      const todayStr = new Date().toLocaleDateString("es-MX", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+      return [todayStr, "Hoy"];
     }
     if (screeningState.step === "gad7" || screeningState.step === "phq9") {
       return ["Nunca", "Varios días", "Más de la mitad de los días", "Casi todos los días"];
@@ -638,7 +731,94 @@ export function ChatPage() {
 
     setInputText("");
     setIsTyping(true);
-    setSubmissionError(null);
+    // Detección proactiva de palabras clave de crisis (SIN Gemini)
+    // "suicidio", "morir", "matarme", "hacerme daño", "acabar con todo", "no quiero vivir", etc.
+    const hasCrisisKeyword = detectCrisisKeywords(sanitized);
+
+    if (hasCrisisKeyword) {
+      const eliTimestamp = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      const crisisFolio =
+        screeningState.folio || getStoredUserFolio(user?.id, user?.email) || generateFolio();
+
+      const eliMsg: EliMessage = {
+        id: crypto.randomUUID(),
+        sender: "eli",
+        text: `${CRISIS_MESSAGE}\n\nTu seguridad es lo más importante en este momento. Hemos habilitado las líneas de auxilio 24/7 de atención inmediata aquí abajo.`,
+        isCrisisProtocol: true,
+        crisisData: {
+          actionLabel: "Contactar a Línea de la Vida ahora",
+          actionRoute: "/alerta",
+          helplineName: "Línea de la Vida",
+          helphoneNumber: "800 911 2000",
+        },
+        timestamp: eliTimestamp,
+      };
+
+      const finalMessages = [...newMessages, eliMsg];
+
+      const updatedSessionCrisis: ChatSession = {
+        ...activeSession,
+        updatedAt: "Ahora",
+        messages: finalMessages,
+        preview: eliMsg.text.slice(0, 60),
+        screeningState: {
+          ...screeningState,
+          nivel: "rojo",
+          folio: crisisFolio,
+        },
+      };
+
+      const finalSessions = sessions.map((s) =>
+        s.id === activeSession.id ? updatedSessionCrisis : s,
+      );
+      persistSessions(finalSessions);
+      setIsTyping(false);
+
+      // Notificación activa en segundo plano al psicólogo vía Edge Function
+      (async () => {
+        try {
+          let currentUserId: string | null = null;
+          try {
+            const { data: authData } = await supabase.auth.getUser();
+            const UUID_REGEX =
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (authData?.user?.id && UUID_REGEX.test(authData.user.id)) {
+              currentUserId = authData.user.id;
+            }
+          } catch {
+            currentUserId = null;
+          }
+
+          await supabase.functions.invoke("notificar-psicologo-rojo", {
+            body: {
+              folio: crisisFolio,
+              paciente: {
+                iniciales: screeningState.paciente.iniciales || "ALERTA-CHAT",
+                edad: screeningState.paciente.edad || 0,
+                sexo: screeningState.paciente.sexo || "No especificado",
+                fecha: new Date().toLocaleDateString("es-MX"),
+              },
+              gad7_total: screeningState.gad7Items.reduce((a, b) => a + b, 0),
+              phq9_total: screeningState.phq9Items.reduce((a, b) => a + b, 0),
+              item9_score: 3, // Máxima alerta por palabra clave crítica
+              estudiante_id: currentUserId || undefined,
+              estudiante_email: user?.email || undefined,
+              estudiante_nombre: user?.name || undefined,
+              fecha: new Date().toISOString(),
+            },
+          });
+        } catch (alertaErr) {
+          console.warn("[CrisisKeyword] Aviso al disparar notificación al psicólogo:", alertaErr);
+        }
+      })();
+
+      setTimeout(() => inputRef.current?.focus(), 50);
+      return;
+    }
 
     // Procesar localmente la pregunta/respuesta actual
     const stepResult = processEliMessage(sanitized, screeningState);
@@ -675,10 +855,9 @@ export function ChatPage() {
 
       const finalMessages = [...newMessages, eliMsg];
 
-      try {
-        localStorage.setItem("equilibra_ultimo_folio_tamizaje", calculatedFolio);
-      } catch {
-        // ignore
+      const userIdOrEmail = user?.id || user?.email;
+      if (userIdOrEmail) {
+        setStoredUserFolio(userIdOrEmail, calculatedFolio);
       }
 
       const updatedState: ScreeningState = {
@@ -699,10 +878,6 @@ export function ChatPage() {
       setSessions((prev) => prev.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)));
       persistSessions(sessions.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)));
       setIsTyping(false);
-
-      if (calculatedNivel === "amarillo" || calculatedNivel === "rojo") {
-        setIntraSessionRiskBlocked(true);
-      }
       toast.success("Tamizaje completado con éxito");
 
       // 2. Registro asíncrono en Supabase (sin bloquear la visualización del folio en el chat)
@@ -738,16 +913,52 @@ export function ChatPage() {
 
           if (res?.data?.data?.folio) {
             const serverFolio = res.data.data.folio;
-            try {
-              localStorage.setItem("equilibra_ultimo_folio_tamizaje", serverFolio);
-            } catch {
-              // ignore
+            if (userIdOrEmail) {
+              setStoredUserFolio(userIdOrEmail, serverFolio);
             }
           }
         } catch {
           // El tamizaje ya quedó procesado y asegurado localmente en la sesión del chat
         }
       })();
+
+      // Disparar Edge Function "notificar-psicologo-rojo" cuando el tamizaje resulta en nivel rojo
+      if (calculatedNivel === "rojo" || isCrisis) {
+        (async () => {
+          try {
+            const gad7Items = stepResult.submissionPayload?.GAD7 || [];
+            const phq9Items = stepResult.submissionPayload?.PHQ9 || [];
+            const gad7Total = gad7Items.reduce((a, b) => a + b, 0);
+            const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
+            const item9Score = phq9Items[8] ?? 0;
+
+            const alertaPayload = {
+              folio: calculatedFolio,
+              paciente: stepResult.submissionPayload?.paciente || {
+                iniciales: "",
+                edad: 0,
+                sexo: "",
+                fecha: new Date().toLocaleDateString("es-MX"),
+              },
+              gad7_total: gad7Total,
+              gad7_items: gad7Items,
+              phq9_total: phq9Total,
+              phq9_items: phq9Items,
+              item9_score: item9Score,
+              estudiante_id: currentUserId || undefined,
+              estudiante_email: user?.email || undefined,
+              estudiante_nombre: user?.name || undefined,
+              fecha: new Date().toISOString(),
+            };
+
+            await supabase.functions.invoke("notificar-psicologo-rojo", {
+              body: alertaPayload,
+            });
+          } catch (alertaErr) {
+            console.warn("[AlertaRojo] Aviso al disparar notificación al psicólogo:", alertaErr);
+          }
+        })();
+      }
 
       setTimeout(() => inputRef.current?.focus(), 50);
       return;
@@ -823,11 +1034,12 @@ export function ChatPage() {
             </Button>
 
             <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
-              <div
-                className="relative flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-soft"
-                aria-hidden="true"
-              >
-                <Sparkles className="size-4 text-white" />
+              <div className="relative size-8 sm:size-9 shrink-0">
+                <img
+                  src="/img/Frame 1 ELI.png"
+                  alt="Eli, asistente de tamizaje emocional"
+                  className="size-full rounded-full object-cover shadow-soft"
+                />
                 <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-card" />
               </div>
 
@@ -850,9 +1062,9 @@ export function ChatPage() {
             </div>
           </div>
 
-          {/* Lado derecho: Reiniciar (oculto en riesgo) + Historial + Tema */}
+          {/* Lado derecho: Reiniciar (siempre visible en demo) + Historial + Tema */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            {!isGatedByRisk && (
+            {(DEMO_MODE || !isGatedByRisk) && (
               <Button
                 type="button"
                 variant="outline"
@@ -897,22 +1109,31 @@ export function ChatPage() {
                 Tu tamizaje está en revisión. Un profesional lo revisará antes de permitir uno
                 nuevo. Si necesitas apoyo inmediato, las líneas de ayuda siguen disponibles.
               </p>
-              <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] font-bold">
-                <a
-                  href="tel:8009112000"
-                  className="inline-flex items-center gap-1 text-teal hover:underline"
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5 text-[11px] font-bold">
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    href="tel:8009112000"
+                    className="inline-flex items-center gap-1 text-teal hover:underline"
+                  >
+                    <Phone className="size-3" />
+                    Línea de la Vida 800 911 2000
+                  </a>
+                  <span className="text-amber-400 dark:text-amber-600">•</span>
+                  <a
+                    href="tel:8004727835"
+                    className="inline-flex items-center gap-1 text-teal hover:underline"
+                  >
+                    <Phone className="size-3" />
+                    SAPTEL 800 472 7835
+                  </a>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetChat}
+                  className="rounded-lg bg-amber-200/90 dark:bg-amber-800/90 px-2.5 py-1 text-[11px] font-bold text-amber-950 dark:text-amber-50 hover:bg-amber-300 dark:hover:bg-amber-700 transition-colors cursor-pointer"
                 >
-                  <Phone className="size-3" />
-                  Línea de la Vida 800 911 2000
-                </a>
-                <span className="text-amber-400 dark:text-amber-600">•</span>
-                <a
-                  href="tel:8004727835"
-                  className="inline-flex items-center gap-1 text-teal hover:underline"
-                >
-                  <Phone className="size-3" />
-                  SAPTEL 800 472 7835
-                </a>
+                  Iniciar nuevo tamizaje
+                </button>
               </div>
             </div>
           </div>
@@ -952,9 +1173,11 @@ export function ChatPage() {
               animate={{ opacity: 1, y: 0 }}
               className="mx-auto w-full max-w-md rounded-2xl border border-primary/20 bg-card/90 p-4 text-center shadow-soft backdrop-blur-md"
             >
-              <div className="mx-auto mb-2.5 grid size-10 place-items-center rounded-full bg-primary/10 text-primary">
-                <Sparkles className="size-5" />
-              </div>
+              <img
+                src="/img/Frame 1 ELI.png"
+                alt="Eli, asistente de tamizaje emocional"
+                className="mx-auto mb-2.5 size-10 rounded-full object-cover shadow-soft"
+              />
               <h2 className="text-sm font-bold text-foreground">
                 Área de Psicología TESH — {BRAND.assistant}
               </h2>
@@ -1007,10 +1230,8 @@ export function ChatPage() {
                           <span className="font-mono text-base font-extrabold text-primary bg-background px-2.5 py-0.5 rounded-lg border border-primary/30">
                             {screeningState.folio ||
                               msg.text.match(/EQ-\d{4}/)?.[0] ||
-                              (typeof window !== "undefined"
-                                ? localStorage.getItem("equilibra_ultimo_folio_tamizaje")
-                                : "") ||
-                              "EQ-1234"}
+                              getStoredUserFolio(user?.id, user?.email) ||
+                              "EQ-PENDIENTE"}
                           </span>
                         </div>
                         <Button
@@ -1020,9 +1241,7 @@ export function ChatPage() {
                             const f =
                               screeningState.folio ||
                               msg.text.match(/EQ-\d{4}/)?.[0] ||
-                              (typeof window !== "undefined"
-                                ? localStorage.getItem("equilibra_ultimo_folio_tamizaje")
-                                : "") ||
+                              getStoredUserFolio(user?.id, user?.email) ||
                               "";
                             if (f) {
                               navigator.clipboard.writeText(f);
@@ -1217,24 +1436,22 @@ export function ChatPage() {
                 >
                   <span>Ir a Agenda de Citas</span>
                 </Button>
-                {!isGatedByRisk && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetChat}
-                    className="rounded-xl border-border bg-card text-xs font-semibold text-foreground gap-1.5 shadow-xs hover:bg-muted"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    <span>Nuevo tamizaje</span>
-                  </Button>
-                )}
-                <p className="mt-1 text-xs text-muted-foreground leading-relaxed sm:max-w-sm">
-                  {isGatedByRisk
-                    ? "Tu tamizaje ha quedado registrado y en resguardo clínico. Un profesional del TESH revisará tus respuestas. Para evitar alterar resultados, solo el área de psicología puede habilitar un nuevo tamizaje."
-                    : "Tu evaluación ha sido registrada de forma confidencial. Un profesional del TESH revisará tus resultados."}
-                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetChat}
+                  className="rounded-xl border-border bg-card text-xs font-semibold text-foreground gap-1.5 shadow-xs hover:bg-muted active:scale-95"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Realizar nuevo tamizaje</span>
+                </Button>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground leading-relaxed text-center sm:max-w-md mx-auto">
+                {isEffectiveBlocked
+                  ? "Tu tamizaje ha quedado registrado y en resguardo clínico. Un profesional del TESH revisará tus respuestas. Para evitar alterar resultados, solo el área de psicología puede habilitar un nuevo tamizaje."
+                  : "Tu evaluación ha sido registrada de forma confidencial. Un profesional del TESH revisará tus resultados."}
+              </p>
             </motion.div>
           )}
 
@@ -1291,6 +1508,20 @@ export function ChatPage() {
               </div>
             )}
 
+          {/* Grabadora de nota de voz con transcripción opcional */}
+          {showVoiceRecorder && (
+            <div className="rounded-2xl border border-primary/20 bg-card p-3 shadow-md backdrop-blur-sm animate-in fade-in-50 slide-in-from-bottom-2">
+              <VoiceNoteRecorder
+                folio={screeningState.folio}
+                disabled={isEffectiveBlocked || isTyping}
+                onTranscriptionReady={(texto) => {
+                  setShowVoiceRecorder(false);
+                  handleSendMessage(texto);
+                }}
+              />
+            </div>
+          )}
+
           {/* Formulario de entrada */}
           <form
             onSubmit={(e) => {
@@ -1299,6 +1530,22 @@ export function ChatPage() {
             }}
             className="flex items-end gap-2"
           >
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isEffectiveBlocked || isTyping}
+              onClick={() => setShowVoiceRecorder((prev) => !prev)}
+              aria-label="Grabar nota de voz con transcripción"
+              title="Grabar nota de voz con transcripción automática"
+              className={`size-10.5 shrink-0 rounded-2xl border-border bg-card shadow-xs transition-colors ${
+                showVoiceRecorder
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              <Mic className="size-4" />
+            </Button>
+
             <div className="relative flex-1">
               <textarea
                 ref={inputRef}
@@ -1328,19 +1575,13 @@ export function ChatPage() {
 
           <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
             <span>Enter para enviar • Shift + Enter para salto de línea</span>
-            {!isGatedByRisk ? (
-              <button
-                type="button"
-                onClick={handleResetChat}
-                className="hover:text-primary transition-colors underline cursor-pointer"
-              >
-                Reiniciar tamizaje
-              </button>
-            ) : (
-              <span className="font-medium text-muted-foreground/80">
-                Tamizaje orientativo confidencial TESH
-              </span>
-            )}
+            <button
+              type="button"
+              onClick={handleResetChat}
+              className="hover:text-primary transition-colors underline cursor-pointer"
+            >
+              Reiniciar tamizaje
+            </button>
           </div>
         </div>
       </footer>
@@ -1365,7 +1606,7 @@ export function ChatPage() {
           </SheetHeader>
 
           <div className="mt-4 space-y-4">
-            {!isEffectiveBlocked ? (
+            {DEMO_MODE || !isEffectiveBlocked ? (
               <Button
                 type="button"
                 onClick={handleNewConversation}
@@ -1392,7 +1633,7 @@ export function ChatPage() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   Sesiones Guardadas ({sessions.length})
                 </p>
-                {sessions.length > 1 && !isGatedByRisk && (
+                {sessions.length > 1 && (DEMO_MODE || !isGatedByRisk) && (
                   <button
                     type="button"
                     onClick={handleClearAllHistory}

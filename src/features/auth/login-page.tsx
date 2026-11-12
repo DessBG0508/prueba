@@ -88,6 +88,11 @@ export function LoginPage() {
       setIsSubmitting(true);
       const user = await login(cleanEmail, cleanPassword);
       resetLoginAttempts();
+      try {
+        localStorage.removeItem("equilibra_primer_ingreso");
+      } catch {
+        // ignore
+      }
       toast.success(`Bienvenido/a de nuevo, ${user.name}`);
 
       navigate({ to: rutaPorRol(user.role), replace: true });
@@ -122,6 +127,11 @@ export function LoginPage() {
     setErrorMessage(null);
     const demoUser = loginAsDemo(role);
     resetLoginAttempts();
+    try {
+      localStorage.removeItem("equilibra_primer_ingreso");
+    } catch {
+      // ignore
+    }
     toast.success(`Modo demostración activado: ${demoUser.name}`);
     const destination = rutaPorRol(demoUser.role);
     navigate({ to: destination, replace: true });

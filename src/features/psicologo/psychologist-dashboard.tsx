@@ -15,6 +15,7 @@ import {
   FolderOpen,
   UserCheck,
   ChevronDown,
+  ChevronRight,
   Shield,
   Users,
 } from "lucide-react";
@@ -154,6 +155,49 @@ export function PsychologistDashboard() {
   const refreshCases = async () => {
     const localCases = getPsychologistCases();
     try {
+      // 1. Intentar cargar desde la vista oficial para_psicologo
+      const { data: viewData, error: viewError } = await supabase
+        .from("para_psicologo")
+        .select("*");
+
+      if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+        const viewCases: CaseSummary[] = viewData.map((p) => {
+          const dateStr = p.ultimo_tamizaje
+            ? new Date(p.ultimo_tamizaje).toLocaleDateString("es-MX", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "Reciente";
+          const nivel = (p.ultimo_nivel?.toLowerCase() || "amarillo") as RiskLevel;
+
+          return {
+            id: p.folio || `case-${p.iniciales}`,
+            initials: p.iniciales || "E.A.",
+            studentName: `Estudiante ${p.iniciales || ""}`.trim(),
+            matricula: p.folio || "TESH",
+            career: p.carrera || "TESH Huixquilucan",
+            semester: p.semestre ? `${p.semestre}º Semestre` : "Semestre no especificado",
+            riskLevel: nivel,
+            status: (p.bloqueado ? "por_contactar" : "atendido") as CaseStatus,
+            summary: `Tamizaje registrado (Folio: ${p.folio || "N/A"}). ${
+              nivel === "rojo" ? "Riesgo alto prioritario." : "En seguimiento."
+            }`,
+            lastCheckIn: dateStr,
+            accompanimentSummary: `Paciente evaluado en tamizaje con folio ${p.folio || "N/A"}.`,
+            phq9: p.phq9_total ?? 0,
+            gad7: p.gad7_total ?? 0,
+            bloqueado: Boolean(p.bloqueado),
+          };
+        });
+
+        const existingIds = new Set(viewCases.map((c) => c.id));
+        const merged = [...viewCases, ...localCases.filter((c) => !existingIds.has(c.id))];
+        setCases(merged);
+        return;
+      }
+
+      // 2. Fallback a la tabla pacientes
       let { data: dbPatients, error } = await supabase
         .from("pacientes")
         .select("*")
@@ -342,30 +386,87 @@ export function PsychologistDashboard() {
           isSidebarCollapsed ? "pl-16 sm:pl-20" : "pl-16 sm:pl-20 lg:pl-64"
         }`}
       >
-        {/* Cabecera superior compacta */}
-        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-border/70 bg-card/85 px-4 sm:px-8 backdrop-blur-md">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <span className="text-xs font-bold uppercase tracking-wider text-teal hidden sm:inline-flex items-center gap-1.5">
-              <span className="inline-block size-1.5 rounded-full bg-teal" />
-              Área de Acompañamiento TESH
-            </span>
-            <span className="text-muted-foreground/40 hidden sm:inline">•</span>
-            <h1 className="text-sm sm:text-base font-bold text-foreground font-display truncate">
-              {activeSection === "resumen" && "Resumen de Acompañamiento"}
-              {activeSection === "alertas" && "Triaje de Alertas y Casos"}
-              {activeSection === "expedientes" && "Expedientes Clínicos"}
-              {activeSection === "agenda" && "Agenda de Citas"}
-              {activeSection === "bitacora" && "Bitácora Clínica"}
-              {activeSection === "encuestas" && "Encuestas de Satisfacción PB-021"}
-            </h1>
+        {/* Cabecera superior compacta con Breadcrumbs */}
+        <header className="sticky top-0 z-20 flex min-h-16 py-2.5 shrink-0 items-center justify-between border-b border-border/70 bg-card/85 px-4 sm:px-8 backdrop-blur-md">
+          <div className="flex flex-col justify-center min-w-0 pr-3">
+            <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+              <span className="text-xs font-bold uppercase tracking-wider text-teal hidden sm:inline-flex items-center gap-1.5 shrink-0">
+                <span className="inline-block size-1.5 rounded-full bg-teal" />
+                Área de Acompañamiento TESH
+              </span>
+              <span className="text-muted-foreground/40 hidden sm:inline">•</span>
+              <h1 className="text-sm sm:text-base font-bold text-foreground font-display truncate">
+                {activeSection === "resumen" && "Resumen de Acompañamiento"}
+                {activeSection === "alertas" && "Triaje de Alertas y Casos"}
+                {activeSection === "expedientes" && "Expedientes Clínicos"}
+                {activeSection === "agenda" && "Agenda de Citas"}
+                {activeSection === "bitacora" && "Bitácora Clínica"}
+                {activeSection === "encuestas" && "Encuestas de Satisfacción PB-021"}
+              </h1>
+            </div>
+
+            {/* Breadcrumbs de navegación (PB-010) */}
+            <nav
+              aria-label="Migas de pan"
+              className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium pt-0.5 overflow-x-auto no-scrollbar"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSection("resumen");
+                  setSelectedCaseForDetail(null);
+                }}
+                className="hover:text-primary transition-colors cursor-pointer hover:underline shrink-0"
+              >
+                Panel
+              </button>
+
+              <ChevronRight
+                className="size-3 text-muted-foreground/50 shrink-0"
+                aria-hidden="true"
+              />
+
+              <button
+                type="button"
+                onClick={() => setSelectedCaseForDetail(null)}
+                className={`shrink-0 transition-colors ${
+                  !selectedCaseForDetail
+                    ? "text-foreground font-semibold"
+                    : "hover:text-primary hover:underline cursor-pointer"
+                }`}
+              >
+                {activeSection === "resumen" && "Resumen"}
+                {activeSection === "alertas" && "Alertas y Triaje"}
+                {activeSection === "expedientes" && "Expedientes"}
+                {activeSection === "agenda" && "Agenda de Citas"}
+                {activeSection === "bitacora" && "Bitácora Clínica"}
+                {activeSection === "encuestas" && "Encuestas PB-021"}
+              </button>
+
+              {selectedCaseForDetail && (
+                <>
+                  <ChevronRight
+                    className="size-3 text-muted-foreground/50 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="text-foreground font-semibold truncate max-w-[160px] sm:max-w-xs">
+                    {selectedCaseForDetail.matricula?.startsWith("EQ-") ||
+                    selectedCaseForDetail.matricula?.startsWith("EXP-")
+                      ? `Expediente ${selectedCaseForDetail.matricula}`
+                      : `Expediente EQ-${selectedCaseForDetail.matricula || selectedCaseForDetail.initials}`}
+                  </span>
+                </>
+              )}
+            </nav>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <AjustesModal rol="psicologo" />
             <NotificationsCenter
               role="psicologo"
               onSelectCase={handleOpenCaseById}
               onOpenAgenda={() => setActiveSection("agenda")}
+              redAlertsCount={redCount}
             />
           </div>
         </header>
@@ -412,7 +513,7 @@ export function PsychologistDashboard() {
                   }`}
                 >
                   <Users className="mr-1.5 size-3.5" />
-                  Semáforo de Pacientes (Oficial)
+                  Semáforo de Pacientes
                 </Button>
                 <Button
                   type="button"

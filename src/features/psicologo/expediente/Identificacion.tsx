@@ -17,7 +17,9 @@ export const Identificacion: React.FC<IdentificacionProps> = ({
   fechaApertura = "30-oct-2026",
 }) => {
   const folio = paciente?.folio || "EQ-9374";
-  const numExpediente = `EXP-2026-${folio.replace(/^EQ-?/i, "") || "9374"}`;
+  const numClean = folio.replace(/[^0-9]/g, "").slice(-4) || "9374";
+  const numExpediente = campos.numero_expediente || `EXP-2026-${numClean}`;
+  const fechaEfectiva = campos.fecha_apertura || fechaApertura;
 
   return (
     <div className="space-y-4">
@@ -159,9 +161,18 @@ export const Identificacion: React.FC<IdentificacionProps> = ({
             <span className="text-xs font-semibold text-foreground sm:w-1/3">
               Nº de expediente:
             </span>
-            <span className="font-mono text-xs font-bold text-foreground sm:w-1/2">
-              {numExpediente}
-            </span>
+            <div className="flex items-center gap-2 sm:w-1/2">
+              <span className="font-mono text-sm font-bold text-foreground">{numExpediente}</span>
+              <span
+                className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                  campos.numero_expediente
+                    ? "bg-teal/15 text-teal border border-teal/30"
+                    : "bg-indigo-50 text-[#1c2474] dark:bg-indigo-950/40 dark:text-indigo-200"
+                }`}
+              >
+                {campos.numero_expediente ? "Asignado oficial" : "Asignación al guardar"}
+              </span>
+            </div>
             <div className="sm:w-1/6 sm:text-right">
               <BadgeOrigen tipo="AUTOMÁTICO" />
             </div>
@@ -172,7 +183,7 @@ export const Identificacion: React.FC<IdentificacionProps> = ({
             <span className="text-xs font-semibold text-foreground sm:w-1/3">
               Fecha de apertura:
             </span>
-            <span className="text-xs font-semibold text-foreground sm:w-1/2">{fechaApertura}</span>
+            <span className="text-xs font-semibold text-foreground sm:w-1/2">{fechaEfectiva}</span>
             <div className="sm:w-1/6 sm:text-right">
               <BadgeOrigen tipo="AUTOMÁTICO" />
             </div>

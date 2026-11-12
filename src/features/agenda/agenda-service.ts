@@ -147,23 +147,102 @@ export async function getSolicitudesPsicologo(filtros?: {
 }
 
 /**
- * Crear nueva solicitud de cita con validación de límite (máximo 1 activa pendiente)
+ * Normaliza una cadena de hora a formato "HH:mm" (ej. "09:00:00" -> "09:00")
+ */
+export function normalizarHoraSlot(h: string): string {
+  if (!h) return "";
+  const parts = h.trim().split(":");
+  if (parts.length >= 2) {
+    return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+  }
+  return h;
+}
+
+/**
+ * Obtener las horas ya ocupadas para una fecha dada desde Supabase y localStorage
+ * (PB-009: Bloqueo de horas ocupadas y prevención de doble reserva en tiempo real).
+ */
+export async function getCitasOcupadasPorFecha(
+  fecha: string,
+  psicologoId?: string,
+): Promise<string[]> {
+  const horasSet = new Set<string>();
+
+  // 1. Consultar Supabase en tiempo real (citas pendientes o confirmadas)
+  try {
+    let query = supabase
+      .from("solicitudes_cita")
+      .select("hora_cita, estado, psicologo_id")
+      .eq("fecha_cita", fecha)
+      .in("estado", ["pendiente", "confirmada"]);
+
+    if (psicologoId) {
+      query = query.eq("psicologo_id", psicologoId);
+    }
+
+    const { data, error } = await query;
+    if (!error && data) {
+      for (const row of data) {
+        if (row.hora_cita) {
+          horasSet.add(normalizarHoraSlot(row.hora_cita));
+        }
+      }
+    }
+  } catch {
+    // Continuar con fallback local
+  }
+
+  // 2. Consultar citas en localStorage (híbrido/offline/demo)
+  try {
+    const localList = getLocalSolicitudes();
+    for (const c of localList) {
+      if (c.fecha_cita === fecha && (c.estado === "pendiente" || c.estado === "confirmada")) {
+        if (!psicologoId || !c.psicologo_id || c.psicologo_id === psicologoId) {
+          if (c.hora_cita) {
+            horasSet.add(normalizarHoraSlot(c.hora_cita));
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  return Array.from(horasSet);
+}
+
+/**
+ * Crear nueva solicitud de cita con validación de límite y prevención de doble reserva (P0)
  */
 export async function crearSolicitudCita(
   solicitud: Omit<SolicitudCita, "id" | "fecha_solicitud" | "created_at" | "updated_at">,
 ): Promise<{ ok: boolean; cita?: SolicitudCita; error?: string }> {
-  // Validar si ya tiene cita activa
+  // 1. Validar si ya tiene cita activa
   const existentes = await getSolicitudesEstudiante(solicitud.user_id, solicitud.folio);
-  const activa = existentes.find((c) => c.estado === "pendiente");
+  const activa = existentes.find((c) => c.estado === "pendiente" || c.estado === "confirmada");
   if (activa) {
     return {
       ok: false,
-      error: `Ya cuentas con una solicitud pendiente para el ${activa.fecha_cita} a las ${activa.hora_cita}. Solo se permite 1 cita pendiente por estudiante a la vez.`,
+      error: `Ya cuentas con una solicitud activa para el ${activa.fecha_cita} a las ${activa.hora_cita}. Solo se permite 1 cita activa por estudiante a la vez.`,
+    };
+  }
+
+  // 2. Validar doble reserva (P0): verificar si el horario ya está ocupado en esa fecha
+  const horasOcupadas = await getCitasOcupadasPorFecha(
+    solicitud.fecha_cita,
+    solicitud.psicologo_id || undefined,
+  );
+  const horaNormalizada = normalizarHoraSlot(solicitud.hora_cita);
+  if (horasOcupadas.includes(horaNormalizada)) {
+    return {
+      ok: false,
+      error: `El horario de las ${solicitud.hora_cita} hrs para el día ${solicitud.fecha_cita} ya se encuentra reservado. Por favor selecciona otro horario disponible.`,
     };
   }
 
   const nuevaCita: SolicitudCita = {
     ...solicitud,
+    hora_cita: horaNormalizada,
     id: `sol-${Date.now().toString(36)}`,
     fecha_solicitud: new Date().toISOString(),
     modalidad: "presencial",
@@ -247,14 +326,20 @@ export async function cancelarCitaEstudiante(
 
 /**
  * Actualizar estado de cita por el psicólogo (Aceptar / Cancelar / Completar / No asistió)
- * Regla: 2 inasistencias consecutivas 'no_asistio' -> trigger PB-021 encuesta de abandono
+ * Reglas de negocio:
+ * 1. 'completada' -> Disparador PB-021 Encuesta de Alta Clínica (ventana 24h)
+ * 2. 2 inasistencias consecutivas 'no_asistio' -> Disparador PB-021 Encuesta de Abandono (ventana 15 días)
  */
 export async function actualizarEstadoCitaPsicologo(
   citaId: string,
   nuevoEstado: EstadoCita,
   motivoCancelacion?: string,
-): Promise<{ ok: boolean; triggerEncuestaAbandono: boolean }> {
+): Promise<{ ok: boolean; triggerEncuestaAbandono: boolean; triggerEncuestaAlta?: boolean }> {
   let triggerEncuestaAbandono = false;
+  let triggerEncuestaAlta = false;
+
+  const localList = getLocalSolicitudes();
+  let targetCita: SolicitudCita | undefined = localList.find((c) => c.id === citaId);
 
   try {
     const updatePayload: Record<string, unknown> = {
@@ -268,12 +353,20 @@ export async function actualizarEstadoCitaPsicologo(
         motivoCancelacion || "Cancelada por el psicólogo por causas de fuerza mayor";
     }
 
-    await supabase.from("solicitudes_cita").update(updatePayload).eq("id", citaId);
+    const { data } = await supabase
+      .from("solicitudes_cita")
+      .update(updatePayload)
+      .eq("id", citaId)
+      .select()
+      .maybeSingle();
+
+    if (data && !targetCita) {
+      targetCita = data as SolicitudCita;
+    }
   } catch {
     // Continuar local
   }
 
-  const localList = getLocalSolicitudes();
   const index = localList.findIndex((c) => c.id === citaId);
   if (index !== -1) {
     const target = localList[index];
@@ -286,39 +379,60 @@ export async function actualizarEstadoCitaPsicologo(
           ? motivoCancelacion || "Cancelada por el psicólogo"
           : target.motivo_cancelacion,
     };
-
-    // Disparadores automáticos PB-021 (MIN-008):
-    // 1. Alta clínica (cita completada) -> enlace en ventana de 24h
-    if (nuevoEstado === "completada") {
-      triggerEnvioEncuesta({
-        folio: target.folio,
-        user_id: target.user_id,
-        trigger_tipo: "alta",
-      }).catch((err) => console.error("Error al disparar PB-021 Alta:", err));
-    }
-
-    // 2. Abandono (2 inasistencias consecutivas 'no_asistio') -> ventana de 15 días
-    if (nuevoEstado === "no_asistio") {
-      const citasDelEstudiante = localList
-        .filter((c) => c.folio === target.folio || c.user_id === target.user_id)
-        .sort((a, b) => new Date(b.fecha_cita).getTime() - new Date(a.fecha_cita).getTime());
-
-      if (
-        citasDelEstudiante.length >= 2 &&
-        citasDelEstudiante[0].estado === "no_asistio" &&
-        citasDelEstudiante[1].estado === "no_asistio"
-      ) {
-        triggerEncuestaAbandono = true;
-        triggerEnvioEncuesta({
-          folio: target.folio,
-          user_id: target.user_id,
-          trigger_tipo: "abandono",
-        }).catch((err) => console.error("Error al disparar PB-021 Abandono:", err));
-      }
-    }
-
+    targetCita = localList[index];
     saveLocalSolicitudes(localList);
   }
 
-  return { ok: true, triggerEncuestaAbandono };
+  // DISPARADORES AUTOMÁTICOS PB-021 (MIN-008):
+  // 1. Alta clínica (cita completada) -> enlace en ventana de 24h
+  if (nuevoEstado === "completada" && targetCita) {
+    triggerEncuestaAlta = true;
+    try {
+      await triggerEnvioEncuesta({
+        folio: targetCita.folio,
+        user_id: targetCita.user_id,
+        trigger_tipo: "alta",
+        email: targetCita.email,
+        nombre: targetCita.nombre_estudiante || targetCita.iniciales_estudiante,
+      });
+    } catch (err) {
+      console.error("Error al disparar PB-021 Alta:", err);
+    }
+  }
+
+  // 2. Abandono (2 inasistencias consecutivas 'no_asistio') -> ventana de 15 días
+  if (nuevoEstado === "no_asistio" && targetCita) {
+    const citasDelEstudiante = localList
+      .filter(
+        (c) =>
+          (targetCita?.folio && c.folio === targetCita.folio) ||
+          (targetCita?.user_id && c.user_id === targetCita.user_id),
+      )
+      .sort(
+        (a, b) =>
+          new Date(`${b.fecha_cita}T${b.hora_cita || "00:00"}`).getTime() -
+          new Date(`${a.fecha_cita}T${a.hora_cita || "00:00"}`).getTime(),
+      );
+
+    if (
+      citasDelEstudiante.length >= 2 &&
+      citasDelEstudiante[0].estado === "no_asistio" &&
+      citasDelEstudiante[1].estado === "no_asistio"
+    ) {
+      triggerEncuestaAbandono = true;
+      try {
+        await triggerEnvioEncuesta({
+          folio: targetCita.folio,
+          user_id: targetCita.user_id,
+          trigger_tipo: "abandono",
+          email: targetCita.email,
+          nombre: targetCita.nombre_estudiante || targetCita.iniciales_estudiante,
+        });
+      } catch (err) {
+        console.error("Error al disparar PB-021 Abandono:", err);
+      }
+    }
+  }
+
+  return { ok: true, triggerEncuestaAbandono, triggerEncuestaAlta };
 }

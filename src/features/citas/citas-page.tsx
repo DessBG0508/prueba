@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth-context";
+import { getStoredUserFolio, clearLegacyUnscopedScreeningData } from "@/lib/screening-storage";
 import { CalendarioCitas } from "@/features/agenda/CalendarioCitas";
 import { FormularioSolicitud } from "@/features/agenda/FormularioSolicitud";
 import { EstadoCita } from "@/features/agenda/EstadoCita";
@@ -166,9 +167,13 @@ export function CitasPage() {
     if (!pbFecha || !pbHora) return;
     setIsSubmittingPb(true);
     try {
+      const activeFolio =
+        savedFolio || getStoredUserFolio(user?.id, user?.email) || user?.matricula || "EQ-9374";
+
       const res = await crearSolicitudCita({
-        folio: user?.matricula || "EQ-9374",
+        folio: activeFolio,
         user_id: user?.id || "demo-student",
+        psicologo_id: "psy-001",
         nombre_psicologo: "Dra. Marta Gómez",
         iniciales_estudiante: user?.name ? user.name.slice(0, 2).toUpperCase() : "D.B.",
         fecha_cita: pbFecha,
@@ -228,9 +233,10 @@ export function CitasPage() {
     setSelectedSex("");
     setSelectedSemestre("");
 
-    // Detectar si el alumno generó un folio recientemente en el chat de Eli
+    // Detectar si el alumno actual generó un folio recientemente en el chat de Eli
     try {
-      const stored = localStorage.getItem("equilibra_ultimo_folio_tamizaje");
+      clearLegacyUnscopedScreeningData();
+      const stored = getStoredUserFolio(user?.id, user?.email);
       if (stored) {
         setSavedFolio(stored);
         setFolioTamizaje(stored);
@@ -407,7 +413,13 @@ export function CitasPage() {
           <div className="space-y-6">
             {pbEtapa === "calendario" && (
               <CalendarioCitas
-                folioEstudiante={user?.matricula || "EQ-9374"}
+                folioEstudiante={
+                  savedFolio ||
+                  getStoredUserFolio(user?.id, user?.email) ||
+                  user?.matricula ||
+                  "EQ-9374"
+                }
+                psicologoId="psy-001"
                 nombrePsicologo="Dra. Marta Gómez"
                 fechaPrevia={pbFecha}
                 horaPrevia={pbHora}

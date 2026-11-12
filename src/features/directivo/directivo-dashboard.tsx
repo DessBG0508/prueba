@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   GraduationCap,
@@ -14,6 +14,7 @@ import {
   PieChart,
   LogOut,
   ChevronDown,
+  Users,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { toast } from "sonner";
@@ -43,6 +44,11 @@ import {
 export function DirectivoDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const [selectedCareer, setSelectedCareer] = useState<TeshCareer | "all">(
     "Ing. en Sistemas Computacionales",
@@ -215,6 +221,76 @@ export function DirectivoDashboard() {
             <span className="text-[11px] text-muted-foreground">vs. semana anterior</span>
           </div>
         </div>
+
+        {/* MÉTRICAS AGREGADAS PRINCIPALES PB-019: Total de Tamizados y % de Riesgo */}
+        <section
+          aria-label="Métricas agregadas principales"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+        >
+          {/* Total Estudiantes Tamizados */}
+          <div className="ethereal-card p-4 sm:p-5 border-l-4 border-l-primary bg-card/90">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Estudiantes Tamizados
+              </span>
+              <div className="grid size-8 place-items-center rounded-xl bg-primary/10 text-primary">
+                <Users className="size-4" />
+              </div>
+            </div>
+            <p className="font-numeric text-3xl sm:text-4xl font-bold text-primary">
+              {kpis.totalSamples}
+            </p>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Total evaluaciones anónimas procesadas
+            </p>
+          </div>
+
+          {/* % Nivel Verde */}
+          <div className="ethereal-card p-4 sm:p-5 border-l-4 border-l-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                Nivel Verde (Estable)
+              </span>
+              <span className="size-2.5 rounded-full bg-emerald-500" />
+            </div>
+            <p className="font-numeric text-3xl sm:text-4xl font-bold text-emerald-600 dark:text-emerald-400">
+              {kpis.pctVerde}%
+            </p>
+            <p className="mt-2 text-[11px] text-muted-foreground">Sin indicadores de alarma</p>
+          </div>
+
+          {/* % Nivel Amarillo */}
+          <div className="ethereal-card p-4 sm:p-5 border-l-4 border-l-amber-500 bg-amber-50/40 dark:bg-amber-950/20">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                Nivel Amarillo (Seguimiento)
+              </span>
+              <span className="size-2.5 rounded-full bg-amber-500" />
+            </div>
+            <p className="font-numeric text-3xl sm:text-4xl font-bold text-amber-600 dark:text-amber-400">
+              {kpis.pctAmarillo}%
+            </p>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Soporte y seguimiento preventivo
+            </p>
+          </div>
+
+          {/* % Nivel Rojo */}
+          <div className="ethereal-card p-4 sm:p-5 border-l-4 border-l-rose-500 bg-rose-50/40 dark:bg-rose-950/20">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                Nivel Rojo (Prioritario)
+              </span>
+              <div className="size-2.5 rounded-full bg-rose-500 animate-ping" />
+            </div>
+            <p className="font-numeric text-3xl sm:text-4xl font-bold text-rose-600 dark:text-rose-400">
+              {kpis.pctRojo}%
+            </p>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Canalización inmediata al área clínica
+            </p>
+          </div>
+        </section>
 
         {/* KPIs Agregados y Anónimos (Promedios 7 días) */}
         <section
@@ -440,60 +516,71 @@ export function DirectivoDashboard() {
           </div>
 
           <div className="h-64 sm:h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={semesterData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                <XAxis
-                  dataKey="semesterLabel"
-                  stroke="currentColor"
-                  className="text-[11px] text-muted-foreground"
-                  tickLine={false}
-                  axisLine={{ stroke: "rgba(139, 124, 240, 0.2)" }}
-                />
-                <YAxis
-                  domain={[0, 5]}
-                  ticks={[1, 2, 3, 4, 5]}
-                  stroke="currentColor"
-                  className="text-[11px] text-muted-foreground"
-                  tickLine={false}
-                  axisLine={{ stroke: "rgba(139, 124, 240, 0.2)" }}
-                />
-                <Tooltip
-                  cursor={{ fill: "rgba(139, 124, 240, 0.08)" }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload as {
-                        semesterLabel: string;
-                        bienestarScore: number;
-                      };
-                      return (
-                        <div className="rounded-xl border border-border/80 bg-card p-2.5 shadow-xl text-xs space-y-1">
-                          <p className="font-bold text-foreground">{data.semesterLabel} Semestre</p>
-                          <p className="text-primary font-numeric font-semibold">
-                            Índice de bienestar: {data.bienestarScore.toFixed(1)} / 5.0
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            Datos agregados de la cohorte
-                          </p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="bienestarScore" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                  {semesterData.map((entry, index) => {
-                    const score = entry.bienestarScore;
-                    const fill =
-                      score >= 4.0
-                        ? "var(--color-teal, #2BD9CF)"
-                        : score >= 3.3
-                          ? "var(--color-primary, #8B7CF0)"
-                          : "var(--color-secondary, #6857E4)";
-                    return <Cell key={`cell-${index}`} fill={fill} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {isMounted ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={semesterData}
+                  margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
+                >
+                  <XAxis
+                    dataKey="semesterLabel"
+                    stroke="currentColor"
+                    className="text-[11px] text-muted-foreground"
+                    tickLine={false}
+                    axisLine={{ stroke: "rgba(139, 124, 240, 0.2)" }}
+                  />
+                  <YAxis
+                    domain={[0, 5]}
+                    ticks={[1, 2, 3, 4, 5]}
+                    stroke="currentColor"
+                    className="text-[11px] text-muted-foreground"
+                    tickLine={false}
+                    axisLine={{ stroke: "rgba(139, 124, 240, 0.2)" }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(139, 124, 240, 0.08)" }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload as {
+                          semesterLabel: string;
+                          bienestarScore: number;
+                        };
+                        return (
+                          <div className="rounded-xl border border-border/80 bg-card p-2.5 shadow-xl text-xs space-y-1">
+                            <p className="font-bold text-foreground">
+                              {data.semesterLabel} Semestre
+                            </p>
+                            <p className="text-primary font-numeric font-semibold">
+                              Índice de bienestar: {data.bienestarScore.toFixed(1)} / 5.0
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Datos agregados de la cohorte
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="bienestarScore" radius={[8, 8, 0, 0]} maxBarSize={48}>
+                    {semesterData.map((entry, index) => {
+                      const score = entry.bienestarScore;
+                      const fill =
+                        score >= 4.0
+                          ? "var(--color-teal, #2BD9CF)"
+                          : score >= 3.3
+                            ? "var(--color-primary, #8B7CF0)"
+                            : "var(--color-secondary, #6857E4)";
+                      return <Cell key={`cell-${index}`} fill={fill} />;
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground animate-pulse">
+                Cargando métricas de cohorte...
+              </div>
+            )}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-[11px] text-muted-foreground">

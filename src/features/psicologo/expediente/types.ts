@@ -69,6 +69,8 @@ export interface TrazabilidadData {
 
 export interface CamposClinicos {
   // 01 Identificación
+  numero_expediente?: string;
+  fecha_apertura?: string;
   iniciales?: string;
   edad?: number | string;
   sexo?: string;

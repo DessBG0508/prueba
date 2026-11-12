@@ -13,5 +13,16 @@ export default defineConfig({
       host: "0.0.0.0",
       port: 3000,
     },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "react-dom",
+        "react-dom/client",
+        "@tanstack/react-router",
+        "recharts",
+      ],
+    },
   },
 });

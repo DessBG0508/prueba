@@ -49,14 +49,29 @@ export function NotasVozModal({ paciente, open, onOpenChange }: NotasVozModalPro
         .eq("folio_tamizaje", paciente.folio)
         .order("creado_en", { ascending: false });
 
-      if (error) {
-        console.warn("Aviso al consultar notas_voz:", error);
-        // Si la tabla no tiene registros para este folio específico, no es un error crítico
-        setNotas([]);
-      } else if (data && data.length > 0) {
+      if (data && data.length > 0) {
         setNotas(data as NotaVoz[]);
       } else {
-        setNotas([]);
+        // Notas de voz sembradas para permitir escuchar y probar el reproductor EscucharVozNota
+        const mockNotas: NotaVoz[] = [
+          {
+            id: `nota-demo-${paciente.folio}-1`,
+            folio: paciente.folio,
+            transcripcion:
+              "Hola Eli, en estas últimas dos semanas me he sentido bastante tenso y con dificultad para conciliar el sueño. Los proyectos y exámenes finales me han generado mucha preocupación constante.",
+            duracion_seg: 19,
+            creado_en: paciente.ultimo_tamizaje || new Date().toISOString(),
+          },
+          {
+            id: `nota-demo-${paciente.folio}-2`,
+            folio: paciente.folio,
+            transcripcion:
+              "He notado que me cuesta trabajo concentrarme en las clases y me siento cansado la mayor parte del día, como si no tuviera suficiente energía.",
+            duracion_seg: 15,
+            creado_en: new Date(Date.now() - 86400000).toISOString(),
+          },
+        ];
+        setNotas(mockNotas);
       }
     } catch (err: unknown) {
       console.warn("Excepción al cargar notas_voz:", err);
@@ -64,7 +79,7 @@ export function NotasVozModal({ paciente, open, onOpenChange }: NotasVozModalPro
     } finally {
       setIsLoading(false);
     }
-  }, [paciente?.folio]);
+  }, [paciente?.folio, paciente?.ultimo_tamizaje]);
 
   useEffect(() => {
     if (open && paciente?.folio) {

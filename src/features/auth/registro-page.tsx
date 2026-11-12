@@ -104,7 +104,12 @@ export function RegistroPage() {
       });
 
       toast.success(`Cuenta creada con éxito. ¡Bienvenido/a, ${user.name}!`);
-      // Requisito normativo PB-002: Redirigir al Aviso de Privacidad antes de acceder a la plataforma
+      // Requisito normativo PB-002: Redirigir al Aviso de Privacidad en el primer ingreso
+      try {
+        localStorage.setItem("equilibra_primer_ingreso", "true");
+      } catch {
+        // ignore
+      }
       navigate({ to: "/aviso-privacidad", replace: true });
     } catch (err: unknown) {
       const msg =
