@@ -11,7 +11,10 @@ export function isExternalEmbedVideo(url?: string): boolean {
   if (!url) return false;
   const trimmed = url.trim().toLowerCase();
   return (
-    trimmed.includes("youtube.com") || trimmed.includes("youtu.be") || trimmed.includes("vimeo.com")
+    trimmed.includes("youtube.com") ||
+    trimmed.includes("youtube-nocookie.com") ||
+    trimmed.includes("youtu.be") ||
+    trimmed.includes("vimeo.com")
   );
 }
 
@@ -54,44 +57,64 @@ export function detectVideoOrientation(
 }
 
 /**
- * Convierte URLs estándar de YouTube (watch, youtu.be, shorts, live) y Vimeo a formato embed seguro para iframes.
+ * Extrae el ID de 11 caracteres de cualquier formato de URL de YouTube.
+ */
+function extractYouTubeId(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
+    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+
+    if (host === "youtu.be") {
+      const id = parsed.pathname.split("/").filter(Boolean)[0];
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+    }
+
+    if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com" ||
+      host === "youtube-nocookie.com"
+    ) {
+      const vParam = parsed.searchParams.get("v");
+      if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) return vParam;
+
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      if (
+        segments.length >= 2 &&
+        (segments[0] === "shorts" ||
+          segments[0] === "embed" ||
+          segments[0] === "live" ||
+          segments[0] === "v") &&
+        /^[a-zA-Z0-9_-]{11}$/.test(segments[1])
+      ) {
+        return segments[1];
+      }
+    }
+  } catch {
+    // Fallback regex si la URL viene sin protocolo completo
+  }
+
+  const regexMatch = rawUrl.match(
+    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/|v\/)|youtube-nocookie\.com\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+  );
+  return regexMatch ? regexMatch[1] : null;
+}
+
+/**
+ * Convierte URLs estándar de YouTube (watch, youtu.be, shorts, live, embed) y Vimeo a formato embed seguro para iframes.
  */
 export function getEmbedVideoUrl(url?: string): string | null {
   if (!url) return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
 
-  // YouTube Shorts (vertical)
-  const shortsYtMatch = trimmed.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
-  if (shortsYtMatch) {
-    return `https://www.youtube.com/embed/${shortsYtMatch[1]}`;
-  }
-
-  // YouTube Live
-  const liveYtMatch = trimmed.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/);
-  if (liveYtMatch) {
-    return `https://www.youtube.com/embed/${liveYtMatch[1]}`;
-  }
-
-  // YouTube youtu.be/ID
-  const shortYtMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (shortYtMatch) {
-    return `https://www.youtube.com/embed/${shortYtMatch[1]}`;
-  }
-
-  // YouTube watch?v=ID
-  const standardYtMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (standardYtMatch) {
-    return `https://www.youtube.com/embed/${standardYtMatch[1]}`;
-  }
-
-  // YouTube embed directo
-  if (trimmed.includes("youtube.com/embed/")) {
-    return trimmed;
+  const youtubeId = extractYouTubeId(trimmed);
+  if (youtubeId) {
+    return `https://www.youtube.com/embed/${youtubeId}`;
   }
 
   // Vimeo
-  const vimeoMatch = trimmed.match(/vimeo\.com\/(\d+)/);
+  const vimeoMatch = trimmed.match(/vimeo\.com\/(?:video\/)?(\d+)/);
   if (vimeoMatch) {
     return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
   }

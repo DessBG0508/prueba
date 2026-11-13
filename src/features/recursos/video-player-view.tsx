@@ -50,6 +50,13 @@ export function VideoPlayerView({
       return;
     }
 
+    if (isExternalEmbedVideo(videoUrl)) {
+      setResolvedSrc(videoUrl);
+      setHasError(false);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setHasError(false);
 
@@ -150,9 +157,14 @@ export function VideoPlayerView({
         <iframe
           src={embedUrl}
           title={title || "Video demostrativo"}
-          className="h-full w-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+          className={
+            detectedOrientation === "horizontal"
+              ? "w-full aspect-video rounded-lg border-0"
+              : "w-full h-full rounded-lg border-0"
+          }
         />
       ) : (
         <video
@@ -162,7 +174,7 @@ export function VideoPlayerView({
           playsInline
           onLoadedMetadata={handleVideoMetadata}
           onError={() => setHasError(true)}
-          className="h-full w-full object-contain bg-zinc-950"
+          className="w-full h-full rounded-lg object-contain bg-zinc-950"
           preload="metadata"
         >
           Tu navegador no soporta la reproducción directa de este formato de video.
