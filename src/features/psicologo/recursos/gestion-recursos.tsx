@@ -36,15 +36,21 @@ import {
 import {
   getStoredResources,
   fetchResourcesAsync,
-  saveResource,
+  saveResourceWithStatus,
   deleteResource,
   toggleResourceActive,
   resetResourcesToDefault,
   isExternalEmbedVideo,
+  detectVideoOrientation,
 } from "@/features/recursos/recursos-service";
 import { uploadDirectVideoFile, formatVideoSize } from "@/features/recursos/video-storage";
-import { VideoPlayerView } from "@/features/recursos/video-player-view";
-import type { PsychoResource, ResourceCategory, ResourceFormat } from "@/lib/types";
+import { VideoPlayerView, type ResolvedOrientation } from "@/features/recursos/video-player-view";
+import type {
+  PsychoResource,
+  ResourceCategory,
+  ResourceFormat,
+  VideoOrientation,
+} from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
 
 const CATEGORIES: ResourceCategory[] = ["Ansiedad", "Estrés", "Sueño", "Ánimo", "Respiración"];
@@ -69,12 +75,16 @@ export function GestionRecursos() {
   const [formFormat, setFormFormat] = useState<ResourceFormat>("video");
   const [formVideoUrl, setFormVideoUrl] = useState("");
   const [formVideoTitle, setFormVideoTitle] = useState("");
+  const [formVideoOrientation, setFormVideoOrientation] = useState<VideoOrientation>("auto");
   const [formReadTime, setFormReadTime] = useState("5 min de práctica");
   const [formContent, setFormContent] = useState("");
   const [formKeyTakeaway, setFormKeyTakeaway] = useState("");
   const [formAuthor, setFormAuthor] = useState("");
   const [formIconName, setFormIconName] = useState<PsychoResource["iconName"]>("bookOpen");
   const [formTone, setFormTone] = useState<PsychoResource["tone"]>("teal");
+
+  // Orientación resuelta para adaptar el modal de vista previa
+  const [previewOrientation, setPreviewOrientation] = useState<ResolvedOrientation>("horizontal");
 
   // Estados específicos para la carga directa de archivos de video
   const [videoSourceMode, setVideoSourceMode] = useState<"upload" | "url">("upload");
@@ -84,6 +94,7 @@ export function GestionRecursos() {
     fileName: string;
     fileSize: string;
     isLocal: boolean;
+    storageError?: string;
   } | null>(null);
   const [isDraggingVideo, setIsDraggingVideo] = useState(false);
 
@@ -106,6 +117,7 @@ export function GestionRecursos() {
     setFormFormat("video");
     setFormVideoUrl("");
     setFormVideoTitle("");
+    setFormVideoOrientation("auto");
     setFormReadTime("5 min de práctica");
     setFormContent(
       "Describe los pasos o fundamentos de esta técnica psicológica.\n\nIndica cómo debe sentarse o posicionarse el alumno y cómo respirar.",
@@ -131,6 +143,7 @@ export function GestionRecursos() {
     setFormFormat(res.format || (res.videoUrl ? "video" : "lectura"));
     setFormVideoUrl(res.videoUrl || "");
     setFormVideoTitle(res.videoTitle || "");
+    setFormVideoOrientation(res.videoOrientation || "auto");
     setFormReadTime(res.readTime);
     setFormContent(res.content.join("\n\n"));
     setFormKeyTakeaway(res.keyTakeaway || "");
@@ -144,10 +157,11 @@ export function GestionRecursos() {
         setUploadedFileInfo(null);
       } else {
         setVideoSourceMode("upload");
+        const isLocal = res.videoUrl.startsWith("indexeddb://");
         setUploadedFileInfo({
           fileName: res.videoTitle || "Archivo de video cargado",
-          fileSize: "Guardado",
-          isLocal: true,
+          fileSize: isLocal ? "Guardado localmente (IndexedDB)" : "En almacenamiento en la nube",
+          isLocal,
         });
       }
     } else {
@@ -169,6 +183,7 @@ export function GestionRecursos() {
       const result = await uploadDirectVideoFile(file, (pct) => setUploadProgress(pct));
       setFormVideoUrl(result.url);
       setFormFormat("video");
+      setFormVideoOrientation(result.orientation);
       if (!formVideoTitle.trim()) {
         setFormVideoTitle(file.name.replace(/\.[^/.]+$/, ""));
       }
@@ -176,13 +191,21 @@ export function GestionRecursos() {
         fileName: result.fileName,
         fileSize: formatVideoSize(result.size),
         isLocal: result.isLocal,
+        storageError: result.storageError,
       });
 
-      toast.success(
-        result.isLocal
-          ? "Video cargado y almacenado localmente con éxito."
-          : "Video subido a almacenamiento en la nube con éxito.",
-      );
+      if (result.isLocal) {
+        toast.warning(
+          "Video guardado solo en este navegador (IndexedDB). No se subió a la base de datos remota.",
+          {
+            description: result.storageError
+              ? `Motivo: ${result.storageError}`
+              : "Configura el bucket 'recursos-videos' en Supabase para sincronizar entre dispositivos.",
+          },
+        );
+      } else {
+        toast.success("Video subido a Supabase Storage con éxito.");
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Error al procesar el archivo de video");
     } finally {
@@ -213,6 +236,7 @@ export function GestionRecursos() {
   const handleRemoveVideo = () => {
     setFormVideoUrl("");
     setFormVideoTitle("");
+    setFormVideoOrientation("auto");
     setUploadedFileInfo(null);
     setUploadProgress(0);
     toast.info("Video removido del recurso.");
@@ -238,6 +262,7 @@ export function GestionRecursos() {
       format: formVideoUrl.trim() ? "video" : formFormat,
       videoUrl: formVideoUrl.trim() || undefined,
       videoTitle: formVideoTitle.trim() || undefined,
+      videoOrientation: formVideoOrientation,
       readTime: formReadTime.trim() || "4 min",
       content:
         paragraphs.length > 0 ? paragraphs : ["Contenido de apoyo elaborado por Psicología TESH."],
@@ -248,7 +273,7 @@ export function GestionRecursos() {
       active: editingResource ? editingResource.active : true,
     };
 
-    const saved = await saveResource(payload);
+    const { resource: saved, syncedToDb, dbError } = await saveResourceWithStatus(payload);
     setResources((prev) => {
       const idx = prev.findIndex((r) => r.id === saved.id);
       if (idx >= 0) {
@@ -260,9 +285,24 @@ export function GestionRecursos() {
     });
 
     setIsFormOpen(false);
-    toast.success(
-      editingResource ? "Recurso actualizado correctamente" : "Nuevo recurso publicado con éxito",
-    );
+    if (syncedToDb) {
+      toast.success(
+        editingResource
+          ? "Recurso actualizado y sincronizado en la base de datos"
+          : "Nuevo recurso publicado y guardado en la base de datos",
+      );
+    } else {
+      toast.warning(
+        editingResource
+          ? "Recurso actualizado localmente (sin sincronizar a Supabase)"
+          : "Recurso guardado solo localmente en este navegador",
+        {
+          description: dbError
+            ? `Detalle BD: ${dbError}`
+            : "Ejecuta supabase/schema_recursos.sql para habilitar la tabla 'recursos'.",
+        },
+      );
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -482,7 +522,12 @@ export function GestionRecursos() {
                           className="text-[10px] font-bold rounded-md border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 gap-1"
                         >
                           <Play className="size-2.5 fill-current" />
-                          <span>Video</span>
+                          <span>
+                            {detectVideoOrientation(res.videoUrl, res.videoOrientation) ===
+                            "vertical"
+                              ? "Video Vertical"
+                              : "Video"}
+                          </span>
                         </Badge>
                       ) : (
                         <Badge
@@ -509,10 +554,10 @@ export function GestionRecursos() {
                   </div>
 
                   <div>
-                    <h3 className="font-display text-base font-bold text-foreground leading-snug">
+                    <h3 className="font-display text-base font-bold text-slate-900 dark:text-slate-50 leading-snug">
                       {res.title}
                     </h3>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                       {res.shortDescription}
                     </p>
                   </div>
@@ -541,7 +586,12 @@ export function GestionRecursos() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setPreviewResource(res)}
+                    onClick={() => {
+                      setPreviewOrientation(
+                        detectVideoOrientation(res.videoUrl, res.videoOrientation),
+                      );
+                      setPreviewResource(res);
+                    }}
                     className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
                     title="Ver como lo ve el alumno"
                   >
@@ -728,14 +778,20 @@ export function GestionRecursos() {
                                   formVideoTitle ||
                                   "Video demostrativo cargado"}
                               </p>
-                              <p className="text-[11px] text-muted-foreground flex items-center gap-2">
+                              <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-2">
                                 <span>
-                                  {uploadedFileInfo?.fileSize || "Guardado en almacenamiento local"}
+                                  {uploadedFileInfo?.fileSize || "Guardado en almacenamiento"}
                                 </span>
                                 <span>•</span>
-                                <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
-                                  <Check className="size-3" /> Listo para reproducir
-                                </span>
+                                {uploadedFileInfo?.isLocal ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                                    <AlertTriangle className="size-3" /> Solo local (este navegador)
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                                    <Check className="size-3" /> En Supabase Storage
+                                  </span>
+                                )}
                               </p>
                             </div>
                           </div>
@@ -751,12 +807,28 @@ export function GestionRecursos() {
                           </Button>
                         </div>
 
-                        {/* Vista previa en miniatura */}
-                        <VideoPlayerView
-                          videoUrl={formVideoUrl}
-                          title={formVideoTitle || formTitle}
-                          className="max-h-44 w-full"
-                        />
+                        {uploadedFileInfo?.isLocal && (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-lg px-2.5 py-1.5">
+                            Nota: El video se guardó en IndexedDB de este equipo porque{" "}
+                            {uploadedFileInfo.storageError
+                              ? `Supabase Storage devolvió: ${uploadedFileInfo.storageError}.`
+                              : "aún no hay un bucket remoto activo."}
+                          </p>
+                        )}
+
+                        {/* Vista previa adaptativa */}
+                        <div className="flex justify-center">
+                          <VideoPlayerView
+                            videoUrl={formVideoUrl}
+                            title={formVideoTitle || formTitle}
+                            orientation={formVideoOrientation}
+                            className={
+                              formVideoOrientation === "vertical"
+                                ? "max-w-[230px] sm:max-w-[250px]"
+                                : "max-h-60"
+                            }
+                          />
+                        </div>
                       </div>
                     ) : (
                       /* Zona de arrastrar y soltar o seleccionar */
@@ -779,8 +851,8 @@ export function GestionRecursos() {
                           Haz clic para seleccionar o arrastra un video demostrativo aquí
                         </p>
                         <p className="text-[11px] text-muted-foreground mt-1">
-                          Formatos compatibles: MP4, WebM o MOV (hasta 150 MB). Se reproducirá
-                          directamente en la plataforma.
+                          Formatos compatibles: MP4, WebM o MOV (hasta 150 MB). Detecta
+                          automáticamente si es vertical u horizontal.
                         </p>
                         <Button
                           type="button"
@@ -800,32 +872,70 @@ export function GestionRecursos() {
                   <div className="space-y-2 pt-1">
                     <div className="space-y-1">
                       <label className="text-[11px] font-semibold text-foreground">
-                        URL del Video (YouTube o Vimeo)
+                        URL del Video (YouTube, Shorts o Vimeo)
                       </label>
                       <Input
-                        placeholder="https://www.youtube.com/watch?v=... o https://youtu.be/..."
+                        placeholder="https://www.youtube.com/watch?v=... o .../shorts/..."
                         value={formVideoUrl}
                         onChange={(e) => setFormVideoUrl(e.target.value)}
                         className="text-xs bg-background"
                       />
                     </div>
                     <p className="text-[11px] text-muted-foreground">
-                      Pega cualquier enlace público de YouTube o Vimeo. La plataforma lo convertirá
-                      en un reproductor embebido sin anuncios ni distracciones para el estudiante.
+                      Pega cualquier enlace público de YouTube, YouTube Shorts o Vimeo. Si es un
+                      video vertical estándar, puedes marcar su orientación abajo.
                     </p>
 
                     {formVideoUrl && isExternalEmbedVideo(formVideoUrl) && (
-                      <div className="pt-2">
-                        <span className="text-[11px] font-semibold text-foreground block mb-1">
+                      <div className="pt-2 flex flex-col items-center">
+                        <span className="text-[11px] font-semibold text-foreground block mb-1.5 self-start">
                           Vista previa del reproductor embebido:
                         </span>
                         <VideoPlayerView
                           videoUrl={formVideoUrl}
                           title={formVideoTitle || formTitle}
-                          className="max-h-44 w-full"
+                          orientation={formVideoOrientation}
+                          className={
+                            detectVideoOrientation(formVideoUrl, formVideoOrientation) ===
+                            "vertical"
+                              ? "max-w-[230px] sm:max-w-[250px]"
+                              : "max-h-60"
+                          }
                         />
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Selector de orientación del video (cuando existe archivo o URL) */}
+                {formVideoUrl && (
+                  <div className="space-y-1.5 pt-2 border-t border-border/40">
+                    <label className="text-[11px] font-semibold text-foreground block">
+                      Orientación del Reproductor y Diseño de Página
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {(
+                        [
+                          { id: "auto", label: "Automático" },
+                          { id: "horizontal", label: "Horizontal (16:9)" },
+                          { id: "vertical", label: "Vertical (9:16)" },
+                          { id: "square", label: "Cuadrado (1:1)" },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setFormVideoOrientation(opt.id)}
+                          className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+                            formVideoOrientation === opt.id
+                              ? "border-[#6857E4] bg-[#6857E4]/10 text-[#6857E4] dark:text-indigo-300"
+                              : "border-border bg-background text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -916,7 +1026,13 @@ export function GestionRecursos() {
 
       {/* DIÁLOGO: VISTA PREVIA DEL ESTUDIANTE */}
       <Dialog open={!!previewResource} onOpenChange={() => setPreviewResource(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent
+          className={`${
+            previewResource?.videoUrl && previewOrientation === "vertical"
+              ? "max-w-3xl"
+              : "max-w-2xl"
+          } max-h-[88vh] overflow-y-auto`}
+        >
           {previewResource && (
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
@@ -924,58 +1040,115 @@ export function GestionRecursos() {
                   <Badge variant="secondary" className="text-xs font-bold uppercase">
                     {previewResource.category}
                   </Badge>
-                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="text-xs text-teal-700 dark:text-teal-300 font-medium flex items-center gap-1">
                     <Clock className="size-3" />
                     {previewResource.readTime}
                   </span>
                 </div>
                 <Badge
                   variant="outline"
-                  className="text-[10px] bg-primary/10 text-primary border-primary/20"
+                  className="text-[10px] bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30"
                 >
                   Vista previa de estudiante
                 </Badge>
               </div>
 
-              <div>
-                <h2 className="font-display text-2xl font-bold text-foreground">
-                  {previewResource.title}
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {previewResource.shortDescription}
-                </p>
-                <p className="text-[11px] text-accent mt-0.5 font-medium">
-                  Publicado por: {previewResource.author}
-                </p>
-              </div>
-
-              {/* REPRODUCTOR DE VIDEO SI ESTÁ PRESENTE */}
-              {previewResource.videoUrl && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
-                    <Video className="size-3.5" />
-                    <span>{previewResource.videoTitle || "Video Demostrativo Guiado"}</span>
+              {previewResource.videoUrl && previewOrientation === "vertical" ? (
+                <div className="grid gap-5 md:grid-cols-[260px_1fr] md:items-start">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
+                      <Video className="size-3.5" />
+                      <span>{previewResource.videoTitle || "Video Demostrativo Guiado"}</span>
+                    </div>
+                    <VideoPlayerView
+                      videoUrl={previewResource.videoUrl}
+                      title={previewResource.videoTitle || previewResource.title}
+                      orientation={previewResource.videoOrientation}
+                      onOrientationDetected={setPreviewOrientation}
+                      className="max-w-[260px]"
+                    />
                   </div>
-                  <VideoPlayerView
-                    videoUrl={previewResource.videoUrl}
-                    title={previewResource.videoTitle || previewResource.title}
-                  />
+
+                  <div className="space-y-4">
+                    <div>
+                      <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
+                        {previewResource.title}
+                      </h2>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+                        {previewResource.shortDescription}
+                      </p>
+                      <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-1 font-medium">
+                        Publicado por: {previewResource.author}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 text-sm text-slate-800 dark:text-slate-100 leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/60">
+                      {previewResource.content.map((par, i) => (
+                        <p key={i}>{par}</p>
+                      ))}
+
+                      {previewResource.keyTakeaway && (
+                        <div className="mt-3 rounded-lg bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/60 p-3 text-xs">
+                          <span className="font-bold block mb-0.5 text-teal-800 dark:text-teal-300">
+                            Idea para recordar:
+                          </span>
+                          <p className="text-slate-800 dark:text-slate-100">
+                            {previewResource.keyTakeaway}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
-
-              {/* PÁRRAFOS DE CONTENIDO */}
-              <div className="space-y-3 text-sm text-foreground/90 leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/60">
-                {previewResource.content.map((par, i) => (
-                  <p key={i}>{par}</p>
-                ))}
-
-                {previewResource.keyTakeaway && (
-                  <div className="mt-3 rounded-lg bg-lavender-soft/70 border border-primary/20 p-3 text-primary text-xs">
-                    <span className="font-bold block mb-0.5">Idea para recordar:</span>
-                    <p className="text-foreground/80">{previewResource.keyTakeaway}</p>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
+                      {previewResource.title}
+                    </h2>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+                      {previewResource.shortDescription}
+                    </p>
+                    <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-1 font-medium">
+                      Publicado por: {previewResource.author}
+                    </p>
                   </div>
-                )}
-              </div>
+
+                  {/* REPRODUCTOR DE VIDEO SI ESTÁ PRESENTE */}
+                  {previewResource.videoUrl && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
+                        <Video className="size-3.5" />
+                        <span>{previewResource.videoTitle || "Video Demostrativo Guiado"}</span>
+                      </div>
+                      <VideoPlayerView
+                        videoUrl={previewResource.videoUrl}
+                        title={previewResource.videoTitle || previewResource.title}
+                        orientation={previewResource.videoOrientation}
+                        onOrientationDetected={setPreviewOrientation}
+                      />
+                    </div>
+                  )}
+
+                  {/* PÁRRAFOS DE CONTENIDO */}
+                  <div className="space-y-3 text-sm text-slate-800 dark:text-slate-100 leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/60">
+                    {previewResource.content.map((par, i) => (
+                      <p key={i}>{par}</p>
+                    ))}
+
+                    {previewResource.keyTakeaway && (
+                      <div className="mt-3 rounded-lg bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/60 p-3 text-xs">
+                        <span className="font-bold block mb-0.5 text-teal-800 dark:text-teal-300">
+                          Idea para recordar:
+                        </span>
+                        <p className="text-slate-800 dark:text-slate-100">
+                          {previewResource.keyTakeaway}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               <DialogFooter>
                 <Button

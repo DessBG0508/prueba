@@ -1,11 +1,15 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
-import { Play, Video } from "lucide-react";
+import { Play } from "lucide-react";
 import { PageShell } from "@/components/layout/page-shell";
 import { resourceIcons } from "@/config/icons";
-import { getStoredResources, fetchResourcesAsync } from "./recursos-service";
-import { VideoPlayerView } from "./video-player-view";
+import {
+  getStoredResources,
+  fetchResourcesAsync,
+  detectVideoOrientation,
+} from "./recursos-service";
+import { VideoPlayerView, type ResolvedOrientation } from "./video-player-view";
 import type { PsychoResource, ResourceCategory } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 import { Button } from "@/components/ui/button";
@@ -69,6 +73,7 @@ export function RecursosPage() {
   const [selectedCategory, setSelectedCategory] = useState<"Todos" | ResourceCategory>("Todos");
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<"all" | "under5" | "over5">("all");
   const [activeResource, setActiveResource] = useState<PsychoResource | null>(null);
+  const [videoOrientation, setVideoOrientation] = useState<ResolvedOrientation>("horizontal");
 
   useEffect(() => {
     async function load() {
@@ -76,6 +81,20 @@ export function RecursosPage() {
       setResources(data);
     }
     load();
+  }, []);
+
+  useEffect(() => {
+    if (activeResource?.videoUrl) {
+      setVideoOrientation(
+        detectVideoOrientation(activeResource.videoUrl, activeResource.videoOrientation),
+      );
+    } else {
+      setVideoOrientation("horizontal");
+    }
+  }, [activeResource]);
+
+  const handleOrientationDetected = useCallback((next: ResolvedOrientation) => {
+    setVideoOrientation(next);
   }, []);
 
   const filteredResources = useMemo(() => {
@@ -100,12 +119,91 @@ export function RecursosPage() {
     });
   }, [resources, searchQuery, selectedCategory, selectedTimeFilter]);
 
+  const isVerticalVideo = Boolean(activeResource?.videoUrl && videoOrientation === "vertical");
+
+  const renderVideoSection = (res: PsychoResource) => {
+    if (!res.videoUrl) return null;
+    return (
+      <div className="space-y-2.5 rounded-2xl border border-teal-200/80 dark:border-teal-900/50 bg-teal-50/40 dark:bg-teal-950/20 p-3.5 sm:p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-teal-800 dark:text-teal-300">
+            <Play className="size-3.5 fill-current shrink-0" />
+            <span className="truncate">{res.videoTitle || "Video Demostrativo Guiado"}</span>
+          </div>
+          <Badge
+            variant="outline"
+            className="text-[10px] border-teal-500/30 text-teal-700 dark:text-teal-300 bg-teal-500/10 shrink-0"
+          >
+            {videoOrientation === "vertical"
+              ? "Video Vertical"
+              : videoOrientation === "square"
+                ? "Video Cuadrado"
+                : "Video Demostrativo"}
+          </Badge>
+        </div>
+
+        <VideoPlayerView
+          videoUrl={res.videoUrl}
+          title={res.videoTitle || res.title}
+          orientation={res.videoOrientation || "auto"}
+          onOrientationDetected={handleOrientationDetected}
+        />
+
+        <p className="text-[11px] text-slate-600 dark:text-slate-300 italic text-center pt-0.5">
+          Sigue las indicaciones del video y acompaña el ejercicio a tu propio ritmo.
+        </p>
+      </div>
+    );
+  };
+
+  const renderTechniqueHeader = (res: PsychoResource) => (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-semibold text-teal-700 dark:text-teal-300">
+        <resourceIcons.clock className="size-3.5" />
+        <span>{res.readTime}</span>
+      </div>
+      <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+        {res.title}
+      </h1>
+      <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+        {res.shortDescription}
+      </p>
+      {res.author && (
+        <p className="text-xs font-semibold text-teal-700 dark:text-teal-300">
+          Material validado por: {res.author}
+        </p>
+      )}
+    </div>
+  );
+
+  const renderTechniqueContent = (res: PsychoResource) => (
+    <div className="ethereal-card space-y-5 p-5 sm:p-8 text-slate-800 dark:text-slate-100 leading-relaxed text-sm sm:text-base">
+      {res.content.map((paragraph, index) => (
+        <p key={index} className="leading-relaxed text-slate-800 dark:text-slate-100">
+          {paragraph}
+        </p>
+      ))}
+
+      {res.keyTakeaway && (
+        <div className="mt-6 rounded-2xl bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/60 p-4 sm:p-5">
+          <div className="flex items-center gap-2 font-display text-sm font-bold text-teal-800 dark:text-teal-300 mb-1.5">
+            <resourceIcons.sparkles className="size-4" />
+            <span>Idea para recordar</span>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
+            {res.keyTakeaway}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <PageShell>
       <main className="space-y-8 animate-fade-in pb-16">
         <AnimatePresence mode="wait">
           {activeResource ? (
-            /* Vista de Lectura Completa del Recurso */
+            /* Vista de Lectura Completa del Recurso (Adaptativa a Video Vertical u Horizontal) */
             <motion.article
               key="resource-detail"
               initial={{ opacity: 0, y: 12 }}
@@ -119,7 +217,7 @@ export function RecursosPage() {
                   type="button"
                   variant="ghost"
                   onClick={() => setActiveResource(null)}
-                  className="h-9 gap-2 rounded-xl text-xs font-semibold text-muted-foreground hover:bg-accent/10 hover:text-accent"
+                  className="h-9 gap-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-teal-500/10 hover:text-teal-700 dark:hover:text-teal-300"
                 >
                   <resourceIcons.arrowLeft className="size-4" />
                   <span>Volver a la biblioteca</span>
@@ -135,71 +233,23 @@ export function RecursosPage() {
                 </Badge>
               </div>
 
-              {/* Encabezado del artículo */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-accent">
-                  <resourceIcons.clock className="size-3.5" />
-                  <span>{activeResource.readTime}</span>
-                </div>
-                <h1 className="font-display text-3xl font-bold tracking-tight text-primary sm:text-4xl">
-                  {activeResource.title}
-                </h1>
-                <p className="text-base text-muted-foreground leading-relaxed">
-                  {activeResource.shortDescription}
-                </p>
-                {activeResource.author && (
-                  <p className="text-xs font-semibold text-accent/90">
-                    Material validado por: {activeResource.author}
-                  </p>
-                )}
-              </div>
-
-              {/* Video demostrativo si existe */}
-              {activeResource.videoUrl && (
-                <div className="space-y-2 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 p-4 sm:p-5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-bold text-rose-700 dark:text-rose-400">
-                      <Play className="size-4 fill-current" />
-                      <span>{activeResource.videoTitle || "Video Demostrativo Guiado"}</span>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] border-rose-500/30 text-rose-600 bg-rose-500/10"
-                    >
-                      Instrucción Práctica
-                    </Badge>
+              {isVerticalVideo ? (
+                /* LAYOUT ADAPTATIVO PARA VIDEO VERTICAL: 2 columnas en tablet/escritorio para aprovechar el espacio */
+                <div className="grid gap-6 md:grid-cols-[minmax(270px,350px)_1fr] md:items-start lg:gap-8">
+                  <div className="md:sticky md:top-6">{renderVideoSection(activeResource)}</div>
+                  <div className="space-y-6">
+                    {renderTechniqueHeader(activeResource)}
+                    {renderTechniqueContent(activeResource)}
                   </div>
-
-                  <VideoPlayerView
-                    videoUrl={activeResource.videoUrl}
-                    title={activeResource.videoTitle || activeResource.title}
-                  />
-                  <p className="text-[11px] text-muted-foreground italic text-center pt-1">
-                    Sigue las indicaciones del video y acompaña el ejercicio a tu propio ritmo.
-                  </p>
+                </div>
+              ) : (
+                /* LAYOUT ADAPTATIVO PARA VIDEO HORIZONTAL / CUADRADO O LECTURA */
+                <div className="space-y-6">
+                  {renderTechniqueHeader(activeResource)}
+                  {renderVideoSection(activeResource)}
+                  {renderTechniqueContent(activeResource)}
                 </div>
               )}
-
-              {/* Contenido en párrafos cómodos */}
-              <div className="ethereal-card space-y-5 p-6 sm:p-8 text-foreground/90 leading-relaxed text-sm sm:text-base">
-                {activeResource.content.map((paragraph, index) => (
-                  <p key={index} className="leading-relaxed">
-                    {paragraph}
-                  </p>
-                ))}
-
-                {activeResource.keyTakeaway && (
-                  <div className="mt-6 rounded-2xl bg-lavender-soft/60 border border-accent/20 p-4 sm:p-5 text-primary">
-                    <div className="flex items-center gap-2 font-display text-sm font-bold text-accent mb-1.5">
-                      <resourceIcons.sparkles className="size-4" />
-                      <span>Idea para recordar</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-foreground/80 leading-relaxed">
-                      {activeResource.keyTakeaway}
-                    </p>
-                  </div>
-                )}
-              </div>
 
               {/* Barra inferior de acciones */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
@@ -399,22 +449,22 @@ export function RecursosPage() {
                             </div>
 
                             <div>
-                              <h3 className="font-display text-lg font-bold text-foreground group-hover:text-accent transition-colors">
+                              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-50 group-hover:text-teal-700 dark:group-hover:text-teal-300 transition-colors">
                                 {resource.title}
                               </h3>
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+                              <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                                 {resource.shortDescription}
                               </p>
                             </div>
                           </div>
 
-                          <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 text-xs text-muted-foreground">
+                          <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 text-xs text-slate-600 dark:text-slate-300">
                             <span className="flex items-center gap-1.5 font-medium">
-                              <resourceIcons.clock className="size-3.5 text-accent" />
+                              <resourceIcons.clock className="size-3.5 text-teal-600 dark:text-teal-400" />
                               <span>{resource.readTime}</span>
                             </span>
 
-                            <span className="font-semibold text-accent group-hover:underline">
+                            <span className="font-bold text-teal-700 dark:text-teal-300 group-hover:underline">
                               {resource.videoUrl ? "Ver video y técnica →" : "Leer técnica →"}
                             </span>
                           </div>

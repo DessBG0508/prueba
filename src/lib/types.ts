@@ -105,6 +105,8 @@ export type ResourceCategory = "Ansiedad" | "Estrés" | "Sueño" | "Ánimo" | "R
 
 export type ResourceFormat = "video" | "lectura" | "ejercicio" | "audio" | "infografia";
 
+export type VideoOrientation = "auto" | "horizontal" | "vertical" | "square";
+
 export interface PsychoResource {
   id: string;
   title: string;
@@ -118,6 +120,7 @@ export interface PsychoResource {
   keyTakeaway?: string;
   videoUrl?: string;
   videoTitle?: string;
+  videoOrientation?: VideoOrientation;
   format?: ResourceFormat;
   author?: string;
   updatedAt?: string;

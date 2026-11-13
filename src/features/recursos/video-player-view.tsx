@@ -1,18 +1,41 @@
 import { useState, useEffect } from "react";
-import { Play, Loader2, VideoOff } from "lucide-react";
-import { isExternalEmbedVideo, getEmbedVideoUrl } from "./recursos-service";
+import { Loader2, VideoOff } from "lucide-react";
+import { isExternalEmbedVideo, getEmbedVideoUrl, detectVideoOrientation } from "./recursos-service";
 import { resolvePlayableVideoUrl } from "./video-storage";
+import type { VideoOrientation } from "@/lib/types";
+
+export type ResolvedOrientation = "horizontal" | "vertical" | "square";
 
 interface VideoPlayerViewProps {
   videoUrl?: string;
   title?: string;
+  orientation?: VideoOrientation;
+  onOrientationDetected?: (orientation: ResolvedOrientation) => void;
   className?: string;
 }
 
-export function VideoPlayerView({ videoUrl, title, className = "" }: VideoPlayerViewProps) {
+export function VideoPlayerView({
+  videoUrl,
+  title,
+  orientation = "auto",
+  onOrientationDetected,
+  className = "",
+}: VideoPlayerViewProps) {
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+
+  const initialOrientation = detectVideoOrientation(videoUrl, orientation);
+  const [detectedOrientation, setDetectedOrientation] =
+    useState<ResolvedOrientation>(initialOrientation);
+  const [exactAspectRatio, setExactAspectRatio] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextInitial = detectVideoOrientation(videoUrl, orientation);
+    setDetectedOrientation(nextInitial);
+    setExactAspectRatio(null);
+    onOrientationDetected?.(nextInitial);
+  }, [videoUrl, orientation, onOrientationDetected]);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,29 +74,69 @@ export function VideoPlayerView({ videoUrl, title, className = "" }: VideoPlayer
   const isEmbed = isExternalEmbedVideo(videoUrl);
   const embedUrl = isEmbed ? getEmbedVideoUrl(videoUrl) : null;
 
+  const handleVideoMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const videoEl = e.currentTarget;
+    const w = videoEl.videoWidth;
+    const h = videoEl.videoHeight;
+    if (!w || !h) return;
+
+    // Respetar preferencia manual si el psicólogo la fijó explícitamente, si es auto detectamos
+    let nextOrientation: ResolvedOrientation = "horizontal";
+    if (orientation && orientation !== "auto") {
+      nextOrientation = orientation;
+    } else if (h > w * 1.05) {
+      nextOrientation = "vertical";
+    } else if (Math.abs(w - h) / Math.max(w, h) < 0.08) {
+      nextOrientation = "square";
+    }
+
+    setDetectedOrientation(nextOrientation);
+    setExactAspectRatio(`${w} / ${h}`);
+    onOrientationDetected?.(nextOrientation);
+  };
+
+  // Clases y relación de aspecto adaptativas según si el video es vertical, cuadrado u horizontal
+  const containerSizingClass =
+    detectedOrientation === "vertical"
+      ? "mx-auto w-full max-w-[330px] sm:max-w-[370px] max-h-[75vh]"
+      : detectedOrientation === "square"
+        ? "mx-auto w-full max-w-[460px]"
+        : "w-full";
+
+  const fallbackAspectRatio =
+    detectedOrientation === "vertical"
+      ? "9 / 16"
+      : detectedOrientation === "square"
+        ? "1 / 1"
+        : "16 / 9";
+
   return (
     <div
-      className={`relative w-full aspect-video overflow-hidden rounded-xl border border-border bg-black shadow-md ${className}`}
+      style={{ aspectRatio: exactAspectRatio || fallbackAspectRatio }}
+      className={`relative overflow-hidden rounded-2xl border border-border/80 bg-zinc-950 shadow-md transition-all duration-300 ${containerSizingClass} ${className}`}
     >
       {isLoading ? (
-        <div className="grid h-full place-items-center text-muted-foreground bg-zinc-950 p-4">
+        <div className="grid h-full w-full place-items-center text-muted-foreground bg-zinc-950 p-4">
           <div className="flex flex-col items-center gap-2">
-            <Loader2 className="size-6 animate-spin text-rose-500" />
-            <span className="text-xs">Cargando video demostrativo...</span>
+            <Loader2 className="size-6 animate-spin text-teal-400" />
+            <span className="text-xs text-slate-300">Cargando video demostrativo...</span>
           </div>
         </div>
       ) : hasError || (!resolvedSrc && !embedUrl) ? (
-        <div className="grid h-full place-items-center text-white/70 bg-zinc-950 p-4 text-center">
+        <div className="grid h-full w-full place-items-center text-white/70 bg-zinc-950 p-4 text-center">
           <div className="flex flex-col items-center gap-2">
             <VideoOff className="size-6 text-zinc-400" />
-            <p className="text-xs">No se pudo cargar la vista previa del video.</p>
+            <p className="text-xs text-slate-300">
+              No se pudo cargar el video. Si fue guardado localmente, verifica que estés en el mismo
+              navegador o sincroniza con Supabase Storage.
+            </p>
           </div>
         </div>
       ) : isEmbed && embedUrl ? (
         <iframe
           src={embedUrl}
           title={title || "Video demostrativo"}
-          className="w-full h-full border-0"
+          className="h-full w-full border-0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
         />
@@ -83,7 +146,8 @@ export function VideoPlayerView({ videoUrl, title, className = "" }: VideoPlayer
           src={resolvedSrc || undefined}
           controls
           playsInline
-          className="w-full h-full object-contain bg-black"
+          onLoadedMetadata={handleVideoMetadata}
+          className="h-full w-full object-contain bg-zinc-950"
           preload="metadata"
         >
           Tu navegador no soporta la reproducción directa de este formato de video.

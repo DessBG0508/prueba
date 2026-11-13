@@ -1,5 +1,5 @@
 import { psychoResources } from "@/lib/resources-data";
-import type { PsychoResource } from "@/lib/types";
+import type { PsychoResource, VideoOrientation } from "@/lib/types";
 import { supabase } from "@/integrations/supabase/client";
 
 const STORAGE_KEY = "equilibra_recursos_catalogo_v1";
@@ -35,12 +35,43 @@ export function isDirectVideoFile(url?: string): boolean {
 }
 
 /**
- * Convierte URLs estándar de YouTube, Vimeo a formato embed seguro para iframes.
+ * Detecta la orientación inicial a partir de la preferencia explícita o patrones en la URL (ej. YouTube Shorts)
+ */
+export function detectVideoOrientation(
+  url?: string,
+  explicit?: VideoOrientation,
+): "horizontal" | "vertical" | "square" {
+  if (explicit && explicit !== "auto") {
+    return explicit;
+  }
+  if (url) {
+    const lower = url.toLowerCase();
+    if (lower.includes("youtube.com/shorts/") || lower.includes("/shorts/")) {
+      return "vertical";
+    }
+  }
+  return "horizontal";
+}
+
+/**
+ * Convierte URLs estándar de YouTube (watch, youtu.be, shorts, live) y Vimeo a formato embed seguro para iframes.
  */
 export function getEmbedVideoUrl(url?: string): string | null {
   if (!url) return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
+
+  // YouTube Shorts (vertical)
+  const shortsYtMatch = trimmed.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if (shortsYtMatch) {
+    return `https://www.youtube.com/embed/${shortsYtMatch[1]}`;
+  }
+
+  // YouTube Live
+  const liveYtMatch = trimmed.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/);
+  if (liveYtMatch) {
+    return `https://www.youtube.com/embed/${liveYtMatch[1]}`;
+  }
 
   // YouTube youtu.be/ID
   const shortYtMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
@@ -175,6 +206,7 @@ export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
         keyTakeaway: row.key_takeaway ? String(row.key_takeaway) : undefined,
         videoUrl: row.video_url ? String(row.video_url) : undefined,
         videoTitle: row.video_title ? String(row.video_title) : undefined,
+        videoOrientation: (row.video_orientation as VideoOrientation) || "auto",
         format: (row.format as PsychoResource["format"]) || "lectura",
         author: row.author ? String(row.author) : "Área de Psicología TESH",
         updatedAt: row.updated_at ? String(row.updated_at).slice(0, 10) : "Hoy",
@@ -197,12 +229,18 @@ export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
   return getStoredResources();
 }
 
+export interface SaveResourceResult {
+  resource: PsychoResource;
+  syncedToDb: boolean;
+  dbError?: string;
+}
+
 /**
- * Guarda o actualiza un recurso (upsert)
+ * Guarda o actualiza un recurso (upsert) e informa si se sincronizó en Supabase
  */
-export async function saveResource(
+export async function saveResourceWithStatus(
   resource: Partial<PsychoResource> & { title: string },
-): Promise<PsychoResource> {
+): Promise<SaveResourceResult> {
   const current = getStoredResources();
   const id = resource.id || `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -221,6 +259,7 @@ export async function saveResource(
     keyTakeaway: resource.keyTakeaway?.trim() || undefined,
     videoUrl: resource.videoUrl?.trim() || undefined,
     videoTitle: resource.videoTitle?.trim() || undefined,
+    videoOrientation: resource.videoOrientation || "auto",
     format: resource.videoUrl?.trim() ? "video" : resource.format || "lectura",
     author: resource.author?.trim() || "Área de Psicología TESH",
     updatedAt: new Date().toLocaleDateString("es-MX", {
@@ -246,9 +285,12 @@ export async function saveResource(
     // ignore
   }
 
-  // Sincronizar en Supabase si la tabla existe
+  // Intentar sincronizar en Supabase
+  let syncedToDb = false;
+  let dbError: string | undefined;
+
   try {
-    await supabase.from("recursos").upsert({
+    const { error } = await supabase.from("recursos").upsert({
       id: finalResource.id,
       title: finalResource.title,
       short_description: finalResource.shortDescription,
@@ -260,16 +302,33 @@ export async function saveResource(
       key_takeaway: finalResource.keyTakeaway,
       video_url: finalResource.videoUrl,
       video_title: finalResource.videoTitle,
+      video_orientation: finalResource.videoOrientation,
       format: finalResource.format,
       author: finalResource.author,
       active: finalResource.active,
       updated_at: new Date().toISOString(),
     });
-  } catch {
-    // ignore backend error if table is not configured
+
+    if (error) {
+      dbError = error.message;
+    } else {
+      syncedToDb = true;
+    }
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : "Error de conexión con Supabase";
   }
 
-  return finalResource;
+  return { resource: finalResource, syncedToDb, dbError };
+}
+
+/**
+ * Guarda o actualiza un recurso (upsert)
+ */
+export async function saveResource(
+  resource: Partial<PsychoResource> & { title: string },
+): Promise<PsychoResource> {
+  const { resource: saved } = await saveResourceWithStatus(resource);
+  return saved;
 }
 
 /**

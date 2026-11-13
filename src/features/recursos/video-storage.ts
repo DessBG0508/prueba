@@ -131,14 +131,65 @@ export function formatVideoSize(bytes: number): string {
 }
 
 /**
+ * Detecta la orientación de un archivo de video local antes de subirlo leyendo sus dimensiones nativas
+ */
+export function detectFileVideoOrientation(
+  file: File,
+): Promise<"vertical" | "horizontal" | "square"> {
+  return new Promise((resolve) => {
+    if (typeof document === "undefined") {
+      resolve("horizontal");
+      return;
+    }
+
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const tempUrl = URL.createObjectURL(file);
+
+    const cleanup = () => {
+      URL.revokeObjectURL(tempUrl);
+      video.removeAttribute("src");
+    };
+
+    video.onloadedmetadata = () => {
+      const w = video.videoWidth || 16;
+      const h = video.videoHeight || 9;
+      cleanup();
+
+      if (h > w * 1.05) {
+        resolve("vertical");
+      } else if (Math.abs(w - h) / Math.max(w, h) < 0.08) {
+        resolve("square");
+      } else {
+        resolve("horizontal");
+      }
+    };
+
+    video.onerror = () => {
+      cleanup();
+      resolve("horizontal");
+    };
+
+    video.src = tempUrl;
+  });
+}
+
+/**
  * Valida y sube un archivo de video directamente.
- * 1. Intenta subir a Supabase Storage (bucket "recursos-videos" o "public")
- * 2. Si Supabase Storage no está provisionado, almacena en IndexedDB localmente sin límite de 5MB
+ * 1. Intenta subir a Supabase Storage (bucket "recursos-videos")
+ * 2. Si Supabase Storage no está provisionado o falla por permisos/RLS, almacena en IndexedDB localmente
  */
 export async function uploadDirectVideoFile(
   file: File,
   onProgress?: (pct: number) => void,
-): Promise<{ url: string; fileName: string; size: number; isLocal: boolean }> {
+): Promise<{
+  url: string;
+  fileName: string;
+  size: number;
+  isLocal: boolean;
+  orientation: "vertical" | "horizontal" | "square";
+  storageError?: string;
+}> {
   // Validación básica
   const validTypes = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
   const isVideo = validTypes.includes(file.type) || file.name.match(/\.(mp4|webm|ogg|mov)$/i);
@@ -157,7 +208,12 @@ export async function uploadDirectVideoFile(
     );
   }
 
-  onProgress?.(20);
+  onProgress?.(15);
+
+  const orientation = await detectFileVideoOrientation(file);
+  onProgress?.(30);
+
+  let storageError: string | undefined;
 
   // 1. Intentar subir a Supabase Storage
   try {
@@ -177,13 +233,18 @@ export async function uploadDirectVideoFile(
         fileName: file.name,
         size: file.size,
         isLocal: false,
+        orientation,
       };
     }
-  } catch {
-    // Bucket de storage no disponible en Supabase, pasamos a almacenamiento local seguro
+
+    if (error) {
+      storageError = error.message;
+    }
+  } catch (err) {
+    storageError = err instanceof Error ? err.message : "Bucket de Supabase no disponible";
   }
 
-  onProgress?.(60);
+  onProgress?.(65);
 
   // 2. Almacenamiento seguro en IndexedDB
   const videoId = `vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -204,5 +265,7 @@ export async function uploadDirectVideoFile(
     fileName: file.name,
     size: file.size,
     isLocal: true,
+    orientation,
+    storageError,
   };
 }
