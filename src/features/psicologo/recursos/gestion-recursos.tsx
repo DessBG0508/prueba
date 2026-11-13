@@ -406,15 +406,15 @@ export function GestionRecursos() {
           <span className="text-[11px] text-muted-foreground">En el catálogo de autocuidado</span>
         </div>
 
-        <div className="rounded-xl border border-rose-200/80 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-rose-700 dark:text-rose-400">
+        <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-lavender-soft/60 dark:bg-indigo-950/20 p-4 shadow-2xs">
+          <div className="flex items-center justify-between text-[#6857E4] dark:text-indigo-300">
             <span className="text-xs font-medium">Videos Demostrativos</span>
             <Video className="size-4" />
           </div>
-          <p className="text-2xl font-bold text-rose-700 dark:text-rose-300 mt-1.5">
+          <p className="text-2xl font-bold text-[#6857E4] dark:text-indigo-200 mt-1.5">
             {stats.conVideo}
           </p>
-          <span className="text-[11px] text-rose-600/80 dark:text-rose-400/80">
+          <span className="text-[11px] text-[#6857E4]/80 dark:text-indigo-300/80">
             Con reproductor embebido activo
           </span>
         </div>
@@ -519,7 +519,7 @@ export function GestionRecursos() {
                       {hasVideo ? (
                         <Badge
                           variant="outline"
-                          className="text-[10px] font-bold rounded-md border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 gap-1"
+                          className="text-[10px] font-bold rounded-md border-lavender/50 bg-lavender-soft text-[#6857E4] dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-700/50 gap-1"
                         >
                           <Play className="size-2.5 fill-current" />
                           <span>
@@ -563,7 +563,7 @@ export function GestionRecursos() {
                   </div>
 
                   {hasVideo && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium bg-rose-500/5 border border-rose-500/20 p-2 rounded-lg truncate">
+                    <div className="flex items-center gap-1.5 text-[11px] text-[#6857E4] dark:text-indigo-300 font-medium bg-lavender-soft/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/50 p-2 rounded-lg truncate">
                       <Video className="size-3.5 shrink-0" />
                       <span className="truncate">
                         {res.videoTitle || "Video demostrativo adjunto"}
@@ -691,9 +691,9 @@ export function GestionRecursos() {
               </div>
 
               {/* SECCIÓN AVANZADA DE VIDEO DEMOSTRATIVO: SUBIDA DIRECTA O URL */}
-              <div className="space-y-3 sm:col-span-2 rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 p-4">
+              <div className="space-y-3 sm:col-span-2 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-lavender-soft/40 dark:bg-indigo-950/20 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#6857E4] dark:text-indigo-300">
                     <Video className="size-4" />
                     <span>Video Demostrativo Guiado (Opcional)</span>
                   </div>
@@ -752,14 +752,14 @@ export function GestionRecursos() {
                     />
 
                     {isUploadingVideo ? (
-                      <div className="rounded-xl border border-dashed border-rose-300 bg-background/60 p-6 text-center space-y-2">
-                        <Loader2 className="mx-auto size-7 animate-spin text-rose-600" />
+                      <div className="rounded-xl border border-dashed border-indigo-300 bg-background/60 p-6 text-center space-y-2">
+                        <Loader2 className="mx-auto size-7 animate-spin text-[#6857E4]" />
                         <p className="text-xs font-semibold text-foreground">
                           Procesando y guardando video demostrativo... {uploadProgress}%
                         </p>
                         <div className="w-full max-w-xs mx-auto h-2 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-rose-600 transition-all duration-200"
+                            className="h-full bg-[#6857E4] transition-all duration-200"
                             style={{ width: `${uploadProgress}%` }}
                           />
                         </div>
@@ -769,7 +769,7 @@ export function GestionRecursos() {
                       <div className="rounded-xl border border-border bg-background p-3.5 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className="grid size-8 place-items-center rounded-lg bg-rose-500/10 text-rose-600">
+                            <div className="grid size-8 place-items-center rounded-lg bg-[#6857E4]/10 text-[#6857E4] dark:text-indigo-300">
                               <FileVideo className="size-4" />
                             </div>
                             <div>
@@ -842,11 +842,11 @@ export function GestionRecursos() {
                         onClick={() => fileInputRef.current?.click()}
                         className={`rounded-xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors bg-background/60 hover:bg-background ${
                           isDraggingVideo
-                            ? "border-rose-500 bg-rose-500/10"
-                            : "border-border/80 hover:border-rose-400"
+                            ? "border-[#6857E4] bg-[#6857E4]/10"
+                            : "border-border/80 hover:border-[#6857E4]/60"
                         }`}
                       >
-                        <UploadCloud className="mx-auto size-8 text-rose-600 mb-2" />
+                        <UploadCloud className="mx-auto size-8 text-[#6857E4] mb-2" />
                         <p className="text-xs font-semibold text-foreground">
                           Haz clic para seleccionar o arrastra un video demostrativo aquí
                         </p>
@@ -1053,102 +1053,78 @@ export function GestionRecursos() {
                 </Badge>
               </div>
 
-              {previewResource.videoUrl && previewOrientation === "vertical" ? (
-                <div className="grid gap-5 md:grid-cols-[260px_1fr] md:items-start">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
-                      <Video className="size-3.5" />
-                      <span>{previewResource.videoTitle || "Video Demostrativo Guiado"}</span>
+              <div
+                className={
+                  previewResource.videoUrl && previewOrientation === "vertical"
+                    ? "grid gap-5 md:grid-cols-[260px_minmax(0,1fr)] md:items-start"
+                    : "flex flex-col gap-4"
+                }
+              >
+                <div
+                  className={
+                    previewResource.videoUrl && previewOrientation === "vertical"
+                      ? "min-w-0 md:col-start-2 md:row-start-1"
+                      : "min-w-0"
+                  }
+                >
+                  <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50 break-words">
+                    {previewResource.title}
+                  </h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+                    {previewResource.shortDescription}
+                  </p>
+                  <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-1 font-medium">
+                    Publicado por: {previewResource.author}
+                  </p>
+                </div>
+
+                {previewResource.videoUrl && (
+                  <div
+                    className={`min-w-0 space-y-1.5 ${
+                      previewOrientation === "vertical"
+                        ? "md:col-start-1 md:row-start-1 md:row-span-2"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-start gap-1.5 text-xs font-bold text-[#6857E4] dark:text-indigo-300">
+                      <Video className="size-3.5 shrink-0 mt-0.5" />
+                      <span className="min-w-0 break-words leading-snug">
+                        {previewResource.videoTitle || "Video Demostrativo Guiado"}
+                      </span>
                     </div>
                     <VideoPlayerView
                       videoUrl={previewResource.videoUrl}
                       title={previewResource.videoTitle || previewResource.title}
                       orientation={previewResource.videoOrientation}
                       onOrientationDetected={setPreviewOrientation}
-                      className="max-w-[260px]"
+                      className={previewOrientation === "vertical" ? "max-w-[260px]" : ""}
                     />
                   </div>
+                )}
 
-                  <div className="space-y-4">
-                    <div>
-                      <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-                        {previewResource.title}
-                      </h2>
-                      <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-                        {previewResource.shortDescription}
+                <div
+                  className={`min-w-0 space-y-3 text-sm text-slate-800 dark:text-slate-100 leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/60 ${
+                    previewResource.videoUrl && previewOrientation === "vertical"
+                      ? "md:col-start-2 md:row-start-2"
+                      : ""
+                  }`}
+                >
+                  {previewResource.content.map((par, i) => (
+                    <p key={i}>{par}</p>
+                  ))}
+
+                  {previewResource.keyTakeaway && (
+                    <div className="mt-3 rounded-lg bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/60 p-3 text-xs">
+                      <span className="font-bold block mb-0.5 text-teal-800 dark:text-teal-300">
+                        Idea para recordar:
+                      </span>
+                      <p className="text-slate-800 dark:text-slate-100">
+                        {previewResource.keyTakeaway}
                       </p>
-                      <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-1 font-medium">
-                        Publicado por: {previewResource.author}
-                      </p>
-                    </div>
-
-                    <div className="space-y-3 text-sm text-slate-800 dark:text-slate-100 leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/60">
-                      {previewResource.content.map((par, i) => (
-                        <p key={i}>{par}</p>
-                      ))}
-
-                      {previewResource.keyTakeaway && (
-                        <div className="mt-3 rounded-lg bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/60 p-3 text-xs">
-                          <span className="font-bold block mb-0.5 text-teal-800 dark:text-teal-300">
-                            Idea para recordar:
-                          </span>
-                          <p className="text-slate-800 dark:text-slate-100">
-                            {previewResource.keyTakeaway}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-                      {previewResource.title}
-                    </h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-                      {previewResource.shortDescription}
-                    </p>
-                    <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-1 font-medium">
-                      Publicado por: {previewResource.author}
-                    </p>
-                  </div>
-
-                  {/* REPRODUCTOR DE VIDEO SI ESTÁ PRESENTE */}
-                  {previewResource.videoUrl && (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
-                        <Video className="size-3.5" />
-                        <span>{previewResource.videoTitle || "Video Demostrativo Guiado"}</span>
-                      </div>
-                      <VideoPlayerView
-                        videoUrl={previewResource.videoUrl}
-                        title={previewResource.videoTitle || previewResource.title}
-                        orientation={previewResource.videoOrientation}
-                        onOrientationDetected={setPreviewOrientation}
-                      />
                     </div>
                   )}
-
-                  {/* PÁRRAFOS DE CONTENIDO */}
-                  <div className="space-y-3 text-sm text-slate-800 dark:text-slate-100 leading-relaxed bg-muted/20 p-4 rounded-xl border border-border/60">
-                    {previewResource.content.map((par, i) => (
-                      <p key={i}>{par}</p>
-                    ))}
-
-                    {previewResource.keyTakeaway && (
-                      <div className="mt-3 rounded-lg bg-teal-50/90 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-800/60 p-3 text-xs">
-                        <span className="font-bold block mb-0.5 text-teal-800 dark:text-teal-300">
-                          Idea para recordar:
-                        </span>
-                        <p className="text-slate-800 dark:text-slate-100">
-                          {previewResource.keyTakeaway}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+                </div>
+              </div>
 
               <DialogFooter>
                 <Button

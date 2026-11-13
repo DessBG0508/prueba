@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, VideoOff } from "lucide-react";
 import { isExternalEmbedVideo, getEmbedVideoUrl, detectVideoOrientation } from "./recursos-service";
 import { resolvePlayableVideoUrl } from "./video-storage";
@@ -25,6 +25,11 @@ export function VideoPlayerView({
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
+  const onOrientationRef = useRef(onOrientationDetected);
+  useEffect(() => {
+    onOrientationRef.current = onOrientationDetected;
+  }, [onOrientationDetected]);
+
   const initialOrientation = detectVideoOrientation(videoUrl, orientation);
   const [detectedOrientation, setDetectedOrientation] =
     useState<ResolvedOrientation>(initialOrientation);
@@ -34,8 +39,8 @@ export function VideoPlayerView({
     const nextInitial = detectVideoOrientation(videoUrl, orientation);
     setDetectedOrientation(nextInitial);
     setExactAspectRatio(null);
-    onOrientationDetected?.(nextInitial);
-  }, [videoUrl, orientation, onOrientationDetected]);
+    onOrientationRef.current?.(nextInitial);
+  }, [videoUrl, orientation]);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,7 +57,12 @@ export function VideoPlayerView({
       try {
         const src = await resolvePlayableVideoUrl(videoUrl);
         if (isMounted) {
-          setResolvedSrc(src);
+          if (!src) {
+            setResolvedSrc(null);
+            setHasError(true);
+          } else {
+            setResolvedSrc(src);
+          }
           setIsLoading(false);
         }
       } catch {
@@ -92,7 +102,7 @@ export function VideoPlayerView({
 
     setDetectedOrientation(nextOrientation);
     setExactAspectRatio(`${w} / ${h}`);
-    onOrientationDetected?.(nextOrientation);
+    onOrientationRef.current?.(nextOrientation);
   };
 
   // Clases y relación de aspecto adaptativas según si el video es vertical, cuadrado u horizontal
@@ -101,7 +111,7 @@ export function VideoPlayerView({
       ? "mx-auto w-full max-w-[330px] sm:max-w-[370px] max-h-[75vh]"
       : detectedOrientation === "square"
         ? "mx-auto w-full max-w-[460px]"
-        : "w-full";
+        : "mx-auto w-full max-w-3xl";
 
   const fallbackAspectRatio =
     detectedOrientation === "vertical"
@@ -123,12 +133,16 @@ export function VideoPlayerView({
           </div>
         </div>
       ) : hasError || (!resolvedSrc && !embedUrl) ? (
-        <div className="grid h-full w-full place-items-center text-white/70 bg-zinc-950 p-4 text-center">
-          <div className="flex flex-col items-center gap-2">
+        <div className="grid h-full w-full place-items-center text-white/70 bg-zinc-950 p-5 text-center">
+          <div className="flex flex-col items-center gap-2 max-w-md">
             <VideoOff className="size-6 text-zinc-400" />
-            <p className="text-xs text-slate-300">
-              No se pudo cargar el video. Si fue guardado localmente, verifica que estés en el mismo
-              navegador o sincroniza con Supabase Storage.
+            <p className="text-xs text-slate-200 font-medium">
+              No se pudo reproducir este archivo de video aquí.
+            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Si fue guardado en otro navegador o sesión, súbelo de nuevo desde el Panel del
+              Psicólogo (preferentemente en formato MP4 H.264 o WebM) o vincula un enlace de
+              YouTube/Vimeo.
             </p>
           </div>
         </div>
@@ -147,6 +161,7 @@ export function VideoPlayerView({
           controls
           playsInline
           onLoadedMetadata={handleVideoMetadata}
+          onError={() => setHasError(true)}
           className="h-full w-full object-contain bg-zinc-950"
           preload="metadata"
         >

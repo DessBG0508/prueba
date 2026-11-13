@@ -106,7 +106,7 @@ const SEEDED_RESOURCES: PsychoResource[] = [
   {
     ...psychoResources[0],
     format: "video",
-    videoUrl: "https://www.youtube.com/watch?v=1Dv-LDOGvuc",
+    videoUrl: "https://www.youtube.com/watch?v=T38xzsKv3GQ",
     videoTitle: "Técnica Guiada de Respiración Abdominal y Diafragmática",
     author: "Área de Psicología TESH",
     updatedAt: "Oct 2026",
@@ -162,7 +162,23 @@ export function getStoredResources(): PsychoResource[] {
     if (raw) {
       const parsed = JSON.parse(raw) as PsychoResource[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Reparar automáticamente URL rota de YouTube (404) de la semilla inicial si sigue en caché
+        let repaired = false;
+        const normalized = parsed.map((item) => {
+          if (item.videoUrl && item.videoUrl.includes("1Dv-LDOGvuc")) {
+            repaired = true;
+            return { ...item, videoUrl: "https://www.youtube.com/watch?v=T38xzsKv3GQ" };
+          }
+          return item;
+        });
+        if (repaired) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+          } catch {
+            // ignore
+          }
+        }
+        return normalized;
       }
     }
   } catch {

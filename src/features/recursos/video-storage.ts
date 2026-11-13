@@ -114,6 +114,7 @@ export async function resolvePlayableVideoUrl(url?: string): Promise<string | nu
       resolvedObjectUrls.set(id, objectUrl);
       return objectUrl;
     }
+    return null;
   }
 
   return trimmed;

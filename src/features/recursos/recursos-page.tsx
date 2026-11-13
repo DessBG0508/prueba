@@ -124,15 +124,21 @@ export function RecursosPage() {
   const renderVideoSection = (res: PsychoResource) => {
     if (!res.videoUrl) return null;
     return (
-      <div className="space-y-2.5 rounded-2xl border border-teal-200/80 dark:border-teal-900/50 bg-teal-50/40 dark:bg-teal-950/20 p-3.5 sm:p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-teal-800 dark:text-teal-300">
-            <Play className="size-3.5 fill-current shrink-0" />
-            <span className="truncate">{res.videoTitle || "Video Demostrativo Guiado"}</span>
+      <div
+        className={`min-w-0 overflow-hidden space-y-2.5 rounded-2xl border border-teal-200/80 dark:border-teal-900/50 bg-teal-50/40 dark:bg-teal-950/20 p-3.5 sm:p-4 shadow-sm ${
+          isVerticalVideo ? "" : "mx-auto w-full max-w-3xl"
+        }`}
+      >
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-start gap-2 text-xs font-bold text-teal-800 dark:text-teal-300">
+            <Play className="size-3.5 fill-current shrink-0 mt-0.5" />
+            <span className="min-w-0 break-words leading-snug">
+              {res.videoTitle || "Video Demostrativo Guiado"}
+            </span>
           </div>
           <Badge
             variant="outline"
-            className="text-[10px] border-teal-500/30 text-teal-700 dark:text-teal-300 bg-teal-500/10 shrink-0"
+            className="text-[10px] border-lavender/50 text-[#6857E4] dark:text-indigo-300 bg-lavender-soft shrink-0"
           >
             {videoOrientation === "vertical"
               ? "Video Vertical"
@@ -233,23 +239,38 @@ export function RecursosPage() {
                 </Badge>
               </div>
 
-              {isVerticalVideo ? (
-                /* LAYOUT ADAPTATIVO PARA VIDEO VERTICAL: 2 columnas en tablet/escritorio para aprovechar el espacio */
-                <div className="grid gap-6 md:grid-cols-[minmax(270px,350px)_1fr] md:items-start lg:gap-8">
-                  <div className="md:sticky md:top-6">{renderVideoSection(activeResource)}</div>
-                  <div className="space-y-6">
-                    {renderTechniqueHeader(activeResource)}
-                    {renderTechniqueContent(activeResource)}
-                  </div>
-                </div>
-              ) : (
-                /* LAYOUT ADAPTATIVO PARA VIDEO HORIZONTAL / CUADRADO O LECTURA */
-                <div className="space-y-6">
+              {/* Estructura única estable para evitar que el reproductor se reinicie al detectar orientación */}
+              <div
+                className={
+                  isVerticalVideo
+                    ? "grid gap-6 md:grid-cols-[minmax(270px,350px)_minmax(0,1fr)] md:items-start lg:gap-8"
+                    : "flex flex-col gap-6"
+                }
+              >
+                <div
+                  className={isVerticalVideo ? "min-w-0 md:col-start-2 md:row-start-1" : "min-w-0"}
+                >
                   {renderTechniqueHeader(activeResource)}
-                  {renderVideoSection(activeResource)}
+                </div>
+
+                {activeResource.videoUrl && (
+                  <div
+                    className={
+                      isVerticalVideo
+                        ? "min-w-0 md:col-start-1 md:row-start-1 md:row-span-2 md:sticky md:top-6"
+                        : "min-w-0"
+                    }
+                  >
+                    {renderVideoSection(activeResource)}
+                  </div>
+                )}
+
+                <div
+                  className={isVerticalVideo ? "min-w-0 md:col-start-2 md:row-start-2" : "min-w-0"}
+                >
                   {renderTechniqueContent(activeResource)}
                 </div>
-              )}
+              </div>
 
               {/* Barra inferior de acciones */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
@@ -439,7 +460,7 @@ export function RecursosPage() {
                                 {resource.videoUrl && (
                                   <Badge
                                     variant="outline"
-                                    className="text-[10px] font-bold rounded-md border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 gap-1 px-1.5 py-0"
+                                    className="text-[10px] font-bold rounded-md border-lavender/50 bg-lavender-soft text-[#6857E4] dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-700/50 gap-1 px-1.5 py-0"
                                   >
                                     <Play className="size-2.5 fill-current" />
                                     <span>Video</span>
