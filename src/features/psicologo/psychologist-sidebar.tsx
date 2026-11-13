@@ -6,13 +6,13 @@ import {
   FileText,
   Star,
   LogOut,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
   Library,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { BRAND } from "@/lib/branding";
 
@@ -96,12 +96,7 @@ export function PsychologistSidebar({
       <div>
         <div className="flex h-16 items-center justify-between border-b border-border/70 px-3 sm:px-4">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div
-              className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-[#6857E4] to-[#12BDB6] text-white shadow-xs"
-              aria-hidden="true"
-            >
-              <Sparkles className="size-4.5" />
-            </div>
+            <EquilibraBrand showText={false} size="sm" />
 
             {!isCollapsed && (
               <div className="min-w-0">

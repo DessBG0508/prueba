@@ -1036,8 +1036,11 @@ export function ChatPage() {
             <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
               <div className="relative size-8 sm:size-9 shrink-0">
                 <img
-                  src="/img/Frame 1 ELI.png"
+                  src="/img/eli-avatar.webp"
                   alt="Eli, asistente de tamizaje emocional"
+                  width={36}
+                  height={36}
+                  decoding="async"
                   className="size-full rounded-full object-cover shadow-soft"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-card" />
@@ -1174,8 +1177,11 @@ export function ChatPage() {
               className="mx-auto w-full max-w-md rounded-2xl border border-primary/20 bg-card/90 p-4 text-center shadow-soft backdrop-blur-md"
             >
               <img
-                src="/img/Frame 1 ELI.png"
+                src="/img/eli-avatar.webp"
                 alt="Eli, asistente de tamizaje emocional"
+                width={40}
+                height={40}
+                decoding="async"
                 className="mx-auto mb-2.5 size-10 rounded-full object-cover shadow-soft"
               />
               <h2 className="text-sm font-bold text-foreground">

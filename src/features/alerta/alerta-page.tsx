@@ -65,14 +65,18 @@ export function AlertaPage() {
           aria-labelledby="alert-title"
         >
           <img
-            src="/emocionometro/mood-bien.png"
+            src="/emocionometro/mood-bien.webp"
             alt=""
+            loading="lazy"
+            decoding="async"
             className="pointer-events-none absolute -right-5 -top-4 w-28 rotate-6 opacity-20 sm:w-40"
             aria-hidden="true"
           />
           <img
-            src="/emocionometro/mood-feliz.png"
+            src="/emocionometro/mood-feliz.webp"
             alt=""
+            loading="lazy"
+            decoding="async"
             className="pointer-events-none absolute -bottom-6 right-20 w-20 -rotate-12 opacity-15 sm:w-28"
             aria-hidden="true"
           />

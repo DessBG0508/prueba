@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { brandConfig } from "@/config/brand-config";
 import { BRAND } from "@/lib/branding";
 
@@ -14,6 +15,8 @@ export function EquilibraBrand({
   showText = true,
   size = "md",
 }: EquilibraBrandProps) {
+  const [imgFailed, setImgFailed] = useState(false);
+
   const sizeClasses = {
     sm: "size-8 sm:size-9",
     md: "size-11 sm:size-13",
@@ -31,14 +34,19 @@ export function EquilibraBrand({
       className={`flex min-w-0 items-center gap-3 ${className}`}
       aria-label={BRAND.fullName.toUpperCase()}
     >
-      {logoSrc ? (
+      {logoSrc && !imgFailed ? (
         <img
           src={logoSrc}
           alt={`Logotipo ${BRAND.fullName.toUpperCase()}`}
+          width={64}
+          height={60}
+          decoding="async"
+          fetchPriority="high"
+          onError={() => setImgFailed(true)}
           className={`${sizeClasses} shrink-0 object-contain rounded-full`}
         />
       ) : (
-        /* Emblema vectorial fiel a equlibrat.png */
+        /* Emblema vectorial de respaldo */
         <svg
           className={`${sizeClasses} shrink-0`}
           viewBox="0 0 100 100"

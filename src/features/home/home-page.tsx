@@ -126,8 +126,11 @@ export function HomePage() {
                   {/* Avatar de Eli: Mascota oficial */}
                   <div className="relative size-11 shrink-0">
                     <img
-                      src="/img/Frame 1 ELI.png"
+                      src="/img/eli-avatar.webp"
                       alt="Eli, asistente de tamizaje emocional"
+                      width={44}
+                      height={44}
+                      decoding="async"
                       className="size-full rounded-full object-cover shadow-soft"
                     />
                     <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 ring-2 ring-card" />
