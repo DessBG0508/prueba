@@ -123,7 +123,7 @@ export function getEmbedVideoUrl(url?: string): string | null {
 }
 
 /**
- * Recursos iniciales enriquecidos con videos demostrativos institucionales
+ * Recursos iniciales enriquecidos con videos demostrativos institucionales y guías de lectura
  */
 const SEEDED_RESOURCES: PsychoResource[] = [
   {
@@ -131,15 +131,49 @@ const SEEDED_RESOURCES: PsychoResource[] = [
     format: "video",
     videoUrl: "https://www.youtube.com/watch?v=T38xzsKv3GQ",
     videoTitle: "Técnica Guiada de Respiración Abdominal y Diafragmática",
+    videoOrientation: "horizontal",
     author: "Área de Psicología TESH",
     updatedAt: "Oct 2026",
     active: true,
+  },
+  {
+    ...psychoResources[8],
+    format: "video",
+    videoUrl: "https://www.youtube.com/shorts/VWTwOXjOuMM",
+    videoTitle: "Respiración Cuadrada 4-4-4-4 Guiada (Formato Vertical)",
+    videoOrientation: "vertical",
+    readTime: "3 min de práctica",
+    author: "Área de Psicología TESH",
+    updatedAt: "Nov 2026",
+    active: true,
+  },
+  {
+    id: "rec-respiracion-478-lectura",
+    title: "Guía de Respiración 4-7-8 para Bajar Pulsaciones",
+    shortDescription:
+      "Método paso a paso de lectura rápida para calmar el sistema nervioso antes de dormir o presentar un examen.",
+    category: "Respiración",
+    readTime: "3 min de lectura",
+    iconName: "wind",
+    tone: "mint",
+    format: "lectura",
+    author: "Área de Psicología TESH",
+    updatedAt: "Nov 2026",
+    active: true,
+    content: [
+      "La técnica 4-7-8 actúa como un freno fisiológico natural cuando sientes palpitaciones rápidas o tensión en el pecho por presión académica.",
+      "Para aplicarla, coloca la punta de la lengua suavemente detrás de tus dientes frontales superiores. Inhala en silencio por la nariz contando 4 segundos, sostén el aire 7 segundos sin forzar la garganta y exhala despacio por la boca durante 8 segundos.",
+      "Al prolongar la exhalación al doble de la inhalación, activas el nervio vago y envías una señal directa de calma a tu corazón. Realiza un máximo de cuatro ciclos seguidos y descansa.",
+    ],
+    keyTakeaway:
+      "Inhala en 4, sostén en 7 y exhala lento en 8: alargar la exhalación reduce la activación física en menos de dos minutos.",
   },
   {
     ...psychoResources[1],
     format: "video",
     videoUrl: "https://www.youtube.com/watch?v=30VMIEmA114",
     videoTitle: "Técnica de Anclaje 5-4-3-2-1 para Calmar la Ansiedad en Minutos",
+    videoOrientation: "horizontal",
     author: "Área de Psicología TESH",
     updatedAt: "Oct 2026",
     active: true,
@@ -156,6 +190,7 @@ const SEEDED_RESOURCES: PsychoResource[] = [
     format: "video",
     videoUrl: "https://www.youtube.com/watch?v=ihO02wUzgkc",
     videoTitle: "Guía Demostrativa de Relajación Muscular Progresiva",
+    videoOrientation: "horizontal",
     author: "Área de Psicología TESH",
     updatedAt: "Nov 2026",
     active: true,
@@ -167,14 +202,95 @@ const SEEDED_RESOURCES: PsychoResource[] = [
     keyTakeaway:
       "Tensa 5 segundos, suelta de golpe y siente el contraste: el cuerpo relajado calma la mente agitada.",
   },
-  ...psychoResources.slice(2).map((rec) => ({
+  {
+    ...psychoResources[2],
+    format: "video",
+    videoUrl: "https://www.youtube.com/watch?v=vFrHhwCOaW0",
+    videoTitle: "Meditación Guiada de 13 Minutos para Dormir Profundamente",
+    videoOrientation: "horizontal",
+    readTime: "13 min de práctica",
+    author: "Área de Psicología TESH",
+    updatedAt: "Nov 2026",
+    active: true,
+  },
+  {
+    id: "rec-meditacion-nocturna-video",
+    title: "Meditación Nocturna para Calmar la Mente",
+    shortDescription:
+      "Audio-video guiado para desacelerar pensamientos repetitivos antes de acostarte y favorecer un descanso continuo.",
+    category: "Sueño",
+    readTime: "6 min de práctica",
+    iconName: "moon",
+    tone: "lavender",
+    format: "video",
+    videoUrl: "https://www.youtube.com/watch?v=-z4x6Fv23Kw",
+    videoTitle: "Meditación Guiada para Dormir y Soltar Preocupaciones",
+    videoOrientation: "horizontal",
+    author: "Área de Psicología TESH",
+    updatedAt: "Nov 2026",
+    active: true,
+    content: [
+      "Cuando el día termina pero tu mente sigue repasando pendientes o conversaciones, escuchar una voz calmada ayuda a dirigir la atención lejos de la preocupación.",
+      "Recuéstate en una postura cómoda, baja el brillo de la pantalla o colócala boca abajo y sigue únicamente el audio y el ritmo pausado de tu respiración.",
+      "No intentes obligarte a dormir: permite que el cuerpo descanse sobre el colchón mientras sueltas el peso de los hombros y la mandíbula.",
+    ],
+    keyTakeaway:
+      "Escucha con la luz tenue y deja que la guía sonora sostenga tu atención hasta conciliar el sueño.",
+  },
+  {
+    ...psychoResources[5],
+    format: "video",
+    videoUrl: "https://www.youtube.com/watch?v=LIzAgihTcak",
+    videoTitle: "¿Qué es la Tristeza y Cómo Gestionarla de Forma Saludable?",
+    videoOrientation: "horizontal",
+    readTime: "5 min de práctica",
+    author: "Área de Psicología TESH",
+    updatedAt: "Nov 2026",
+    active: true,
+  },
+  {
+    id: "rec-activacion-conductual-lectura",
+    title: "Activación Conductual: Pequeños Pasos en Días Difíciles",
+    shortDescription:
+      "Lectura práctica sobre cómo retomar actividades significativas poco a poco cuando falta energía o motivación.",
+    category: "Ánimo",
+    readTime: "5 min de lectura",
+    iconName: "sun",
+    tone: "rose",
+    format: "lectura",
+    author: "Área de Psicología TESH",
+    updatedAt: "Nov 2026",
+    active: true,
+    content: [
+      "Cuando el ánimo baja, solemos esperar a 'sentir ganas' para hacer actividades que antes disfrutábamos o necesitamos cumplir. Sin embargo, el aislamiento prolongado suele reforzar el agotamiento emocional.",
+      "La activación conductual propone invertir el orden con mucha gentileza: elegir una acción pequeña y concreta (salir 10 minutos a tomar aire, ducharte, enviar un mensaje a alguien de confianza) aunque la motivación aún no esté al 100%.",
+      "Cada micro-acción cumplida le demuestra a tu cerebro que aún tienes capacidad de agencia y abre espacio para pequeñas sensaciones de bienestar o alivio.",
+    ],
+    keyTakeaway:
+      "No esperes a tener toda la energía: elige una acción de 5 minutos que te cuide hoy y reconócete el esfuerzo.",
+  },
+  ...[
+    psychoResources[3],
+    psychoResources[4],
+    psychoResources[6],
+    psychoResources[7],
+    psychoResources[9],
+    psychoResources[10],
+    psychoResources[11],
+  ].map((rec) => ({
     ...rec,
     format: "lectura" as const,
     author: "Área de Psicología TESH",
-    updatedAt: "Sep 2026",
+    updatedAt: "Oct 2026",
     active: true,
   })),
 ];
+
+const ENRICHED_VIDEO_SEED_IDS = new Set([
+  "rec-higiene-sueno",
+  "rec-pausa-compasiva",
+  "rec-respiracion-cuadrada",
+]);
 
 /**
  * Obtiene todos los recursos (desde Supabase o LocalStorage con fallback a semilla)
@@ -185,16 +301,43 @@ export function getStoredResources(): PsychoResource[] {
     if (raw) {
       const parsed = JSON.parse(raw) as PsychoResource[];
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Reparar automáticamente URL rota de YouTube (404) de la semilla inicial si sigue en caché
-        let repaired = false;
+        let changed = false;
+        const seedById = new Map(SEEDED_RESOURCES.map((item) => [item.id, item]));
+
         const normalized = parsed.map((item) => {
+          // Reparar automáticamente URL rota de YouTube (404) de la semilla inicial si sigue en caché
           if (item.videoUrl && item.videoUrl.includes("1Dv-LDOGvuc")) {
-            repaired = true;
+            changed = true;
             return { ...item, videoUrl: "https://www.youtube.com/watch?v=T38xzsKv3GQ" };
+          }
+          // Enriquecer recursos semilla que antes eran solo lectura si el usuario no les ha asignado otro video
+          if (ENRICHED_VIDEO_SEED_IDS.has(item.id) && !item.videoUrl) {
+            const seedMatch = seedById.get(item.id);
+            if (seedMatch?.videoUrl) {
+              changed = true;
+              return {
+                ...item,
+                format: "video" as const,
+                videoUrl: seedMatch.videoUrl,
+                videoTitle: seedMatch.videoTitle,
+                videoOrientation: seedMatch.videoOrientation,
+                readTime: seedMatch.readTime,
+                updatedAt: seedMatch.updatedAt,
+              };
+            }
           }
           return item;
         });
-        if (repaired) {
+
+        // Incorporar nuevos recursos de ejemplo que no existan aún en la caché local
+        const existingIds = new Set(normalized.map((item) => item.id));
+        const missingSeeds = SEEDED_RESOURCES.filter((seed) => !existingIds.has(seed.id));
+        if (missingSeeds.length > 0) {
+          changed = true;
+          normalized.push(...missingSeeds);
+        }
+
+        if (changed) {
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
           } catch {
