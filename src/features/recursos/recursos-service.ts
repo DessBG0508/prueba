@@ -3,6 +3,7 @@ import type { PsychoResource, VideoOrientation } from "@/lib/types";
 import { supabase } from "@/integrations/supabase/client";
 
 const STORAGE_KEY = "equilibra_recursos_catalogo_v1";
+const DELETED_SEEDS_KEY = "equilibra_recursos_deleted_seeds_v1";
 
 /**
  * Determina si la URL corresponde a un video externo que debe reproducirse en iframe (YouTube o Vimeo)
@@ -292,59 +293,102 @@ const ENRICHED_VIDEO_SEED_IDS = new Set([
   "rec-respiracion-cuadrada",
 ]);
 
+function getDeletedSeedIds(): Set<string> {
+  try {
+    if (typeof localStorage === "undefined") return new Set();
+    const raw = localStorage.getItem(DELETED_SEEDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function setDeletedSeedIds(ids: Set<string>): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    if (ids.size === 0) {
+      localStorage.removeItem(DELETED_SEEDS_KEY);
+    } else {
+      localStorage.setItem(DELETED_SEEDS_KEY, JSON.stringify([...ids]));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 /**
- * Obtiene todos los recursos (desde Supabase o LocalStorage con fallback a semilla)
+ * Repara URLs rotas conocidas, enriquece recursos semilla con videos verificados
+ * y fusiona los ejemplos faltantes que no hayan sido eliminados manualmente.
+ */
+function normalizeAndMergeWithSeeds(items: PsychoResource[]): {
+  resources: PsychoResource[];
+  changed: boolean;
+  missingSeeds: PsychoResource[];
+} {
+  let changed = false;
+  const seedById = new Map(SEEDED_RESOURCES.map((item) => [item.id, item]));
+  const deletedSeeds = getDeletedSeedIds();
+
+  const normalized = items.map((item) => {
+    // Reparar automáticamente URL rota de YouTube (404) de la semilla inicial si sigue en caché o BD
+    if (item.videoUrl && item.videoUrl.includes("1Dv-LDOGvuc")) {
+      changed = true;
+      return { ...item, videoUrl: "https://www.youtube.com/watch?v=T38xzsKv3GQ" };
+    }
+    // Enriquecer recursos semilla que antes eran solo lectura si aún no tienen un video asignado
+    if (ENRICHED_VIDEO_SEED_IDS.has(item.id) && !item.videoUrl) {
+      const seedMatch = seedById.get(item.id);
+      if (seedMatch?.videoUrl) {
+        changed = true;
+        return {
+          ...item,
+          format: "video" as const,
+          videoUrl: seedMatch.videoUrl,
+          videoTitle: seedMatch.videoTitle,
+          videoOrientation: seedMatch.videoOrientation,
+          readTime: seedMatch.readTime,
+          updatedAt: seedMatch.updatedAt,
+        };
+      }
+    }
+    return item;
+  });
+
+  // Incorporar nuevos recursos de ejemplo que no existan aún (ni hayan sido eliminados)
+  const existingIds = new Set(normalized.map((item) => item.id));
+  const missingSeeds = SEEDED_RESOURCES.filter(
+    (seed) => !existingIds.has(seed.id) && !deletedSeeds.has(seed.id),
+  );
+  if (missingSeeds.length > 0) {
+    changed = true;
+    normalized.push(...missingSeeds);
+  }
+
+  return { resources: normalized, changed, missingSeeds };
+}
+
+/**
+ * Obtiene todos los recursos (desde LocalStorage con fallback a semilla)
  */
 export function getStoredResources(): PsychoResource[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as PsychoResource[];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        let changed = false;
-        const seedById = new Map(SEEDED_RESOURCES.map((item) => [item.id, item]));
-
-        const normalized = parsed.map((item) => {
-          // Reparar automáticamente URL rota de YouTube (404) de la semilla inicial si sigue en caché
-          if (item.videoUrl && item.videoUrl.includes("1Dv-LDOGvuc")) {
-            changed = true;
-            return { ...item, videoUrl: "https://www.youtube.com/watch?v=T38xzsKv3GQ" };
-          }
-          // Enriquecer recursos semilla que antes eran solo lectura si el usuario no les ha asignado otro video
-          if (ENRICHED_VIDEO_SEED_IDS.has(item.id) && !item.videoUrl) {
-            const seedMatch = seedById.get(item.id);
-            if (seedMatch?.videoUrl) {
-              changed = true;
-              return {
-                ...item,
-                format: "video" as const,
-                videoUrl: seedMatch.videoUrl,
-                videoTitle: seedMatch.videoTitle,
-                videoOrientation: seedMatch.videoOrientation,
-                readTime: seedMatch.readTime,
-                updatedAt: seedMatch.updatedAt,
-              };
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as PsychoResource[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const { resources, changed } = normalizeAndMergeWithSeeds(parsed);
+          if (changed) {
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(resources));
+            } catch {
+              // ignore
             }
           }
-          return item;
-        });
-
-        // Incorporar nuevos recursos de ejemplo que no existan aún en la caché local
-        const existingIds = new Set(normalized.map((item) => item.id));
-        const missingSeeds = SEEDED_RESOURCES.filter((seed) => !existingIds.has(seed.id));
-        if (missingSeeds.length > 0) {
-          changed = true;
-          normalized.push(...missingSeeds);
+          return resources;
         }
-
-        if (changed) {
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-          } catch {
-            // ignore
-          }
-        }
-        return normalized;
       }
     }
   } catch {
@@ -353,7 +397,9 @@ export function getStoredResources(): PsychoResource[] {
 
   // Guardar semilla inicial si es la primera vez
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(SEEDED_RESOURCES));
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEEDED_RESOURCES));
+    }
   } catch {
     // ignore
   }
@@ -362,7 +408,8 @@ export function getStoredResources(): PsychoResource[] {
 }
 
 /**
- * Carga recursos asíncronamente intentando sincronizar con Supabase
+ * Carga recursos asíncronamente intentando sincronizar con Supabase,
+ * fusionando los recursos semilla nuevos y conservando videos locales de IndexedDB.
  */
 export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
   try {
@@ -395,14 +442,64 @@ export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
         active: row.active !== false,
       }));
 
-      // Cachear localmente
+      // Preservar videos locales (indexeddb://) que no puedan vivir en Supabase Storage
+      let mergedBase = mapped;
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mapped));
+        if (typeof localStorage !== "undefined") {
+          const localRaw = localStorage.getItem(STORAGE_KEY);
+          if (localRaw) {
+            const localParsed = JSON.parse(localRaw) as PsychoResource[];
+            if (Array.isArray(localParsed)) {
+              const dbIds = new Set(mapped.map((r) => r.id));
+              const localOnlyIndexedDb = localParsed.filter(
+                (r) => !dbIds.has(r.id) && r.videoUrl?.startsWith("indexeddb://"),
+              );
+              if (localOnlyIndexedDb.length > 0) {
+                mergedBase = [...localOnlyIndexedDb, ...mapped];
+              }
+            }
+          }
+        }
       } catch {
         // ignore
       }
 
-      return mapped;
+      const { resources: finalResources, missingSeeds } = normalizeAndMergeWithSeeds(mergedBase);
+
+      // Si hay sesión autorizada y faltaban ejemplos en Supabase, intentar sincronizarlos en segundo plano
+      if (missingSeeds.length > 0) {
+        void supabase.from("recursos").upsert(
+          missingSeeds.map((r) => ({
+            id: r.id,
+            title: r.title,
+            short_description: r.shortDescription,
+            category: r.category,
+            read_time: r.readTime,
+            icon_name: r.iconName,
+            tone: r.tone,
+            content: r.content,
+            key_takeaway: r.keyTakeaway,
+            video_url: r.videoUrl,
+            video_title: r.videoTitle,
+            video_orientation: r.videoOrientation || "auto",
+            format: r.format || "lectura",
+            author: r.author || "Área de Psicología TESH",
+            active: r.active !== false,
+            updated_at: new Date().toISOString(),
+          })),
+        );
+      }
+
+      // Cachear localmente la lista fusionada completa
+      try {
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(finalResources));
+        }
+      } catch {
+        // ignore
+      }
+
+      return finalResources;
     }
   } catch {
     // Si no existe la tabla o hay error de red, usar almacenamiento local
@@ -520,6 +617,12 @@ export async function deleteResource(id: string): Promise<boolean> {
   const current = getStoredResources();
   const updated = current.filter((r) => r.id !== id);
 
+  if (SEEDED_RESOURCES.some((seed) => seed.id === id)) {
+    const deletedSeeds = getDeletedSeedIds();
+    deletedSeeds.add(id);
+    setDeletedSeedIds(deletedSeeds);
+  }
+
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch {
@@ -565,10 +668,31 @@ export async function toggleResourceActive(id: string): Promise<boolean> {
  * Restaura los recursos a los valores predeterminados institucionales
  */
 export function resetResourcesToDefault(): PsychoResource[] {
+  setDeletedSeedIds(new Set());
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(SEEDED_RESOURCES));
   } catch {
     // ignore
   }
+  void supabase.from("recursos").upsert(
+    SEEDED_RESOURCES.map((r) => ({
+      id: r.id,
+      title: r.title,
+      short_description: r.shortDescription,
+      category: r.category,
+      read_time: r.readTime,
+      icon_name: r.iconName,
+      tone: r.tone,
+      content: r.content,
+      key_takeaway: r.keyTakeaway,
+      video_url: r.videoUrl,
+      video_title: r.videoTitle,
+      video_orientation: r.videoOrientation || "auto",
+      format: r.format || "lectura",
+      author: r.author || "Área de Psicología TESH",
+      active: r.active !== false,
+      updated_at: new Date().toISOString(),
+    })),
+  );
   return SEEDED_RESOURCES;
 }
