@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  ArrowLeft,
   Bell,
   CheckCircle2,
+  CheckSquare,
   ClipboardList,
+  FolderKanban,
   LogOut,
   RefreshCw,
   Search,
   Send,
-  ShieldAlert,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -19,6 +21,7 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -51,11 +54,10 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { EquilibraBrand } from "@/components/ui/equilibra-brand";
 import { useAuth } from "@/lib/auth-context";
 import { BRAND } from "@/lib/branding";
-import type { RiskLevel } from "@/lib/types";
 import {
-  createCanalizacion,
+  createCanalizacionesBatch,
   getCanalizaciones,
-  getGroupStudentsWithSemaforo,
+  getGroupStudents,
   getTutorGroupAssignments,
   getUnreadTutorAlerts,
   markAlertaAsRead,
@@ -67,28 +69,12 @@ import {
   type TutorStudentItem,
 } from "./tutor-service";
 
-const SEMAFORO_META: Record<RiskLevel, { label: string; dot: string; badgeClass: string }> = {
-  verde: {
-    label: "Verde",
-    dot: "bg-emerald-500",
-    badgeClass:
-      "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
-  },
-  amarillo: {
-    label: "Amarillo",
-    dot: "bg-amber-500",
-    badgeClass:
-      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
-  },
-  rojo: {
-    label: "Rojo",
-    dot: "bg-rose-600",
-    badgeClass:
-      "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300",
-  },
-};
+type StudentCanalizacionFilter = "all" | "sin_canalizar" | "canalizadas";
 
-const PRIORIDAD_META: Record<CanalizacionPrioridad, { label: string; badgeClass: string }> = {
+const URGENCIA_OBSERVACION_META: Record<
+  CanalizacionPrioridad,
+  { label: string; badgeClass: string }
+> = {
   baja: {
     label: "Baja",
     badgeClass:
@@ -123,7 +109,7 @@ const ESTADO_CANALIZACION_META: Record<CanalizacionEstado, { label: string; badg
     completada: {
       label: "Completada",
       badgeClass:
-        "border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+        "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
     },
     rechazada: {
       label: "Rechazada",
@@ -147,24 +133,31 @@ export function TutorDashboard() {
   const navigate = useNavigate();
 
   const [assignments, setAssignments] = useState<TutorGrupoAssignment[]>([]);
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>("");
-  const [students, setStudents] = useState<TutorStudentItem[]>([]);
+  const [studentsByGroup, setStudentsByGroup] = useState<Record<string, TutorStudentItem[]>>({});
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<AlertaInasistencia[]>([]);
   const [canalizaciones, setCanalizaciones] = useState<CanalizacionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [riskFilter, setRiskFilter] = useState<RiskLevel | "all">("all");
 
-  // Modal de canalización
-  const [canalizarTarget, setCanalizarTarget] = useState<TutorStudentItem | null>(null);
+  // Filtros y selección dentro del grupo activo
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StudentCanalizacionFilter>("all");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+
+  // Modal de canalización por observación del tutor (individual o múltiple)
+  const [canalizarTargets, setCanalizarTargets] = useState<TutorStudentItem[]>([]);
   const [motivoCanalizacion, setMotivoCanalizacion] = useState("");
-  const [prioridadCanalizacion, setPrioridadCanalizacion] =
-    useState<CanalizacionPrioridad>("normal");
+  const [urgenciaObservacion, setUrgenciaObservacion] = useState<CanalizacionPrioridad>("normal");
   const [isSubmittingCanalizacion, setIsSubmittingCanalizacion] = useState(false);
 
-  const selectedAssignment = useMemo(
-    () => assignments.find((a) => a.id === selectedAssignmentId) || assignments[0] || null,
-    [assignments, selectedAssignmentId],
+  const activeGroup = useMemo(
+    () => assignments.find((a) => a.id === activeGroupId) || null,
+    [assignments, activeGroupId],
+  );
+
+  const activeStudents = useMemo(
+    () => (activeGroup ? studentsByGroup[activeGroup.id] || [] : []),
+    [activeGroup, studentsByGroup],
   );
 
   const loadDashboardData = useCallback(async () => {
@@ -179,54 +172,49 @@ export function TutorDashboard() {
       });
       setAssignments(tutorGroups);
 
-      const activeGroup =
-        tutorGroups.find((g) => g.id === selectedAssignmentId) || tutorGroups[0] || null;
-      if (activeGroup && !selectedAssignmentId) {
-        setSelectedAssignmentId(activeGroup.id);
-      }
-
-      const [groupStudents, unreadAlerts, myCanalizaciones] = await Promise.all([
-        activeGroup
-          ? getGroupStudentsWithSemaforo(
-              activeGroup.carrera,
-              activeGroup.grupo,
-              activeGroup.semestre,
-            )
-          : Promise.resolve([]),
+      const [groupStudentPairs, unreadAlerts, myCanalizaciones] = await Promise.all([
+        Promise.all(
+          tutorGroups.map(async (g) => {
+            const list = await getGroupStudents(g.carrera, g.grupo, g.semestre);
+            return [g.id, list] as const;
+          }),
+        ),
         getUnreadTutorAlerts(user.id),
         getCanalizaciones({ tutorId: user.id }),
       ]);
 
-      setStudents(groupStudents);
+      const nextMap: Record<string, TutorStudentItem[]> = {};
+      for (const [id, list] of groupStudentPairs) {
+        nextMap[id] = list;
+      }
+
+      setStudentsByGroup(nextMap);
       setAlerts(unreadAlerts);
       setCanalizaciones(myCanalizaciones);
     } catch (err) {
       console.error("Error cargando panel del tutor:", err);
-      toast.error("No se pudo actualizar la información del grupo.");
+      toast.error("No se pudo actualizar la información de los grupos.");
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, user?.name, user?.carrera, user?.grupo, user?.semestre, selectedAssignmentId]);
+  }, [user?.id, user?.name, user?.carrera, user?.grupo, user?.semestre]);
 
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  const handleGroupChange = async (assignmentId: string) => {
-    setSelectedAssignmentId(assignmentId);
-    const chosen = assignments.find((a) => a.id === assignmentId);
-    if (!chosen) return;
-    setIsLoading(true);
-    try {
-      const groupStudents = await getGroupStudentsWithSemaforo(
-        chosen.carrera,
-        chosen.grupo,
-        chosen.semestre,
-      );
-      setStudents(groupStudents);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleOpenGroup = (groupId: string) => {
+    setActiveGroupId(groupId);
+    setSelectedStudentIds([]);
+    setSearchQuery("");
+    setStatusFilter("all");
+  };
+
+  const handleBackToGroups = () => {
+    setActiveGroupId(null);
+    setSelectedStudentIds([]);
+    setSearchQuery("");
+    setStatusFilter("all");
   };
 
   const handleLogout = async () => {
@@ -241,77 +229,151 @@ export function TutorDashboard() {
     toast.success("Alerta marcada como leída.");
   };
 
-  const handleOpenCanalizarModal = (student: TutorStudentItem) => {
-    setCanalizarTarget(student);
-    setMotivoCanalizacion("");
-    setPrioridadCanalizacion(
-      student.nivel === "rojo" ? "urgente" : student.nivel === "amarillo" ? "alta" : "normal",
+  // Verifica si el estudiante ya tiene una canalización pendiente
+  const hasPendingCanalizacion = useCallback(
+    (student: TutorStudentItem): boolean => {
+      return canalizaciones.some((c) => c.estado === "pendiente" && c.estudiante_id === student.id);
+    },
+    [canalizaciones],
+  );
+
+  // Cuenta cuántos estudiantes de un grupo tienen canalización registrada (activa/en seguimiento)
+  const countCanalizadosInGroup = useCallback(
+    (groupStudents: TutorStudentItem[]): number => {
+      const studentIdSet = new Set(groupStudents.map((s) => s.id));
+      const canalizadosIds = new Set(
+        canalizaciones
+          .filter((c) => studentIdSet.has(c.estudiante_id) && c.estado !== "rechazada")
+          .map((c) => c.estudiante_id),
+      );
+      return canalizadosIds.size;
+    },
+    [canalizaciones],
+  );
+
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return activeStudents.filter((st) => {
+      const isCanalizada = hasPendingCanalizacion(st);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "canalizadas" && isCanalizada) ||
+        (statusFilter === "sin_canalizar" && !isCanalizada);
+
+      const matchesQuery =
+        q === "" || st.nombre.toLowerCase().includes(q) || st.matricula.toLowerCase().includes(q);
+
+      return matchesStatus && matchesQuery;
+    });
+  }, [activeStudents, searchQuery, statusFilter, hasPendingCanalizacion]);
+
+  const selectableFilteredStudents = useMemo(
+    () => filteredStudents.filter((st) => !hasPendingCanalizacion(st)),
+    [filteredStudents, hasPendingCanalizacion],
+  );
+
+  const selectedStudentsList = useMemo(
+    () => activeStudents.filter((st) => selectedStudentIds.includes(st.id)),
+    [activeStudents, selectedStudentIds],
+  );
+
+  const allSelectableSelected =
+    selectableFilteredStudents.length > 0 &&
+    selectableFilteredStudents.every((st) => selectedStudentIds.includes(st.id));
+
+  const handleToggleStudentSelection = (student: TutorStudentItem) => {
+    if (hasPendingCanalizacion(student)) return;
+    setSelectedStudentIds((prev) =>
+      prev.includes(student.id) ? prev.filter((id) => id !== student.id) : [...prev, student.id],
     );
   };
 
+  const handleToggleSelectAll = () => {
+    if (selectableFilteredStudents.length === 0) return;
+    if (allSelectableSelected) {
+      const selectableIds = new Set(selectableFilteredStudents.map((s) => s.id));
+      setSelectedStudentIds((prev) => prev.filter((id) => !selectableIds.has(id)));
+    } else {
+      const merged = new Set([
+        ...selectedStudentIds,
+        ...selectableFilteredStudents.map((s) => s.id),
+      ]);
+      setSelectedStudentIds(Array.from(merged));
+    }
+  };
+
+  const handleOpenCanalizarModal = (targets: TutorStudentItem[]) => {
+    const elegibles = targets.filter((t) => !hasPendingCanalizacion(t));
+    if (elegibles.length === 0) return;
+
+    setCanalizarTargets(elegibles);
+    setMotivoCanalizacion("");
+    setUrgenciaObservacion("normal");
+  };
+
   const handleSubmitCanalizacion = async () => {
-    if (!canalizarTarget || !user?.id) return;
+    if (canalizarTargets.length === 0 || !user?.id) return;
     if (!motivoCanalizacion.trim()) {
-      toast.error("Describe brevemente el motivo de la canalización.");
+      toast.error("Describe el motivo de canalización basado en tu observación como tutor.");
       return;
     }
 
     setIsSubmittingCanalizacion(true);
     try {
-      const res = await createCanalizacion({
+      const { created, errors } = await createCanalizacionesBatch({
         tutor_id: user.id,
         tutor_nombre: user.name,
-        estudiante_id: canalizarTarget.id,
-        estudiante_nombre: canalizarTarget.nombre,
-        folio: canalizarTarget.folio,
-        carrera: canalizarTarget.carrera,
-        grupo: canalizarTarget.grupo,
-        semestre: canalizarTarget.semestre,
+        estudiantes: canalizarTargets,
         motivo: motivoCanalizacion,
-        prioridad: prioridadCanalizacion,
+        prioridad: urgenciaObservacion,
       });
 
-      if (!res.ok) {
-        toast.error(res.error || "No se pudo enviar la canalización.");
-        return;
+      if (created.length > 0) {
+        setCanalizaciones((prev) => [...created, ...prev]);
+        const createdIds = new Set(created.map((c) => c.estudiante_id));
+        setSelectedStudentIds((prev) => prev.filter((id) => !createdIds.has(id)));
+        toast.success(
+          created.length === 1
+            ? "1 estudiante canalizado al psicólogo"
+            : `${created.length} estudiantes canalizados al psicólogo`,
+        );
       }
 
-      if (res.canalizacion) {
-        setCanalizaciones((prev) => [res.canalizacion!, ...prev]);
+      if (errors.length > 0) {
+        toast.error(`Algunos registros no pudieron enviarse: ${errors[0]}`);
       }
-      toast.success(`Canalización enviada para ${canalizarTarget.nombre}.`);
-      setCanalizarTarget(null);
-      setMotivoCanalizacion("");
+
+      if (created.length > 0) {
+        setCanalizarTargets([]);
+        setMotivoCanalizacion("");
+      }
     } finally {
       setIsSubmittingCanalizacion(false);
     }
   };
 
-  const filteredStudents = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return students.filter((st) => {
-      const matchesRisk = riskFilter === "all" || st.nivel === riskFilter;
-      const matchesQuery =
-        q === "" ||
-        st.nombre.toLowerCase().includes(q) ||
-        st.matricula.toLowerCase().includes(q) ||
-        (st.folio && st.folio.toLowerCase().includes(q));
-      return matchesRisk && matchesQuery;
-    });
-  }, [students, searchQuery, riskFilter]);
-
-  const counts = useMemo(() => {
+  const activeGroupCounts = useMemo(() => {
+    const canalizadas = activeStudents.filter((s) => hasPendingCanalizacion(s)).length;
     return {
-      total: students.length,
-      verde: students.filter((s) => s.nivel === "verde").length,
-      amarillo: students.filter((s) => s.nivel === "amarillo").length,
-      rojo: students.filter((s) => s.nivel === "rojo").length,
+      total: activeStudents.length,
+      canalizadas,
+      sinCanalizar: activeStudents.length - canalizadas,
     };
-  }, [students]);
+  }, [activeStudents, hasPendingCanalizacion]);
 
   const scrollToAlerts = () => {
-    const el = document.getElementById("tutor-alertas-section");
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (activeGroupId) {
+      setActiveGroupId(null);
+      setTimeout(() => {
+        document
+          .getElementById("tutor-alertas-section")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+      return;
+    }
+    document
+      .getElementById("tutor-alertas-section")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -327,22 +389,20 @@ export function TutorDashboard() {
             <h1 className="font-display text-xl sm:text-2xl font-bold text-[#1B198F] dark:text-foreground truncate">
               Panel de Tutoría y Canalización
             </h1>
-            {selectedAssignment && (
-              <p className="text-xs text-muted-foreground truncate">
-                {selectedAssignment.carrera} • Grupo {selectedAssignment.grupo} (
-                {selectedAssignment.semestre}º Semestre)
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground truncate">
+              {activeGroup
+                ? `${activeGroup.carrera} · Grupo ${activeGroup.grupo} · ${activeGroup.semestre}º Sem`
+                : `${assignments.length} ${assignments.length === 1 ? "grupo asignado" : "grupos asignados"} activos`}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
-          {/* Badge rojo con contador de alertas no leídas en el header */}
           <button
             type="button"
             onClick={scrollToAlerts}
-            aria-label={`Alertas sin leer: ${alerts.length}`}
-            className="relative inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
+            aria-label={`Alertas de inasistencia sin leer: ${alerts.length}`}
+            className="relative inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             <Bell className="size-4 text-[#1B198F] dark:text-indigo-300" />
             <span className="hidden sm:inline">Alertas</span>
@@ -361,7 +421,7 @@ export function TutorDashboard() {
             variant="outline"
             size="sm"
             onClick={loadDashboardData}
-            className="rounded-xl text-xs font-semibold h-9"
+            className="rounded-lg text-xs font-semibold h-9"
           >
             <RefreshCw className={`size-3.5 sm:mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
             <span className="hidden sm:inline">Actualizar</span>
@@ -387,7 +447,7 @@ export function TutorDashboard() {
                 </Avatar>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
+            <DropdownMenuContent align="end" className="w-60 rounded-xl p-2">
               <DropdownMenuLabel className="space-y-1 p-2">
                 <p className="truncate text-sm font-bold text-foreground">
                   {user?.name || "Tutor TESH"}
@@ -405,7 +465,7 @@ export function TutorDashboard() {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleLogout}
-                className="cursor-pointer gap-2 rounded-xl text-xs font-semibold text-destructive focus:bg-destructive/10 focus:text-destructive"
+                className="cursor-pointer gap-2 rounded-lg text-xs font-semibold text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
                 <LogOut className="size-4" />
                 <span>Cerrar sesión</span>
@@ -416,443 +476,550 @@ export function TutorDashboard() {
       </header>
 
       <main className="space-y-6 py-6 pb-16">
-        {/* Selector de grupo asignado (si el tutor tiene más de uno) */}
-        {assignments.length > 1 && (
-          <section className="rounded-2xl border border-border bg-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Grupo Asignado Activo
-              </p>
-              <p className="text-sm font-semibold text-foreground">
-                Selecciona el grupo que deseas revisar
-              </p>
-            </div>
-            <select
-              value={selectedAssignment?.id || ""}
-              onChange={(e) => handleGroupChange(e.target.value)}
-              className="rounded-xl border border-border bg-background px-3 py-2 text-xs sm:text-sm font-semibold text-foreground focus:border-[#1B198F] focus:outline-none"
-            >
-              {assignments.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.carrera} — Grupo {a.grupo} ({a.semestre}º Semestre)
-                </option>
-              ))}
-            </select>
-          </section>
-        )}
-
-        {/* Resumen numérico del grupo */}
-        <section
-          aria-label="Resumen del semáforo grupal"
-          className="grid grid-cols-2 lg:grid-cols-5 gap-3"
-        >
-          <div className="rounded-2xl border border-border bg-card p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-muted-foreground">Estudiantes</span>
-              <Users className="size-4 text-[#1B198F]" />
-            </div>
-            <p className="font-numeric mt-2 text-2xl font-bold text-[#1B198F] dark:text-foreground">
-              {counts.total}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">En tu grupo asignado</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setRiskFilter((p) => (p === "verde" ? "all" : "verde"))}
-            className={`rounded-2xl border p-4 text-left transition-colors cursor-pointer ${
-              riskFilter === "verde"
-                ? "border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/30"
-                : "border-border bg-card hover:border-emerald-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-300">
-                Verde
-              </span>
-              <span className="size-2.5 rounded-full bg-emerald-500" />
-            </div>
-            <p className="font-numeric mt-2 text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-              {counts.verde}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Sin riesgo detectado</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRiskFilter((p) => (p === "amarillo" ? "all" : "amarillo"))}
-            className={`rounded-2xl border p-4 text-left transition-colors cursor-pointer ${
-              riskFilter === "amarillo"
-                ? "border-amber-500 bg-amber-50/70 dark:bg-amber-950/30"
-                : "border-border bg-card hover:border-amber-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-amber-700 dark:text-amber-300">
-                Amarillo
-              </span>
-              <span className="size-2.5 rounded-full bg-amber-500" />
-            </div>
-            <p className="font-numeric mt-2 text-2xl font-bold text-amber-700 dark:text-amber-300">
-              {counts.amarillo}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Seguimiento preventivo</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRiskFilter((p) => (p === "rojo" ? "all" : "rojo"))}
-            className={`rounded-2xl border p-4 text-left transition-colors cursor-pointer ${
-              riskFilter === "rojo"
-                ? "border-rose-500 bg-rose-50/70 dark:bg-rose-950/30"
-                : "border-border bg-card hover:border-rose-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-rose-700 dark:text-rose-300">
-                Rojo
-              </span>
-              <span className="size-2.5 rounded-full bg-rose-600" />
-            </div>
-            <p className="font-numeric mt-2 text-2xl font-bold text-rose-700 dark:text-rose-300">
-              {counts.rojo}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Atención prioritaria</p>
-          </button>
-
-          <button
-            type="button"
-            onClick={scrollToAlerts}
-            className="col-span-2 lg:col-span-1 rounded-2xl border border-rose-200 bg-rose-50/50 dark:border-rose-900/60 dark:bg-rose-950/20 p-4 text-left hover:border-rose-400 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-rose-700 dark:text-rose-300">
-                Alertas
-              </span>
-              <ShieldAlert className="size-4 text-rose-600" />
-            </div>
-            <p className="font-numeric mt-2 text-2xl font-bold text-rose-700 dark:text-rose-300">
-              {alerts.length}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Notificaciones sin leer</p>
-          </button>
-        </section>
-
-        {/* SECCIÓN DE ALERTAS (Inasistencias a citas y niveles rojos) */}
-        <section
-          id="tutor-alertas-section"
-          className="rounded-2xl border border-border bg-card p-5 space-y-4"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="grid size-9 place-items-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">
-                <AlertTriangle className="size-4" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-foreground">
-                  Alertas de Seguimiento e Inasistencia
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Avisos automáticos cuando tus estudiantes faltan a cita o presentan nivel rojo.
-                </p>
-              </div>
-            </div>
-            {alerts.length > 0 && (
-              <Badge className="bg-rose-600 text-white text-xs font-bold">
-                {alerts.length} sin leer
-              </Badge>
-            )}
-          </div>
-
-          {alerts.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-              No tienes alertas pendientes de revisión en este momento.
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {alerts.map((alerta) => (
-                <div
-                  key={alerta.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50/40 dark:border-rose-900/50 dark:bg-rose-950/20 p-3.5"
-                >
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className="border-rose-300 bg-white dark:bg-card text-rose-700 dark:text-rose-300 text-[10px] font-bold uppercase"
-                      >
-                        {alerta.tipo_alerta === "inasistencia_repetida"
-                          ? "Inasistencia repetida • Urgente"
-                          : alerta.tipo_alerta === "no_canalizacion"
-                            ? "Tamizaje nivel rojo"
-                            : "Inasistencia a cita"}
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatFechaCorta(alerta.created_at)}
-                      </span>
-                    </div>
-                    <p className="text-xs sm:text-sm font-semibold text-foreground">
-                      {alerta.mensaje}
+        {!activeGroup ? (
+          /* ================================================================
+             1. VISTA POR GRUPOS (Tarjetas de grupos asignados al tutor)
+             ================================================================ */
+          <>
+            <section className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="grid size-9 place-items-center rounded-lg bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300">
+                    <FolderKanban className="size-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">Tus Grupos Asignados</h2>
+                    <p className="text-xs text-muted-foreground">
+                      Selecciona un grupo para consultar la lista académica y canalizar por
+                      observación tutorial.
                     </p>
                   </div>
+                </div>
+              </div>
 
+              {isLoading && assignments.length === 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="h-44 rounded-xl border border-border bg-card animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : assignments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+                  <p className="text-sm font-semibold text-foreground">
+                    No tienes grupos activos asignados actualmente.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Solicita al departamento Directivo la asignación de tus grupos en el sistema.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {assignments.map((group) => {
+                    const groupList = studentsByGroup[group.id] || [];
+                    const totalCount = groupList.length;
+                    const canalizadosCount = countCanalizadosInGroup(groupList);
+
+                    return (
+                      <article
+                        key={group.id}
+                        className="flex flex-col justify-between rounded-xl border border-border bg-card p-5 transition-colors hover:border-[#1B198F]/50"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="inline-flex items-center rounded-md bg-[#1B198F]/10 px-2.5 py-1 text-[11px] font-bold text-[#1B198F] dark:text-indigo-300">
+                              Grupo {group.grupo} · {group.semestre}º Sem
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                              <Users className="size-3.5 text-[#1B198F]" />
+                              {totalCount} {totalCount === 1 ? "estudiante" : "estudiantes"}
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm sm:text-base font-bold text-foreground leading-snug">
+                            {group.carrera} · Grupo {group.grupo} · {group.semestre}º Sem
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <Badge
+                              variant="outline"
+                              className="border-[#1B198F]/30 bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300 text-xs font-bold"
+                            >
+                              {canalizadosCount}{" "}
+                              {canalizadosCount === 1
+                                ? "estudiante canalizado"
+                                : "estudiantes canalizados"}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 pt-3 border-t border-border/60">
+                          <Button
+                            type="button"
+                            onClick={() => handleOpenGroup(group.id)}
+                            className="w-full rounded-lg bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-semibold h-9"
+                          >
+                            Ver grupo
+                          </Button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* SECCIÓN DE ALERTAS DE INASISTENCIA A CITAS */}
+            <section
+              id="tutor-alertas-section"
+              className="rounded-xl border border-border bg-card p-5 space-y-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="grid size-9 place-items-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                    <AlertTriangle className="size-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">
+                      Alertas de Inasistencia a Citas
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Avisos operativos cuando un estudiante canalizado no acude a su cita
+                      programada.
+                    </p>
+                  </div>
+                </div>
+                {alerts.length > 0 && (
+                  <Badge className="bg-rose-600 text-white text-xs font-bold">
+                    {alerts.length} sin leer
+                  </Badge>
+                )}
+              </div>
+
+              {alerts.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+                  No tienes alertas de inasistencia pendientes de revisión.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {alerts.map((alerta) => (
+                    <div
+                      key={alerta.id}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/20 p-3.5"
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-white dark:bg-card text-amber-800 dark:text-amber-300 text-[10px] font-bold uppercase"
+                          >
+                            {alerta.tipo_alerta === "inasistencia_repetida"
+                              ? "Inasistencia repetida"
+                              : "Inasistencia a cita"}
+                          </Badge>
+                          <span className="text-[11px] text-muted-foreground">
+                            {formatFechaCorta(alerta.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-xs sm:text-sm font-semibold text-foreground">
+                          {alerta.mensaje}
+                        </p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleMarkAlertRead(alerta.id)}
+                        className="rounded-lg border-[#1B198F]/30 text-[#1B198F] dark:text-indigo-300 hover:bg-[#1B198F]/10 text-xs font-semibold shrink-0"
+                      >
+                        <CheckCircle2 className="mr-1.5 size-3.5" />
+                        Marcar como leída
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* HISTORIAL DE CANALIZACIONES DEL TUTOR */}
+            <section className="rounded-xl border border-border bg-card p-5 space-y-4">
+              <div className="flex items-center gap-2.5">
+                <div className="grid size-9 place-items-center rounded-lg bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300">
+                  <ClipboardList className="size-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-foreground">
+                    Canalizaciones Enviadas a Psicología
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Seguimiento administrativo del estado de tus canalizaciones por observación
+                    tutorial.
+                  </p>
+                </div>
+              </div>
+
+              {canalizaciones.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+                  Aún no has enviado canalizaciones al área de psicología.
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-xs font-bold">Estudiante</TableHead>
+                        <TableHead className="text-xs font-bold">Motivo (Observación)</TableHead>
+                        <TableHead className="text-xs font-bold">Urgencia</TableHead>
+                        <TableHead className="text-xs font-bold">Estado</TableHead>
+                        <TableHead className="text-xs font-bold">Fecha</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {canalizaciones.map((c) => {
+                        const uMeta =
+                          URGENCIA_OBSERVACION_META[c.prioridad] ||
+                          URGENCIA_OBSERVACION_META.normal;
+                        const eMeta =
+                          ESTADO_CANALIZACION_META[c.estado] || ESTADO_CANALIZACION_META.pendiente;
+                        return (
+                          <TableRow key={c.id}>
+                            <TableCell className="text-xs font-semibold text-foreground">
+                              <div className="font-bold text-foreground">
+                                {c.estudiante_nombre || "Estudiante TESH"}
+                              </div>
+                              {c.grupo && (
+                                <span className="text-[11px] text-muted-foreground">
+                                  Grupo {c.grupo}
+                                  {c.semestre ? ` · ${c.semestre}º Sem` : ""}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-sm">
+                              <p className="line-clamp-2">{c.motivo}</p>
+                              {c.estado === "rechazada" && c.motivo_rechazo && (
+                                <p className="mt-1 text-[11px] text-rose-600 font-medium">
+                                  Motivo de rechazo: {c.motivo_rechazo}
+                                </p>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={`${uMeta.badgeClass} text-[11px] font-bold`}
+                              >
+                                {uMeta.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={`${eMeta.badgeClass} text-[11px] font-bold`}
+                              >
+                                {eMeta.label}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                              {formatFechaCorta(c.created_at)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+          </>
+        ) : (
+          /* ================================================================
+             2. VISTA DE LISTA DE ESTUDIANTES POR GRUPO (DATOS ACADÉMICOS)
+             ================================================================ */
+          <section className="space-y-5">
+            {/* Barra superior de navegación de regreso y contexto del grupo */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start sm:items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBackToGroups}
+                  className="rounded-lg text-xs font-semibold h-9 shrink-0"
+                >
+                  <ArrowLeft className="mr-1.5 size-3.5" />
+                  Volver a grupos
+                </Button>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-[#1B198F] dark:text-foreground">
+                    {activeGroup.carrera} · Grupo {activeGroup.grupo} · {activeGroup.semestre}º Sem
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Listado académico del grupo. Las canalizaciones se fundamentan en observación
+                    tutorial directa.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                <span className="rounded-md border border-border bg-muted/40 px-2.5 py-1 text-foreground">
+                  Total: {activeGroupCounts.total}
+                </span>
+                <span className="rounded-md border border-[#1B198F]/30 bg-[#1B198F]/10 px-2.5 py-1 text-[#1B198F] dark:text-indigo-300">
+                  Canalizadas: {activeGroupCounts.canalizadas}
+                </span>
+                <span className="rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                  Sin canalizar: {activeGroupCounts.sinCanalizar}
+                </span>
+              </div>
+            </div>
+
+            {/* Contenedor de filtros, selección múltiple y tabla */}
+            <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+              {/* Filtros por estado de canalización y búsqueda por nombre o matrícula */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div
+                  role="group"
+                  aria-label="Filtrar por estado de canalización"
+                  className="flex flex-wrap items-center gap-1.5"
+                >
+                  {(
+                    [
+                      { key: "all", label: "Todos" },
+                      { key: "sin_canalizar", label: "Sin canalizar" },
+                      { key: "canalizadas", label: "Canalizadas" },
+                    ] as const
+                  ).map((tab) => {
+                    const isActive = statusFilter === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setStatusFilter(tab.key)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                          isActive
+                            ? "border-[#1B198F] bg-[#1B198F] text-white"
+                            : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="relative w-full lg:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar por nombre o matrícula..."
+                    className="pl-9 rounded-lg text-xs h-9"
+                  />
+                </div>
+              </div>
+
+              {/* Barra superior de selección múltiple */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/80 bg-muted/30 px-3.5 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
-                    size="sm"
                     variant="outline"
-                    onClick={() => handleMarkAlertRead(alerta.id)}
-                    className="rounded-xl border-[#1B198F]/30 text-[#1B198F] dark:text-indigo-300 hover:bg-[#1B198F]/10 text-xs font-semibold shrink-0"
+                    size="sm"
+                    disabled={selectableFilteredStudents.length === 0}
+                    onClick={handleToggleSelectAll}
+                    className="rounded-lg text-xs font-semibold h-8 border-[#1B198F]/30 text-[#1B198F] dark:text-indigo-300"
                   >
-                    <CheckCircle2 className="mr-1.5 size-3.5" />
-                    Marcar como leída
+                    <CheckSquare className="mr-1.5 size-3.5" />
+                    {allSelectableSelected ? "Deseleccionar todos" : "Seleccionar todos"}
                   </Button>
+
+                  <span className="text-xs text-muted-foreground">
+                    {selectedStudentIds.length > 0
+                      ? `${selectedStudentIds.length} seleccionado(s)`
+                      : "Marca uno o varios estudiantes para canalizar"}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
 
-        {/* LISTA DE ESTUDIANTES Y SEMÁFORO SIMPLIFICADO */}
-        <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-foreground">
-                Estudiantes del Grupo y Semáforo Simplificado
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Por confidencialidad clínica solo se muestra el nivel de semáforo (sin puntajes ni
-                conversaciones).
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar por nombre, matrícula o folio..."
-                  className="pl-9 rounded-xl text-xs h-9"
-                />
-              </div>
-              {riskFilter !== "all" && (
                 <Button
                   type="button"
                   size="sm"
-                  variant="ghost"
-                  onClick={() => setRiskFilter("all")}
-                  className="text-xs text-[#1B198F] font-semibold"
+                  disabled={selectedStudentsList.length === 0}
+                  onClick={() => handleOpenCanalizarModal(selectedStudentsList)}
+                  className="rounded-lg bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-semibold h-8 disabled:opacity-50"
                 >
-                  Ver todos
+                  <UserPlus className="mr-1.5 size-3.5" />
+                  Canalizar seleccionados ({selectedStudentsList.length})
                 </Button>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <div className="rounded-xl border border-border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="text-xs font-bold">Estudiante</TableHead>
-                  <TableHead className="text-xs font-bold">Matrícula / Folio</TableHead>
-                  <TableHead className="text-xs font-bold">Grupo</TableHead>
-                  <TableHead className="text-xs font-bold">Semáforo</TableHead>
-                  <TableHead className="text-xs font-bold text-right">Acción</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center py-8 text-xs text-muted-foreground"
-                    >
-                      No hay estudiantes que coincidan con el filtro aplicado.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredStudents.map((st) => {
-                    const meta = SEMAFORO_META[st.nivel];
-                    return (
-                      <TableRow key={st.id}>
-                        <TableCell className="font-semibold text-xs sm:text-sm text-foreground">
-                          <div className="flex items-center gap-2.5">
-                            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300 text-xs font-bold">
-                              {st.iniciales}
-                            </span>
-                            <span>{st.nombre}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          <div>{st.matricula}</div>
-                          {st.folio && (
-                            <span className="text-[11px] font-semibold text-foreground/80">
-                              Folio: {st.folio}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {st.grupo} {st.semestre ? `(${st.semestre}º)` : ""}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`${meta.badgeClass} text-xs font-bold`}
-                          >
-                            <span className={`mr-1.5 size-2 rounded-full ${meta.dot}`} />
-                            {meta.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleOpenCanalizarModal(st)}
-                            className="rounded-xl bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-semibold h-8"
-                          >
-                            <UserPlus className="mr-1.5 size-3.5" />
-                            Canalizar al psicólogo
-                          </Button>
+              {/* Tabla de estudiantes del grupo */}
+              <div className="rounded-lg border border-border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="w-11 text-center">
+                        <span className="sr-only">Seleccionar</span>
+                      </TableHead>
+                      <TableHead className="text-xs font-bold">Nombre completo</TableHead>
+                      <TableHead className="text-xs font-bold">Matrícula</TableHead>
+                      <TableHead className="text-xs font-bold">
+                        Carrera / Grupo / Semestre
+                      </TableHead>
+                      <TableHead className="text-xs font-bold">Estado de canalización</TableHead>
+                      <TableHead className="text-xs font-bold text-right">Acción</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredStudents.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center py-8 text-xs text-muted-foreground"
+                        >
+                          No hay estudiantes en este grupo que coincidan con el filtro aplicado.
                         </TableCell>
                       </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </section>
+                    ) : (
+                      filteredStudents.map((st) => {
+                        const isPending = hasPendingCanalizacion(st);
+                        const isChecked = !isPending && selectedStudentIds.includes(st.id);
 
-        {/* HISTORIAL DE CANALIZACIONES DEL TUTOR */}
-        <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-9 place-items-center rounded-xl bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300">
-              <ClipboardList className="size-4" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-foreground">
-                Canalizaciones Enviadas a Psicología
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Seguimiento en tiempo real del estado de tus solicitudes de atención.
-              </p>
-            </div>
-          </div>
-
-          {canalizaciones.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-              Aún no has enviado canalizaciones al área de psicología.
-            </div>
-          ) : (
-            <div className="rounded-xl border border-border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40">
-                    <TableHead className="text-xs font-bold">Estudiante</TableHead>
-                    <TableHead className="text-xs font-bold">Motivo</TableHead>
-                    <TableHead className="text-xs font-bold">Prioridad</TableHead>
-                    <TableHead className="text-xs font-bold">Estado</TableHead>
-                    <TableHead className="text-xs font-bold">Fecha</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {canalizaciones.map((c) => {
-                    const pMeta = PRIORIDAD_META[c.prioridad] || PRIORIDAD_META.normal;
-                    const eMeta =
-                      ESTADO_CANALIZACION_META[c.estado] || ESTADO_CANALIZACION_META.pendiente;
-                    return (
-                      <TableRow key={c.id}>
-                        <TableCell className="text-xs font-semibold text-foreground">
-                          <div>{c.estudiante_nombre || "Estudiante"}</div>
-                          {c.folio && (
-                            <span className="text-[11px] text-muted-foreground">{c.folio}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-sm">
-                          <p className="line-clamp-2">{c.motivo}</p>
-                          {c.estado === "rechazada" && c.motivo_rechazo && (
-                            <p className="mt-1 text-[11px] text-rose-600 font-medium">
-                              Motivo de rechazo: {c.motivo_rechazo}
-                            </p>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`${pMeta.badgeClass} text-[11px] font-bold`}
+                        return (
+                          <TableRow
+                            key={st.id}
+                            className={isChecked ? "bg-[#1B198F]/[0.04]" : undefined}
                           >
-                            {pMeta.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`${eMeta.badgeClass} text-[11px] font-bold`}
-                          >
-                            {eMeta.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatFechaCorta(c.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                            <TableCell className="text-center">
+                              <Checkbox
+                                checked={isChecked}
+                                disabled={isPending}
+                                onCheckedChange={() => handleToggleStudentSelection(st)}
+                                aria-label={`Seleccionar estudiante ${st.nombre}`}
+                              />
+                            </TableCell>
+                            <TableCell className="font-semibold text-xs sm:text-sm text-foreground">
+                              {st.nombre}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs font-semibold text-foreground/85">
+                              {st.matricula}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {st.carrera} · Grupo {st.grupo} · {st.semestre}º Sem
+                            </TableCell>
+                            <TableCell>
+                              {isPending ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-[#1B198F]/30 bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300 text-xs font-bold"
+                                >
+                                  Canalizada
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 text-xs font-semibold"
+                                >
+                                  Sin canalizar
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={isPending}
+                                onClick={() => handleOpenCanalizarModal([st])}
+                                className="rounded-lg bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-semibold h-8 disabled:opacity-50"
+                              >
+                                <UserPlus className="mr-1.5 size-3.5" />
+                                Canalizar
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
-          )}
-        </section>
+          </section>
+        )}
       </main>
 
-      {/* Modal de Canalización al Psicólogo */}
+      {/* Modal de Canalización por Observación del Tutor (Individual / Selectiva) */}
       <Dialog
-        open={canalizarTarget !== null}
+        open={canalizarTargets.length > 0}
         onOpenChange={(open) => {
-          if (!open) setCanalizarTarget(null);
+          if (!open && !isSubmittingCanalizacion) {
+            setCanalizarTargets([]);
+          }
         }}
       >
-        <DialogContent className="sm:max-w-md rounded-2xl">
+        <DialogContent className="sm:max-w-lg rounded-xl">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-[#1B198F] dark:text-foreground">
-              Canalizar estudiante al psicólogo
+              {canalizarTargets.length === 1
+                ? "Canalizar estudiante al psicólogo"
+                : `Canalizar ${canalizarTargets.length} estudiantes al psicólogo`}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              {canalizarTarget
-                ? `Estudiante: ${canalizarTarget.nombre} (${canalizarTarget.matricula}) — Grupo ${canalizarTarget.grupo}`
-                : ""}
+              Registra una solicitud basada exclusivamente en tu observación académica y conductual
+              como tutor.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* Lista de estudiantes seleccionados para confirmar */}
             <div className="space-y-1.5">
-              <Label htmlFor="canalizacion-prioridad" className="text-xs font-bold">
-                Prioridad de atención
+              <Label className="text-xs font-bold">
+                Estudiantes seleccionados ({canalizarTargets.length})
+              </Label>
+              <div className="max-h-36 overflow-y-auto rounded-lg border border-border bg-muted/30 p-2.5 space-y-1.5">
+                {canalizarTargets.map((target) => (
+                  <div
+                    key={target.id}
+                    className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-card px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="font-semibold text-foreground">{target.nombre}</span>
+                    <span className="font-mono text-muted-foreground">{target.matricula}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="canalizacion-urgencia" className="text-xs font-bold">
+                Urgencia de la observación
               </Label>
               <select
-                id="canalizacion-prioridad"
-                value={prioridadCanalizacion}
-                onChange={(e) => setPrioridadCanalizacion(e.target.value as CanalizacionPrioridad)}
-                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-xs sm:text-sm font-semibold text-foreground focus:border-[#1B198F] focus:outline-none"
+                id="canalizacion-urgencia"
+                value={urgenciaObservacion}
+                onChange={(e) => setUrgenciaObservacion(e.target.value as CanalizacionPrioridad)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs sm:text-sm font-semibold text-foreground focus:border-[#1B198F] focus:outline-none"
               >
-                <option value="baja">Baja — Orientación preventiva</option>
-                <option value="normal">Normal — Seguimiento regular</option>
-                <option value="alta">Alta — Atención pronta</option>
-                <option value="urgente">Urgente — Prioridad inmediata</option>
+                <option value="baja">Baja — Seguimiento preventivo en tutoría</option>
+                <option value="normal">Normal — Observación académica o conductual</option>
+                <option value="alta">Alta — Cambios notorios o inasistencias recientes</option>
+                <option value="urgente">Urgente — Situación observada de atención pronta</option>
               </select>
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="canalizacion-motivo" className="text-xs font-bold">
-                Motivo de canalización
+                Describe el motivo de canalización basado en tu observación como tutor (no en datos
+                clínicos): <span className="text-rose-600">*</span>
               </Label>
               <Textarea
                 id="canalizacion-motivo"
                 rows={4}
+                required
                 value={motivoCanalizacion}
                 onChange={(e) => setMotivoCanalizacion(e.target.value)}
-                placeholder="Describe brevemente las observaciones académicas o indicadores de alerta..."
-                className="rounded-xl text-xs sm:text-sm"
+                placeholder="Ej. Cambio de conducta, inasistencias frecuentes, bajo rendimiento o comentarios expresados en clase..."
+                className="rounded-lg text-xs sm:text-sm"
               />
             </div>
           </div>
@@ -861,19 +1028,20 @@ export function TutorDashboard() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setCanalizarTarget(null)}
-              className="rounded-xl text-xs font-semibold"
+              disabled={isSubmittingCanalizacion}
+              onClick={() => setCanalizarTargets([])}
+              className="rounded-lg text-xs font-semibold"
             >
               Cancelar
             </Button>
             <Button
               type="button"
-              disabled={isSubmittingCanalizacion}
+              disabled={isSubmittingCanalizacion || !motivoCanalizacion.trim()}
               onClick={handleSubmitCanalizacion}
-              className="rounded-xl bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-semibold"
+              className="rounded-lg bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-semibold"
             >
               <Send className="mr-1.5 size-3.5" />
-              {isSubmittingCanalizacion ? "Enviando..." : "Enviar canalización"}
+              {isSubmittingCanalizacion ? "Enviando..." : "Confirmar canalización"}
             </Button>
           </DialogFooter>
         </DialogContent>

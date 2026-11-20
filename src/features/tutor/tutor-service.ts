@@ -1,5 +1,4 @@
 import { supabase } from "@/lib/supabase";
-import type { RiskLevel } from "@/lib/types";
 
 export type CanalizacionPrioridad = "baja" | "normal" | "alta" | "urgente";
 export type CanalizacionEstado = "pendiente" | "aceptada" | "rechazada" | "completada";
@@ -30,14 +29,10 @@ export interface TutorGrupoAssignment {
 export interface TutorStudentItem {
   id: string;
   nombre: string;
-  iniciales: string;
   matricula: string;
   carrera: string;
   grupo: string;
   semestre: string;
-  folio?: string | null;
-  nivel: RiskLevel;
-  ultimo_tamizaje?: string | null;
 }
 
 export interface CanalizacionRecord {
@@ -48,6 +43,7 @@ export interface CanalizacionRecord {
   psicologo_nombre?: string | null;
   estudiante_id: string;
   estudiante_nombre?: string;
+  estudiante_iniciales?: string;
   folio?: string | null;
   carrera?: string;
   grupo?: string;
@@ -125,6 +121,16 @@ const SEED_TUTORES_GRUPO: TutorGrupoAssignment[] = [
     created_at: new Date(Date.now() - 86400000 * 14).toISOString(),
   },
   {
+    id: "tg-demo-601",
+    tutor_id: "demo-tutor-carlos",
+    tutor_nombre: "Mtro. Carlos Mendoza",
+    carrera: "Ing. en Sistemas Computacionales",
+    grupo: "601",
+    semestre: "6",
+    activo: true,
+    created_at: new Date(Date.now() - 86400000 * 12).toISOString(),
+  },
+  {
     id: "tg-demo-302",
     tutor_id: "demo-tutor-laura",
     tutor_nombre: "Mtra. Laura Sánchez",
@@ -140,50 +146,66 @@ const SEED_STUDENTS_DEMO: TutorStudentItem[] = [
   {
     id: "demo-student-dess",
     nombre: "Dess Bautista",
-    iniciales: "D.B.",
     matricula: "202310452",
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "501",
     semestre: "5",
-    folio: "EQ-9374",
-    nivel: "rojo",
-    ultimo_tamizaje: new Date(Date.now() - 86400000).toISOString(),
   },
   {
     id: "demo-student-isc-2",
     nombre: "Valeria Morales",
-    iniciales: "V.M.",
     matricula: "202310489",
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "501",
     semestre: "5",
-    folio: "EQ-5218",
-    nivel: "amarillo",
-    ultimo_tamizaje: new Date(Date.now() - 86400000 * 3).toISOString(),
   },
   {
     id: "demo-student-isc-3",
     nombre: "Diego Hernández",
-    iniciales: "D.H.",
     matricula: "202310511",
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "501",
     semestre: "5",
-    folio: "EQ-7841",
-    nivel: "verde",
-    ultimo_tamizaje: new Date(Date.now() - 86400000 * 5).toISOString(),
   },
   {
     id: "demo-student-isc-4",
     nombre: "Sofía Navarro",
-    iniciales: "S.N.",
     matricula: "202310540",
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "501",
     semestre: "5",
-    folio: "EQ-6192",
-    nivel: "verde",
-    ultimo_tamizaje: new Date(Date.now() - 86400000 * 6).toISOString(),
+  },
+  {
+    id: "demo-student-isc-5",
+    nombre: "Emiliano Cruz",
+    matricula: "202310577",
+    carrera: "Ing. en Sistemas Computacionales",
+    grupo: "501",
+    semestre: "5",
+  },
+  {
+    id: "demo-student-isc-601-1",
+    nombre: "Fernanda López",
+    matricula: "202210301",
+    carrera: "Ing. en Sistemas Computacionales",
+    grupo: "601",
+    semestre: "6",
+  },
+  {
+    id: "demo-student-isc-601-2",
+    nombre: "Mateo Jiménez",
+    matricula: "202210315",
+    carrera: "Ing. en Sistemas Computacionales",
+    grupo: "601",
+    semestre: "6",
+  },
+  {
+    id: "demo-student-isc-601-3",
+    nombre: "Camila Ortega",
+    matricula: "202210349",
+    carrera: "Ing. en Sistemas Computacionales",
+    grupo: "601",
+    semestre: "6",
   },
 ];
 
@@ -195,7 +217,8 @@ const SEED_CANALIZACIONES: CanalizacionRecord[] = [
     psicologo_id: null,
     estudiante_id: "demo-student-isc-2",
     estudiante_nombre: "Valeria Morales",
-    folio: "EQ-5218",
+    estudiante_iniciales: "V.M.",
+    folio: null,
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "501",
     semestre: "5",
@@ -213,7 +236,8 @@ const SEED_CANALIZACIONES: CanalizacionRecord[] = [
     psicologo_nombre: "Dra. Marta Gómez",
     estudiante_id: "demo-user-student-2",
     estudiante_nombre: "Mateo Rivera",
-    folio: "EQ-4120",
+    estudiante_iniciales: "M.R.",
+    folio: null,
     carrera: "Ing. Industrial",
     grupo: "302",
     semestre: "3",
@@ -230,10 +254,10 @@ const SEED_ALERTAS: AlertaInasistencia[] = [
     tutor_id: "demo-tutor-carlos",
     psicologo_id: "demo-psicologa-marta",
     estudiante_id: "demo-student-dess",
-    folio: "EQ-9374",
-    tipo_alerta: "no_canalizacion",
-    prioridad: "urgente",
-    mensaje: "Estudiante EQ-9374 obtuvo nivel rojo en tamizaje",
+    folio: null,
+    tipo_alerta: "no_asistio",
+    prioridad: "alta",
+    mensaje: "Dess Bautista (Grupo 501) no asistió a su cita programada de seguimiento.",
     leida_tutor: false,
     created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
   },
@@ -265,6 +289,12 @@ function writeLocal<T>(key: string, list: T[]): void {
 
 function normalizeText(value?: string | null): string {
   return (value || "").trim().toLowerCase();
+}
+
+function normalizeSemestre(value?: string | number | null): string {
+  const raw = String(value ?? "").trim();
+  const digits = raw.match(/\d+/);
+  return digits ? digits[0] : raw.toLowerCase();
 }
 
 function buildInitials(name?: string | null): string {
@@ -367,47 +397,74 @@ export async function getAllTutorGroupAssignments(): Promise<TutorGrupoAssignmen
 }
 
 /**
- * Obtener grupos asignados a un tutor específico
+ * Obtener grupos activos asignados a un tutor (tutores_grupo donde tutor_id = auth.uid() AND activo = true)
  */
 export async function getTutorGroupAssignments(
   tutorId: string,
   fallbackUser?: { name?: string; carrera?: string; grupo?: string; semestre?: string },
 ): Promise<TutorGrupoAssignment[]> {
+  const authUid = await getAuthenticatedUid();
+  const effectiveTutorId = authUid || tutorId;
   const local = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
 
-  if (UUID_REGEX.test(tutorId)) {
+  if (UUID_REGEX.test(effectiveTutorId)) {
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("tutores_grupo")
         .select("*")
-        .eq("tutor_id", tutorId)
+        .eq("tutor_id", effectiveTutorId)
+        .eq("activo", true)
         .order("created_at", { ascending: false });
 
+      if (error && error.message.toLowerCase().includes("activo")) {
+        const retry = await supabase
+          .from("tutores_grupo")
+          .select("*")
+          .eq("tutor_id", effectiveTutorId)
+          .order("created_at", { ascending: false });
+        data = retry.data;
+        error = retry.error;
+      }
+
       if (!error && Array.isArray(data) && data.length > 0) {
-        return data.map((row: Record<string, unknown>) => ({
-          id: String(row.id),
-          tutor_id: String(row.tutor_id),
-          tutor_nombre: row.tutor_nombre ? String(row.tutor_nombre) : fallbackUser?.name,
-          carrera: String(row.carrera || ""),
-          grupo: String(row.grupo || ""),
-          semestre: String(row.semestre || ""),
-          activo: row.activo !== undefined ? Boolean(row.activo) : true,
-          created_at: row.created_at ? String(row.created_at) : undefined,
-        }));
+        return data
+          .filter((row: Record<string, unknown>) => row.activo !== false)
+          .map((row: Record<string, unknown>) => ({
+            id: String(row.id),
+            tutor_id: String(row.tutor_id),
+            tutor_nombre: row.tutor_nombre ? String(row.tutor_nombre) : fallbackUser?.name,
+            carrera: String(row.carrera || ""),
+            grupo: String(row.grupo || ""),
+            semestre: String(row.semestre || ""),
+            activo: row.activo !== undefined ? Boolean(row.activo) : true,
+            created_at: row.created_at ? String(row.created_at) : undefined,
+          }));
       }
     } catch {
       // Continuar a fallback
     }
   }
 
-  const matchedLocal = local.filter((a) => a.tutor_id === tutorId);
-  if (matchedLocal.length > 0) return matchedLocal;
+  const matchedLocal = local.filter((a) => a.tutor_id === effectiveTutorId && a.activo !== false);
+  if (matchedLocal.length > 0) {
+    // Si es la cuenta demo principal y aún no tiene el segundo grupo en caché local, unir semillas faltantes
+    if (effectiveTutorId === "demo-tutor-carlos") {
+      const seen = new Set(matchedLocal.map((m) => m.id));
+      const missingSeeds = SEED_TUTORES_GRUPO.filter(
+        (s) => s.tutor_id === "demo-tutor-carlos" && !seen.has(s.id),
+      );
+      if (missingSeeds.length > 0) {
+        return [...matchedLocal, ...missingSeeds];
+      }
+    }
+    return matchedLocal;
+  }
 
   if (fallbackUser?.carrera && fallbackUser?.grupo) {
     return [
       {
-        id: `tg-${tutorId}`,
-        tutor_id: tutorId,
+        id: `tg-${effectiveTutorId}`,
+        tutor_id: effectiveTutorId,
         tutor_nombre: fallbackUser.name,
         carrera: fallbackUser.carrera,
         grupo: fallbackUser.grupo,
@@ -417,7 +474,7 @@ export async function getTutorGroupAssignments(
     ];
   }
 
-  return SEED_TUTORES_GRUPO.filter((s) => s.tutor_id === "demo-tutor-carlos");
+  return SEED_TUTORES_GRUPO.filter((s) => s.tutor_id === "demo-tutor-carlos" && s.activo !== false);
 }
 
 /**
@@ -493,39 +550,23 @@ export async function assignTutorToGroup(input: {
 }
 
 /**
- * Obtener estudiantes del grupo asignado al tutor + semáforo simplificado (verde/amarillo/rojo)
- * consultando profiles + para_psicologo filtrado por carrera y grupo.
+ * Obtener estudiantes del grupo asignado al tutor consultando ÚNICAMENTE `profiles`
+ * (por cumplimiento LFPDPPP, el tutor nunca consulta tablas clínicas ni resultados de tamizaje).
  */
-export async function getGroupStudentsWithSemaforo(
+export async function getGroupStudents(
   carrera: string,
   grupo: string,
   semestre?: string,
 ): Promise<TutorStudentItem[]> {
-  let profileStudents: Array<{
-    id: string;
-    nombre: string;
-    matricula: string;
-    carrera: string;
-    grupo: string;
-    semestre: string;
-  }> = [];
-
-  let semaforoRows: Array<{
-    folio?: string;
-    iniciales?: string;
-    carrera?: string;
-    grupo?: string;
-    semestre?: string | number;
-    ultimo_nivel?: string;
-    ultimo_tamizaje?: string;
-  }> = [];
+  const targetSemestreNorm = normalizeSemestre(semestre);
 
   try {
     const profQuery = supabase
       .from("profiles")
       .select("id, nombre, matricula, carrera, grupo, semestre, rol")
       .eq("carrera", carrera)
-      .eq("grupo", grupo);
+      .eq("grupo", grupo)
+      .order("nombre", { ascending: true });
 
     let { data: profData, error: profErr } = await profQuery;
 
@@ -534,16 +575,20 @@ export async function getGroupStudentsWithSemaforo(
         .from("profiles")
         .select("id, nombre, matricula, carrera, grupo, semestre, role")
         .eq("carrera", carrera)
-        .eq("grupo", grupo);
+        .eq("grupo", grupo)
+        .order("nombre", { ascending: true });
       profData = retry.data as typeof profData;
       profErr = retry.error;
     }
 
     if (!profErr && Array.isArray(profData)) {
-      profileStudents = profData
+      const students = profData
         .filter((p: Record<string, unknown>) => {
           const r = String(p.rol || p.role || "estudiante").toLowerCase();
-          return r === "estudiante" || r === "";
+          const isStudent = r === "estudiante" || r === "";
+          if (!isStudent) return false;
+          if (!targetSemestreNorm || !p.semestre) return true;
+          return normalizeSemestre(String(p.semestre)) === targetSemestreNorm;
         })
         .map((p: Record<string, unknown>) => ({
           id: String(p.id),
@@ -553,128 +598,35 @@ export async function getGroupStudentsWithSemaforo(
           grupo: String(p.grupo || grupo),
           semestre: String(p.semestre || semestre || ""),
         }));
+
+      if (students.length > 0) {
+        return students;
+      }
     }
   } catch {
     // Fallback abajo
   }
 
-  try {
-    const { data: semData, error: semErr } = await supabase
-      .from("para_psicologo")
-      .select("folio, iniciales, carrera, grupo, semestre, ultimo_nivel, ultimo_tamizaje")
-      .eq("carrera", carrera)
-      .eq("grupo", grupo);
-
-    if (!semErr && Array.isArray(semData)) {
-      semaforoRows = semData as typeof semaforoRows;
-    }
-  } catch {
-    // Fallback abajo
-  }
-
-  // Combinar profiles + para_psicologo
-  if (profileStudents.length > 0) {
-    const usedSemaforoIdx = new Set<number>();
-
-    const merged: TutorStudentItem[] = profileStudents.map((st) => {
-      const initials = buildInitials(st.nombre);
-      const matchIdx = semaforoRows.findIndex(
-        (s, idx) =>
-          !usedSemaforoIdx.has(idx) && normalizeText(s.iniciales) === normalizeText(initials),
-      );
-
-      let matched: (typeof semaforoRows)[number] | undefined;
-      if (matchIdx !== -1) {
-        usedSemaforoIdx.add(matchIdx);
-        matched = semaforoRows[matchIdx];
-      }
-
-      const rawNivel = normalizeText(matched?.ultimo_nivel);
-      const nivel: RiskLevel =
-        rawNivel === "rojo" || rawNivel === "amarillo" || rawNivel === "verde"
-          ? (rawNivel as RiskLevel)
-          : "verde";
-
-      return {
-        id: st.id,
-        nombre: st.nombre,
-        iniciales: matched?.iniciales || initials,
-        matricula: st.matricula,
-        carrera: st.carrera,
-        grupo: st.grupo,
-        semestre: st.semestre,
-        folio: matched?.folio || null,
-        nivel,
-        ultimo_tamizaje: matched?.ultimo_tamizaje || null,
-      };
-    });
-
-    // Agregar registros de para_psicologo del mismo grupo que no tengan perfil emparejado
-    semaforoRows.forEach((s, idx) => {
-      if (!usedSemaforoIdx.has(idx) && s.folio) {
-        const rawNivel = normalizeText(s.ultimo_nivel);
-        const nivel: RiskLevel =
-          rawNivel === "rojo" || rawNivel === "amarillo" || rawNivel === "verde"
-            ? (rawNivel as RiskLevel)
-            : "verde";
-        merged.push({
-          id: s.folio,
-          nombre: `Estudiante ${s.iniciales || s.folio}`,
-          iniciales: s.iniciales || "E.T.",
-          matricula: s.folio,
-          carrera: s.carrera || carrera,
-          grupo: s.grupo || grupo,
-          semestre: s.semestre ? String(s.semestre) : semestre || "",
-          folio: s.folio,
-          nivel,
-          ultimo_tamizaje: s.ultimo_tamizaje || null,
-        });
-      }
-    });
-
-    return merged;
-  }
-
-  // Si solo hay filas de para_psicologo en el grupo
-  if (semaforoRows.length > 0) {
-    return semaforoRows.map((s) => {
-      const rawNivel = normalizeText(s.ultimo_nivel);
-      const nivel: RiskLevel =
-        rawNivel === "rojo" || rawNivel === "amarillo" || rawNivel === "verde"
-          ? (rawNivel as RiskLevel)
-          : "verde";
-      return {
-        id: s.folio || crypto.randomUUID(),
-        nombre: `Estudiante ${s.iniciales || s.folio || "TESH"}`,
-        iniciales: s.iniciales || "E.T.",
-        matricula: s.folio || "TESH",
-        carrera: s.carrera || carrera,
-        grupo: s.grupo || grupo,
-        semestre: s.semestre ? String(s.semestre) : semestre || "",
-        folio: s.folio || null,
-        nivel,
-        ultimo_tamizaje: s.ultimo_tamizaje || null,
-      };
-    });
-  }
-
-  // Fallback demostrativo por grupo para entorno demo
+  // Fallback demostrativo por grupo + semestre para entorno demo
   const matchingDemo = SEED_STUDENTS_DEMO.filter(
     (s) =>
       normalizeText(s.carrera) === normalizeText(carrera) &&
-      normalizeText(s.grupo) === normalizeText(grupo),
+      normalizeText(s.grupo) === normalizeText(grupo) &&
+      (!targetSemestreNorm || normalizeSemestre(s.semestre) === targetSemestreNorm),
   );
   if (matchingDemo.length > 0) {
     return matchingDemo;
   }
 
-  return SEED_STUDENTS_DEMO.map((s, idx) => ({
-    ...s,
-    id: `${s.id}-${grupo}-${idx}`,
-    carrera,
-    grupo,
-    semestre: semestre || s.semestre,
-  }));
+  return SEED_STUDENTS_DEMO.filter((s) => s.grupo === "501")
+    .slice(0, 4)
+    .map((s, idx) => ({
+      ...s,
+      id: `${s.id}-${grupo}-${idx}`,
+      carrera,
+      grupo,
+      semestre: semestre || s.semestre,
+    }));
 }
 
 /**
@@ -789,13 +741,14 @@ export async function findTutorForStudent(params: {
 }
 
 /**
- * Crear una canalización del tutor/jefe al psicólogo (INSERT en canalizaciones)
+ * Crear una canalización del tutor/jefe al psicólogo (INSERT en canalizaciones + alerta estudiante)
  */
 export async function createCanalizacion(input: {
   tutor_id: string;
   tutor_nombre?: string;
   estudiante_id: string;
   estudiante_nombre?: string;
+  estudiante_iniciales?: string;
   folio?: string | null;
   carrera?: string;
   grupo?: string;
@@ -808,13 +761,18 @@ export async function createCanalizacion(input: {
     return { ok: false, error: "Debes indicar el motivo de la canalización." };
   }
 
+  const authUid = await getAuthenticatedUid();
+  const effectiveTutorId = authUid || input.tutor_id;
+  const iniciales = input.estudiante_iniciales || buildInitials(input.estudiante_nombre);
+
   const newRecord: CanalizacionRecord = {
-    id: `can-${Date.now().toString(36)}`,
-    tutor_id: input.tutor_id,
+    id: `can-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    tutor_id: effectiveTutorId,
     tutor_nombre: input.tutor_nombre || "Tutor TESH",
     psicologo_id: null,
     estudiante_id: input.estudiante_id,
-    estudiante_nombre: input.estudiante_nombre || "Estudiante",
+    estudiante_nombre: input.estudiante_nombre || `Estudiante ${iniciales}`,
+    estudiante_iniciales: iniciales,
     folio: input.folio || null,
     carrera: input.carrera,
     grupo: input.grupo,
@@ -825,15 +783,16 @@ export async function createCanalizacion(input: {
     created_at: new Date().toISOString(),
   };
 
-  if (UUID_REGEX.test(input.tutor_id) && UUID_REGEX.test(input.estudiante_id)) {
+  if (UUID_REGEX.test(effectiveTutorId) && UUID_REGEX.test(input.estudiante_id)) {
     try {
       const fullPayload: Record<string, unknown> = {
-        tutor_id: input.tutor_id,
+        tutor_id: effectiveTutorId,
         estudiante_id: input.estudiante_id,
         motivo: motivoClean,
         prioridad: input.prioridad,
         estado: "pendiente",
       };
+      if (input.folio) fullPayload.folio = input.folio;
       if (input.carrera) fullPayload.carrera = input.carrera;
       if (input.grupo) fullPayload.grupo = input.grupo;
       if (input.semestre) fullPayload.semestre = input.semestre;
@@ -849,7 +808,7 @@ export async function createCanalizacion(input: {
         const minimal = await supabase
           .from("canalizaciones")
           .insert({
-            tutor_id: input.tutor_id,
+            tutor_id: effectiveTutorId,
             estudiante_id: input.estudiante_id,
             motivo: motivoClean,
             prioridad: input.prioridad,
@@ -882,7 +841,7 @@ export async function createCanalizacion(input: {
 
   // Notificar automáticamente al estudiante en alertas_inasistencia
   await createAlertaInasistencia({
-    tutor_id: input.tutor_id,
+    tutor_id: effectiveTutorId,
     estudiante_id: input.estudiante_id,
     folio: input.folio || null,
     tipo_alerta: "no_canalizacion",
@@ -893,6 +852,45 @@ export async function createCanalizacion(input: {
   });
 
   return { ok: true, canalizacion: newRecord };
+}
+
+/**
+ * Canalizar múltiples estudiantes seleccionados en lote (INSERT en canalizaciones + alertas_inasistencia)
+ */
+export async function createCanalizacionesBatch(input: {
+  tutor_id: string;
+  tutor_nombre?: string;
+  estudiantes: TutorStudentItem[];
+  motivo: string;
+  prioridad: CanalizacionPrioridad;
+}): Promise<{
+  created: CanalizacionRecord[];
+  errors: string[];
+}> {
+  const created: CanalizacionRecord[] = [];
+  const errors: string[] = [];
+
+  for (const st of input.estudiantes) {
+    const res = await createCanalizacion({
+      tutor_id: input.tutor_id,
+      tutor_nombre: input.tutor_nombre,
+      estudiante_id: st.id,
+      estudiante_nombre: st.nombre,
+      carrera: st.carrera,
+      grupo: st.grupo,
+      semestre: st.semestre,
+      motivo: input.motivo,
+      prioridad: input.prioridad,
+    });
+
+    if (res.ok && res.canalizacion) {
+      created.push(res.canalizacion);
+    } else if (res.error) {
+      errors.push(`${st.nombre}: ${res.error}`);
+    }
+  }
+
+  return { created, errors };
 }
 
 /**
@@ -986,7 +984,10 @@ export async function getCanalizaciones(filtros?: {
             (row.estudiante_nombre ? String(row.estudiante_nombre) : undefined) ||
             eProf?.nombre ||
             "Estudiante TESH",
-          folio: row.folio ? String(row.folio) : eProf?.matricula || null,
+          estudiante_iniciales: buildInitials(
+            (row.estudiante_nombre ? String(row.estudiante_nombre) : undefined) || eProf?.nombre,
+          ),
+          folio: filtros?.tutorId ? null : row.folio ? String(row.folio) : eProf?.matricula || null,
           carrera: (row.carrera ? String(row.carrera) : undefined) || eProf?.carrera,
           grupo: (row.grupo ? String(row.grupo) : undefined) || eProf?.grupo,
           semestre: (row.semestre ? String(row.semestre) : undefined) || eProf?.semestre,
@@ -1006,12 +1007,14 @@ export async function getCanalizaciones(filtros?: {
       const dbIds = new Set(mapped.map((m) => m.id));
       const merged = [
         ...mapped,
-        ...local.filter((l) => {
-          if (dbIds.has(l.id)) return false;
-          if (filtros?.tutorId && l.tutor_id !== filtros.tutorId) return false;
-          if (filtros?.estado && l.estado !== filtros.estado) return false;
-          return true;
-        }),
+        ...local
+          .filter((l) => {
+            if (dbIds.has(l.id)) return false;
+            if (filtros?.tutorId && l.tutor_id !== filtros.tutorId) return false;
+            if (filtros?.estado && l.estado !== filtros.estado) return false;
+            return true;
+          })
+          .map((l) => (filtros?.tutorId ? { ...l, folio: null } : l)),
       ];
       return merged;
     }
@@ -1019,11 +1022,13 @@ export async function getCanalizaciones(filtros?: {
     // Fallback local
   }
 
-  return local.filter((c) => {
-    if (filtros?.tutorId && c.tutor_id !== filtros.tutorId) return false;
-    if (filtros?.estado && c.estado !== filtros.estado) return false;
-    return true;
-  });
+  return local
+    .filter((c) => {
+      if (filtros?.tutorId && c.tutor_id !== filtros.tutorId) return false;
+      if (filtros?.estado && c.estado !== filtros.estado) return false;
+      return true;
+    })
+    .map((c) => (filtros?.tutorId ? { ...c, folio: null } : c));
 }
 
 /**
@@ -1200,11 +1205,21 @@ export async function createAlertaInasistencia(input: {
 
 /**
  * Consultar alertas no leídas del tutor (tutor_id = auth.uid() AND leida_tutor = false)
+ * Por LFPDPPP, se excluye cualquier alerta con datos clínicos de tamizaje o nivel de riesgo.
  */
 export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasistencia[]> {
   const authUid = await getAuthenticatedUid();
   const effectiveTutorId = authUid || tutorId;
   const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
+
+  const isNonClinicalTutorAlert = (a: AlertaInasistencia): boolean => {
+    if (a.tipo_alerta === "no_canalizacion") return false;
+    const msg = (a.mensaje || "").toLowerCase();
+    if (msg.includes("tamizaje") || msg.includes("nivel rojo") || /\beq-\d+/i.test(msg)) {
+      return false;
+    }
+    return true;
+  };
 
   if (UUID_REGEX.test(effectiveTutorId)) {
     try {
@@ -1216,24 +1231,30 @@ export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasi
         .order("created_at", { ascending: false });
 
       if (!error && Array.isArray(data)) {
-        const dbAlerts: AlertaInasistencia[] = data.map((row: Record<string, unknown>) => ({
-          id: String(row.id),
-          tutor_id: String(row.tutor_id),
-          psicologo_id: row.psicologo_id ? String(row.psicologo_id) : null,
-          estudiante_id: row.estudiante_id ? String(row.estudiante_id) : null,
-          folio: row.folio ? String(row.folio) : null,
-          tipo_alerta: (row.tipo_alerta as AlertaTipo) || "no_asistio",
-          prioridad: (row.prioridad as CanalizacionPrioridad) || "alta",
-          mensaje: String(row.mensaje || ""),
-          leida_tutor: Boolean(row.leida_tutor),
-          leida_estudiante:
-            row.leida_estudiante !== undefined ? Boolean(row.leida_estudiante) : false,
-          created_at: String(row.created_at || new Date().toISOString()),
-        }));
+        const dbAlerts: AlertaInasistencia[] = data
+          .map((row: Record<string, unknown>) => ({
+            id: String(row.id),
+            tutor_id: String(row.tutor_id),
+            psicologo_id: row.psicologo_id ? String(row.psicologo_id) : null,
+            estudiante_id: row.estudiante_id ? String(row.estudiante_id) : null,
+            folio: null,
+            tipo_alerta: (row.tipo_alerta as AlertaTipo) || "no_asistio",
+            prioridad: (row.prioridad as CanalizacionPrioridad) || "alta",
+            mensaje: String(row.mensaje || ""),
+            leida_tutor: Boolean(row.leida_tutor),
+            leida_estudiante:
+              row.leida_estudiante !== undefined ? Boolean(row.leida_estudiante) : false,
+            created_at: String(row.created_at || new Date().toISOString()),
+          }))
+          .filter(isNonClinicalTutorAlert);
 
         const seen = new Set(dbAlerts.map((a) => a.id));
         const localUnread = local.filter(
-          (l) => !seen.has(l.id) && l.tutor_id === effectiveTutorId && !l.leida_tutor,
+          (l) =>
+            !seen.has(l.id) &&
+            l.tutor_id === effectiveTutorId &&
+            !l.leida_tutor &&
+            isNonClinicalTutorAlert(l),
         );
         return [...dbAlerts, ...localUnread];
       }
@@ -1242,7 +1263,9 @@ export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasi
     }
   }
 
-  return local.filter((a) => a.tutor_id === effectiveTutorId && !a.leida_tutor);
+  return local.filter(
+    (a) => a.tutor_id === effectiveTutorId && !a.leida_tutor && isNonClinicalTutorAlert(a),
+  );
 }
 
 /**
@@ -1393,34 +1416,17 @@ export async function markStudentAlertaAsRead(alertaId: string): Promise<boolean
 }
 
 /**
- * Notificar automáticamente al tutor cuando un estudiante obtiene nivel rojo en tamizaje
+ * Por cumplimiento de privacidad clínica (LFPDPPP), los resultados de tamizaje
+ * (incluyendo nivel rojo y folio EQ-XXXX) pertenecen exclusivamente al área de psicología
+ * y nunca deben notificarse al tutor académico.
+ * Se conserva la firma exportada por compatibilidad de invocaciones existentes.
  */
-export async function notificarTutorNivelRojo(params: {
+export async function notificarTutorNivelRojo(_params: {
   estudianteId?: string | null;
   folio: string;
   carrera?: string | null;
   grupo?: string | null;
 }): Promise<void> {
-  try {
-    const tutorMatch = await findTutorForStudent({
-      estudianteId: params.estudianteId,
-      carrera: params.carrera,
-      grupo: params.grupo,
-    });
-
-    if (!tutorMatch?.tutor_id) return;
-
-    await createAlertaInasistencia({
-      tutor_id: tutorMatch.tutor_id,
-      estudiante_id: params.estudianteId,
-      folio: params.folio,
-      tipo_alerta: "no_canalizacion",
-      prioridad: "urgente",
-      mensaje: `Estudiante ${params.folio} obtuvo nivel rojo en tamizaje`,
-      leida_tutor: false,
-      leida_estudiante: true,
-    });
-  } catch (err) {
-    console.warn("[notificarTutorNivelRojo] Aviso:", err);
-  }
+  // No-op intencional por confidencialidad clínica (LFPDPPP)
+  void _params;
 }
