@@ -89,13 +89,23 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 5. Rol Estudiante: puede ver /, /checkin, /alerta, /chat, /citas, /recursos, /perfil
+    // 5. Rol Tutor: puede ver /tutor, /perfil y /
+    if (user.role === "tutor") {
+      if (!pathname.startsWith("/tutor") && pathname !== "/perfil" && pathname !== "/") {
+        toast.info("Redirigido al panel de tutoría correspondiente a tu rol.");
+        navigate({ to: "/tutor", replace: true });
+      }
+      return;
+    }
+
+    // 6. Rol Estudiante: puede ver /, /checkin, /alerta, /chat, /citas, /recursos, /perfil
     if (user.role === "estudiante") {
       if (
         pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
         pathname.startsWith("/expedientes") ||
-        pathname.startsWith("/auditoria")
+        pathname.startsWith("/auditoria") ||
+        pathname.startsWith("/tutor")
       ) {
         toast.info("Esta sección es de acceso institucional.");
         navigate({ to: "/", replace: true });
@@ -152,12 +162,21 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     )
       return null;
     if (
+      user.role === "tutor" &&
+      pathname !== "/aviso-privacidad" &&
+      pathname !== "/perfil" &&
+      pathname !== "/" &&
+      !pathname.startsWith("/tutor")
+    )
+      return null;
+    if (
       user.role === "estudiante" &&
       pathname !== "/aviso-privacidad" &&
       (pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
         pathname.startsWith("/expedientes") ||
-        pathname.startsWith("/auditoria"))
+        pathname.startsWith("/auditoria") ||
+        pathname.startsWith("/tutor"))
     )
       return null;
   }

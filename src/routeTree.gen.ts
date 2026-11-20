@@ -26,6 +26,8 @@ import { Route as RecuperarRouteImport } from './routes/recuperar'
 import { Route as RecursosRouteImport } from './routes/recursos'
 import { Route as RegistroRouteImport } from './routes/registro'
 import { Route as ResetRouteImport } from './routes/reset'
+import { Route as TutorRouteImport } from './routes/tutor'
+import { Route as TutorRouteImport } from './routes/tutor'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -112,6 +114,16 @@ const ResetRoute = ResetRouteImport.update({
   path: '/reset',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TutorRoute = TutorRouteImport.update({
+  id: '/tutor',
+  path: '/tutor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TutorRoute = TutorRouteImport.update({
+  id: '/tutor',
+  path: '/tutor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -131,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/recursos': typeof RecursosRoute
   '/registro': typeof RegistroRoute
   '/reset': typeof ResetRoute
+  '/tutor': typeof TutorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -150,6 +163,7 @@ export interface FileRoutesByTo {
   '/recursos': typeof RecursosRoute
   '/registro': typeof RegistroRoute
   '/reset': typeof ResetRoute
+  '/tutor': typeof TutorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -170,6 +184,7 @@ export interface FileRoutesById {
   '/recursos': typeof RecursosRoute
   '/registro': typeof RegistroRoute
   '/reset': typeof ResetRoute
+  '/tutor': typeof TutorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -191,6 +206,7 @@ export interface FileRouteTypes {
     | '/recursos'
     | '/registro'
     | '/reset'
+    | '/tutor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -210,6 +226,7 @@ export interface FileRouteTypes {
     | '/recursos'
     | '/registro'
     | '/reset'
+    | '/tutor'
   id:
     | '__root__'
     | '/'
@@ -229,6 +246,7 @@ export interface FileRouteTypes {
     | '/recursos'
     | '/registro'
     | '/reset'
+    | '/tutor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -249,6 +267,7 @@ export interface RootRouteChildren {
   RecursosRoute: typeof RecursosRoute
   RegistroRoute: typeof RegistroRoute
   ResetRoute: typeof ResetRoute
+  TutorRoute: typeof TutorRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -372,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tutor': {
+      id: '/tutor'
+      path: '/tutor'
+      fullPath: '/tutor'
+      preLoaderRoute: typeof TutorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -393,6 +419,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecursosRoute: RecursosRoute,
   RegistroRoute: RegistroRoute,
   ResetRoute: ResetRoute,
+  TutorRoute: TutorRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

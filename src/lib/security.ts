@@ -50,8 +50,13 @@ export function isValidMatricula(matricula: string): boolean {
 }
 
 /**
- * Control de intentos de autenticación en memoria / sesión para DEMO_MODE.
- * /* TODO(Supabase): rate limiting real en Edge Functions con headers IP/dispositivo */
+ * Control de intentos de autenticación en memoria / sesión del cliente (5 intentos -> 30s bloqueo).
+ * Complementa la protección del servidor:
+ * - Supabase Auth aplica rate limiting / brute-force protection del lado del servidor en endpoints de auth.
+ * - Las contraseñas se almacenan con hash bcrypt administrado por Supabase Auth (nunca en texto plano).
+ * - Protección contra bots: soporte de CAPTCHA opcional en Supabase Auth + rate limiting (10 req/min)
+ *   en Edge Functions sensibles como `transcribir-voz`.
+ */
 const RATE_LIMIT_STORAGE_KEY = "equilibra_login_attempts";
 const LOCKOUT_STORAGE_KEY = "equilibra_login_lockout";
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
 import {
+  AlertTriangle,
   BatteryMedium,
   BedDouble,
   Brain,
@@ -25,6 +26,10 @@ import { BRAND } from "@/lib/branding";
 import { useMoodStats, getTodayMoodCheckIn } from "@/lib/mood-store";
 import { useAuth } from "@/lib/auth-context";
 import { BreathingModal } from "@/features/bienestar/breathing-modal";
+import {
+  getStudentPendingCanalizaciones,
+  type CanalizacionRecord,
+} from "@/features/tutor/tutor-service";
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -72,6 +77,20 @@ export function HomePage() {
     return today ? today.moodId : "regular";
   });
   const [isBreathingModalOpen, setIsBreathingModalOpen] = useState(false);
+  const [pendingCanalizaciones, setPendingCanalizaciones] = useState<CanalizacionRecord[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) return;
+    getStudentPendingCanalizaciones(user.id)
+      .then((list) => {
+        if (active) setPendingCanalizaciones(list);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   // Sincronía inversa: si se edita desde el panel de métricas o cambia hoy, actualizar el emocionómetro
   useEffect(() => {
@@ -98,6 +117,42 @@ export function HomePage() {
   return (
     <PageShell>
       <main>
+        {pendingCanalizaciones.length > 0 && (
+          <section
+            aria-label="Aviso de canalización pendiente"
+            className="mb-6 rounded-2xl border-2 border-[#1B198F] bg-card p-4 sm:p-5 shadow-soft"
+          >
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#1B198F] text-white">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#1B198F] dark:text-indigo-300">
+                    Aviso del Área de Tutorías
+                  </p>
+                  <p className="text-sm font-semibold text-foreground leading-relaxed">
+                    Tienes una canalización pendiente del área de tutorías. Motivo:{" "}
+                    {pendingCanalizaciones[0].motivo}. Prioridad:{" "}
+                    <span className="capitalize font-bold">
+                      {pendingCanalizaciones[0].prioridad}
+                    </span>
+                    . Por favor agenda tu cita con el psicólogo lo antes posible.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => navigate({ to: "/citas" })}
+                className="shrink-0 rounded-xl bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs sm:text-sm font-semibold px-5 h-10"
+              >
+                Agendar cita
+              </Button>
+            </div>
+          </section>
+        )}
+
         <section className="mb-7 max-w-2xl animate-fade-in sm:mb-9">
           <p className="mb-1 text-sm font-semibold text-accent">Sábado, 19 de septiembre</p>
           <h1 className="font-display text-4xl leading-tight text-primary sm:text-5xl">

@@ -163,8 +163,8 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // 2. OBTENCIÓN DE RESEND_API_KEY
-  const resendApiKey = Deno.env.get("RESEND_API_KEY") || Deno.env.get("VITE_RESEND_API_KEY");
+  // 2. OBTENCIÓN DE RESEND_API_KEY (exclusiva de Supabase Secrets)
+  const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
   if (!resendApiKey || !resendApiKey.startsWith("re_")) {
     console.error("[enviar-encuesta] RESEND_API_KEY no configurada o inválida en secrets.");

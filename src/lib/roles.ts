@@ -7,7 +7,7 @@
  * La rama "directivo" se eliminó por ser un rol inexistente en la BD.
  */
 
-export type AppRole = "estudiante" | "psicologo" | "jefatura" | "coordinador";
+export type AppRole = "estudiante" | "psicologo" | "jefatura" | "coordinador" | "tutor";
 
 export function rutaPorRol(rol?: string | null): string {
   switch (rol) {
@@ -16,6 +16,8 @@ export function rutaPorRol(rol?: string | null): string {
     case "jefatura":
     case "coordinador":
       return "/directivo";
+    case "tutor":
+      return "/tutor";
     default:
       return "/";
   }

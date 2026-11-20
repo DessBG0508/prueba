@@ -46,6 +46,8 @@ import { ClinicalNotesFeed } from "./clinical-notes-feed";
 import { GestionRecursos } from "./recursos/gestion-recursos";
 import { SemaforoPacientes } from "./semaforo-pacientes";
 import { ResultadosEncuesta } from "./ResultadosEncuesta";
+import { CanalizacionesPanel } from "./canalizaciones-panel";
+import { getCanalizaciones } from "@/features/tutor/tutor-service";
 import { AjustesModal } from "@/components/settings/ajustes-modal";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -146,6 +148,7 @@ export function PsychologistDashboard() {
 
   const [cases, setCases] = useState<CaseSummary[]>(() => getPsychologistCases());
   const [appointments, setAppointments] = useState<Appointment[]>(() => getStoredAppointments());
+  const [pendingCanalizacionesCount, setPendingCanalizacionesCount] = useState(0);
 
   // Diálogos y Sheets interactivos
   const [selectedCaseForDetail, setSelectedCaseForDetail] = useState<CaseSummary | null>(null);
@@ -285,6 +288,9 @@ export function PsychologistDashboard() {
   useEffect(() => {
     refreshCases();
     refreshAppointments();
+    getCanalizaciones({ estado: "pendiente" })
+      .then((list) => setPendingCanalizacionesCount(list.length))
+      .catch(() => {});
   }, []);
 
   // Reiniciar a la primera página cuando cambian los filtros
@@ -376,6 +382,7 @@ export function PsychologistDashboard() {
         onSelectSection={(sec) => setActiveSection(sec)}
         redAlertsCount={redCount}
         activeAppointmentsCount={activeAppointmentsCount}
+        pendingCanalizacionesCount={pendingCanalizacionesCount}
         onLogout={handleLogout}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
@@ -399,6 +406,7 @@ export function PsychologistDashboard() {
               <h1 className="text-sm sm:text-base font-bold text-foreground font-display truncate">
                 {activeSection === "resumen" && "Resumen de Acompañamiento"}
                 {activeSection === "alertas" && "Triaje de Alertas y Casos"}
+                {activeSection === "canalizaciones" && "Canalizaciones de Tutores"}
                 {activeSection === "expedientes" && "Expedientes Clínicos"}
                 {activeSection === "agenda" && "Agenda de Citas"}
                 {activeSection === "bitacora" && "Bitácora Clínica"}
@@ -439,6 +447,7 @@ export function PsychologistDashboard() {
               >
                 {activeSection === "resumen" && "Resumen"}
                 {activeSection === "alertas" && "Alertas y Triaje"}
+                {activeSection === "canalizaciones" && "Canalizaciones"}
                 {activeSection === "expedientes" && "Expedientes"}
                 {activeSection === "agenda" && "Agenda de Citas"}
                 {activeSection === "bitacora" && "Bitácora Clínica"}
@@ -949,6 +958,13 @@ export function PsychologistDashboard() {
                 </>
               )}
             </div>
+          )}
+
+          {/* SECCIÓN 2B: CANALIZACIONES DE TUTORES */}
+          {activeSection === "canalizaciones" && (
+            <CanalizacionesPanel
+              onPendingCountChange={(count) => setPendingCanalizacionesCount(count)}
+            />
           )}
 
           {/* SECCIÓN 3: EXPEDIENTES (Vista integral integrada) */}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
+import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
 import { appointmentIcons } from "@/config/icons";
@@ -28,6 +29,10 @@ import {
   cancelarCitaEstudiante,
 } from "@/features/agenda/agenda-service";
 import type { SolicitudCita } from "@/features/agenda/types";
+import {
+  getStudentPendingCanalizaciones,
+  type CanalizacionRecord,
+} from "@/features/tutor/tutor-service";
 
 const STORAGE_KEY = "equilibra_citas_v1";
 
@@ -140,6 +145,7 @@ export function CitasPage() {
   const [pbCitaActiva, setPbCitaActiva] = useState<SolicitudCita | null>(null);
   const [isSubmittingPb, setIsSubmittingPb] = useState<boolean>(false);
   const [isCancelingPb, setIsCancelingPb] = useState<boolean>(false);
+  const [pendingCanalizaciones, setPendingCanalizaciones] = useState<CanalizacionRecord[]>([]);
 
   const cargarCitasPb = useCallback(async () => {
     if (!user) return;
@@ -156,6 +162,19 @@ export function CitasPage() {
   useEffect(() => {
     cargarCitasPb();
   }, [cargarCitasPb]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) return;
+    getStudentPendingCanalizaciones(user.id)
+      .then((list) => {
+        if (active) setPendingCanalizaciones(list);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   const handleSelectSlotPb = (fecha: string, hora: string) => {
     setPbFecha(fecha);
@@ -382,6 +401,32 @@ export function CitasPage() {
             <span>Nueva cita</span>
           </Button>
         </section>
+
+        {pendingCanalizaciones.length > 0 && (
+          <section
+            aria-label="Canalización pendiente del tutor"
+            className="rounded-2xl border-2 border-[#1B198F] bg-card p-4 sm:p-5 shadow-soft flex items-start gap-3"
+          >
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#1B198F] text-white">
+              <AlertTriangle className="size-5" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#1B198F] dark:text-indigo-300">
+                Canalización de Tutoría Académica
+              </p>
+              <p className="text-sm font-semibold text-foreground leading-relaxed">
+                Tu tutor te ha referido al psicólogo. Agenda tu cita seleccionando el horario
+                disponible.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Motivo: {pendingCanalizaciones[0].motivo} • Prioridad:{" "}
+                <span className="capitalize font-semibold">
+                  {pendingCanalizaciones[0].prioridad}
+                </span>
+              </p>
+            </div>
+          </section>
+        )}
 
         {/* Selector de Pestañas: PB-009 vs Historial */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-3">

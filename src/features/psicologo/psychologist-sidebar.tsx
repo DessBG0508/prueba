@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Library,
+  UserPlus,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -17,13 +18,21 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { BRAND } from "@/lib/branding";
 
 export type PsychologistNavSection =
-  "resumen" | "alertas" | "expedientes" | "agenda" | "bitacora" | "encuestas" | "recursos";
+  | "resumen"
+  | "alertas"
+  | "canalizaciones"
+  | "expedientes"
+  | "agenda"
+  | "bitacora"
+  | "encuestas"
+  | "recursos";
 
 interface PsychologistSidebarProps {
   activeSection: PsychologistNavSection;
   onSelectSection: (section: PsychologistNavSection) => void;
   redAlertsCount: number;
   activeAppointmentsCount: number;
+  pendingCanalizacionesCount?: number;
   onLogout: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -34,6 +43,7 @@ export function PsychologistSidebar({
   onSelectSection,
   redAlertsCount,
   activeAppointmentsCount,
+  pendingCanalizacionesCount = 0,
   onLogout,
   isCollapsed = false,
   onToggleCollapse,
@@ -51,6 +61,13 @@ export function PsychologistSidebar({
       icon: ShieldAlert,
       badge: redAlertsCount > 0 ? redAlertsCount : null,
       badgeColor: "bg-rose-500 text-white",
+    },
+    {
+      id: "canalizaciones" as PsychologistNavSection,
+      label: "Canalizaciones",
+      icon: UserPlus,
+      badge: pendingCanalizacionesCount > 0 ? pendingCanalizacionesCount : null,
+      badgeColor: "bg-[#1B198F] text-white",
     },
     {
       id: "expedientes" as PsychologistNavSection,

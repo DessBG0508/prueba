@@ -2,6 +2,11 @@
 -- TABLA DE SOLICITUDES DE CITA - EQUILIBRA TESH (PB-009)
 -- Plantilla Visual PB-009 · Agenda de Citas (Sprint 5)
 -- Modalidad: Presencial única (decisión clínica 09-oct)
+-- Base de datos normalizada en Tercera Forma Normal (3FN):
+--   entidad propia vinculada por FK a `auth.users(id)` y `public.profiles(id)`,
+--   sin duplicación de datos personales del estudiante o psicólogo.
+-- Respaldos: Supabase proporciona respaldos automáticos diarios (PITR),
+--   cifrado TLS 1.3 en tránsito, AES-256 en reposo y logs de consultas en Dashboard.
 -- ==============================================================================
 
 -- 1. Crear tabla solicitudes_cita con los 14 campos del diseño

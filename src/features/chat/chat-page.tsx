@@ -41,6 +41,7 @@ import {
 import { sanitizeText } from "@/lib/security";
 import { useAuth } from "@/lib/auth-context";
 import { BRAND } from "@/lib/branding";
+import { notificarTutorNivelRojo } from "@/features/tutor/tutor-service";
 import {
   getChatSessionsStorageKey,
   getActiveSessionStorageKey,
@@ -621,6 +622,13 @@ export function ChatPage() {
                   fecha: new Date().toISOString(),
                 },
               });
+
+              await notificarTutorNivelRojo({
+                estudianteId: finalPayload.user_id || user?.id,
+                folio: data.data.folio,
+                carrera: user?.carrera,
+                grupo: user?.grupo,
+              });
             } catch (retryAlertErr) {
               console.warn("[AlertaRojo] Aviso al reintentar alerta al psicólogo:", retryAlertErr);
             }
@@ -811,6 +819,13 @@ export function ChatPage() {
               fecha: new Date().toISOString(),
             },
           });
+
+          await notificarTutorNivelRojo({
+            estudianteId: currentUserId || user?.id,
+            folio: crisisFolio,
+            carrera: user?.carrera,
+            grupo: user?.grupo,
+          });
         } catch (alertaErr) {
           console.warn("[CrisisKeyword] Aviso al disparar notificación al psicólogo:", alertaErr);
         }
@@ -953,6 +968,13 @@ export function ChatPage() {
 
             await supabase.functions.invoke("notificar-psicologo-rojo", {
               body: alertaPayload,
+            });
+
+            await notificarTutorNivelRojo({
+              estudianteId: currentUserId || user?.id,
+              folio: calculatedFolio,
+              carrera: user?.carrera,
+              grupo: user?.grupo,
             });
           } catch (alertaErr) {
             console.warn("[AlertaRojo] Aviso al disparar notificación al psicólogo:", alertaErr);

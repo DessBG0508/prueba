@@ -1,6 +1,11 @@
 -- ==============================================================================
 -- PB-021: TABLA RESPUESTAS_ENCUESTA (EQUILIBRA TESH)
 -- 20 campos reglamentarios según especificación clínica y acuerdos MIN-008
+-- Base de datos normalizada en Tercera Forma Normal (3FN):
+--   clave primaria UUID, referencia normalizada a `auth.users(id)` y folio
+--   sin dependencias transitivas ni duplicación de perfiles.
+-- Respaldos: Supabase proporciona respaldos automáticos diarios (PITR),
+--   cifrado TLS 1.3 en tránsito, AES-256 en reposo y logs de consultas en Dashboard.
 -- ==============================================================================
 
 CREATE TABLE IF NOT EXISTS public.respuestas_encuesta (

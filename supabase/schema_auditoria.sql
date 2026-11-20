@@ -1,6 +1,11 @@
 -- ====================================================================
 -- TABLA, VISTA SEGURA Y FUNCIÓN DE AUDITORÍA BLOCKCHAIN EN SUPABASE
 -- FASE 3 Y 4 — AUDITORÍA E INTEGRIDAD CRIPTOGRÁFICA
+-- Base de datos normalizada en Tercera Forma Normal (3FN):
+--   cada atributo depende únicamente de la clave primaria (`indice`),
+--   sin dependencias parciales ni transitivas.
+-- Respaldos: Supabase proporciona respaldos automáticos diarios (PITR),
+--   cifrado TLS 1.3 en tránsito, AES-256 en reposo y logs de consultas en Dashboard.
 -- ====================================================================
 
 -- 1. Tabla de bloques de auditoría (si no existe)

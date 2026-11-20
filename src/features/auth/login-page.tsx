@@ -123,7 +123,7 @@ export function LoginPage() {
   };
 
   // Activación directa de modo demostración en cliente (SIN llamar a Supabase Auth)
-  const handleActivateDemo = (role: "estudiante" | "psicologo" | "jefatura") => {
+  const handleActivateDemo = (role: "estudiante" | "psicologo" | "jefatura" | "tutor") => {
     setErrorMessage(null);
     const demoUser = loginAsDemo(role);
     resetLoginAttempts();
@@ -171,11 +171,11 @@ export function LoginPage() {
                   Sin llamar a Supabase
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => handleActivateDemo("estudiante")}
-                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
                   title="Acceso directo de prueba como Estudiante (Dess) hacia /"
                 >
                   <authIcons.roleStudent className="size-3.5 shrink-0 text-accent" />
@@ -190,7 +190,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => handleActivateDemo("psicologo")}
-                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
                   title="Acceso directo de prueba como Psicóloga (Dra. Marta) hacia /psicologo"
                 >
                   <authIcons.rolePsychologist className="size-3.5 shrink-0 text-accent" />
@@ -204,8 +204,23 @@ export function LoginPage() {
 
                 <button
                   type="button"
+                  onClick={() => handleActivateDemo("tutor")}
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  title="Acceso directo de prueba como Tutor de Grupo hacia /tutor"
+                >
+                  <GraduationCap className="size-3.5 shrink-0 text-[#1B198F]" />
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="block font-semibold truncate">Mtro. Carlos (Tutor)</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      Modo demo • /tutor
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => handleActivateDemo("jefatura")}
-                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
                   title="Acceso directo de prueba como Jefatura hacia /directivo"
                 >
                   <GraduationCap className="size-3.5 shrink-0 text-accent" />

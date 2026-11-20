@@ -1,6 +1,11 @@
 -- ==============================================================================
 -- TABLA DE RECURSOS Y VIDEOS PSICOEDUCATIVOS - EQUILIBRA TESH
 -- Soporta lecturas, técnicas terapéuticas, enlaces externos y videos subidos
+-- Base de datos normalizada en Tercera Forma Normal (3FN):
+--   todos los atributos atómicos dependen exclusivamente de la PK `id`.
+-- Almacenamiento y Respaldos: videos alojados en Supabase Storage (`recursos-videos`)
+--   con RLS; respaldos automáticos diarios (PITR), cifrado TLS 1.3 / AES-256
+--   y monitoreo de consultas en Supabase Dashboard.
 -- ==============================================================================
 
 -- 1. Crear tabla public.recursos

@@ -2,6 +2,11 @@ import { supabase } from "@/lib/supabase";
 import type { SolicitudCita, EstadoCita } from "./types";
 import { verificarVentanaCancelacion } from "./types";
 import { triggerEnvioEncuesta } from "../encuesta/encuesta-service";
+import {
+  createAlertaInasistencia,
+  findTutorForStudent,
+  getAuthenticatedUid,
+} from "@/features/tutor/tutor-service";
 
 const LOCAL_STORAGE_KEY = "equilibra_solicitudes_cita_v1";
 
@@ -400,25 +405,47 @@ export async function actualizarEstadoCitaPsicologo(
     }
   }
 
-  // 2. Abandono (2 inasistencias consecutivas 'no_asistio') -> ventana de 15 días
+  // 2. Abandono (2 inasistencias consecutivas 'no_asistio') -> ventana de 15 días + Alerta automática al tutor
   if (nuevoEstado === "no_asistio" && targetCita) {
-    const citasDelEstudiante = localList
-      .filter(
+    let citasDelEstudiante: Array<{ estado: string; fecha_cita: string; hora_cita?: string }> =
+      localList.filter(
         (c) =>
           (targetCita?.folio && c.folio === targetCita.folio) ||
           (targetCita?.user_id && c.user_id === targetCita.user_id),
-      )
-      .sort(
-        (a, b) =>
-          new Date(`${b.fecha_cita}T${b.hora_cita || "00:00"}`).getTime() -
-          new Date(`${a.fecha_cita}T${a.hora_cita || "00:00"}`).getTime(),
       );
 
-    if (
+    // Combinar con citas en Supabase para detectar 2 inasistencias consecutivas reales
+    try {
+      let dbQuery = supabase
+        .from("solicitudes_cita")
+        .select("id, estado, fecha_cita, hora_cita, folio, user_id");
+
+      if (targetCita.user_id && /^[0-9a-f-]{36}$/i.test(targetCita.user_id)) {
+        dbQuery = dbQuery.eq("user_id", targetCita.user_id);
+      } else if (targetCita.folio) {
+        dbQuery = dbQuery.eq("folio", targetCita.folio);
+      }
+
+      const { data: dbCitas } = await dbQuery;
+      if (Array.isArray(dbCitas) && dbCitas.length > 0) {
+        citasDelEstudiante = dbCitas as typeof citasDelEstudiante;
+      }
+    } catch {
+      // Continuar con lista local
+    }
+
+    citasDelEstudiante = [...citasDelEstudiante].sort(
+      (a, b) =>
+        new Date(`${b.fecha_cita}T${b.hora_cita || "00:00"}`).getTime() -
+        new Date(`${a.fecha_cita}T${a.hora_cita || "00:00"}`).getTime(),
+    );
+
+    const esInasistenciaConsecutiva =
       citasDelEstudiante.length >= 2 &&
       citasDelEstudiante[0].estado === "no_asistio" &&
-      citasDelEstudiante[1].estado === "no_asistio"
-    ) {
+      citasDelEstudiante[1].estado === "no_asistio";
+
+    if (esInasistenciaConsecutiva) {
       triggerEncuestaAbandono = true;
       try {
         await triggerEnvioEncuesta({
@@ -431,6 +458,36 @@ export async function actualizarEstadoCitaPsicologo(
       } catch (err) {
         console.error("Error al disparar PB-021 Abandono:", err);
       }
+    }
+
+    // Notificar automáticamente al tutor del estudiante en alertas_inasistencia
+    try {
+      const tutorMatch = await findTutorForStudent({
+        estudianteId: targetCita.user_id,
+        carrera: targetCita.carrera_estudiante,
+      });
+
+      if (tutorMatch?.tutor_id) {
+        const psicologoUid = (await getAuthenticatedUid()) || targetCita.psicologo_id || null;
+        const tipoAlerta = esInasistenciaConsecutiva ? "inasistencia_repetida" : "no_asistio";
+        const prioridad = esInasistenciaConsecutiva ? "urgente" : "alta";
+        const folioTexto = targetCita.folio || targetCita.iniciales_estudiante || "Estudiante";
+        const mensaje = esInasistenciaConsecutiva
+          ? `Estudiante ${folioTexto} acumuló 2 inasistencias consecutivas a cita (${targetCita.fecha_cita}). Requiere seguimiento urgente.`
+          : `Estudiante ${folioTexto} no asistió a su cita programada el ${targetCita.fecha_cita}.`;
+
+        await createAlertaInasistencia({
+          tutor_id: tutorMatch.tutor_id,
+          psicologo_id: psicologoUid,
+          estudiante_id: targetCita.user_id,
+          folio: targetCita.folio,
+          tipo_alerta: tipoAlerta,
+          prioridad,
+          mensaje,
+        });
+      }
+    } catch (alertErr) {
+      console.warn("Aviso al crear alerta de inasistencia para tutor:", alertErr);
     }
   }
 

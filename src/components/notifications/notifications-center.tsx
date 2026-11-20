@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Bell,
   CheckCheck,
@@ -28,6 +29,12 @@ import {
   type AppNotification,
 } from "@/lib/notifications";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth-context";
+import {
+  getUnreadStudentAlerts,
+  markStudentAlertaAsRead,
+  type AlertaInasistencia,
+} from "@/features/tutor/tutor-service";
 import type { UserRole } from "@/lib/types";
 
 interface NotificationsCenterProps {
@@ -56,15 +63,61 @@ export function NotificationsCenter({
   onOpenAgenda,
   redAlertsCount: propRedAlertsCount,
 }: NotificationsCenterProps) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [studentAlerts, setStudentAlerts] = useState<AlertaInasistencia[]>([]);
   const [filter, setFilter] = useState<"all" | "alerts" | "citas">("all");
   const [redAlertsViewCount, setRedAlertsViewCount] = useState<number | null>(null);
-  const [realtimeRedCases, setRealtimeRedCases] = useState<RedAlertItem[]>([]);
+  const [, setRealtimeRedCases] = useState<RedAlertItem[]>([]);
+  const toastedAlertIdsRef = useRef<Set<string>>(new Set());
+
+  const formatStudentAlertText = useCallback((alerta: AlertaInasistencia) => {
+    if (alerta.tipo_alerta === "no_asistio" || alerta.tipo_alerta === "inasistencia_repetida") {
+      const dateMatch = alerta.mensaje.match(/\d{4}-\d{2}-\d{2}/);
+      const fecha =
+        dateMatch?.[0] ||
+        new Date(alerta.created_at).toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      return {
+        title: `No asististe a tu cita del ${fecha}. Por favor reagenda`,
+        body: alerta.mensaje,
+        type: "alerta_roja" as const,
+      };
+    }
+
+    return {
+      title: "Recordatorio: Tienes una cita pendiente con el psicólogo",
+      body: alerta.mensaje,
+      type: "cita_recordatorio" as const,
+    };
+  }, []);
 
   const loadNotifications = useCallback(() => {
     setNotifications(getNotificationsForRole(role));
   }, [role]);
+
+  const loadStudentAlerts = useCallback(async () => {
+    if (role !== "estudiante" || !user?.id) return;
+    try {
+      const list = await getUnreadStudentAlerts(user.id);
+      setStudentAlerts(list);
+
+      for (const alerta of list) {
+        if (!toastedAlertIdsRef.current.has(alerta.id)) {
+          toastedAlertIdsRef.current.add(alerta.id);
+          const formatted = formatStudentAlertText(alerta);
+          toast.info(formatted.title, { description: formatted.body });
+        }
+      }
+    } catch {
+      // Ignorar fallos transitorios
+    }
+  }, [role, user?.id, formatStudentAlertText]);
 
   // Consulta en tiempo real a la vista oficial para_psicologo
   const fetchRedAlertsFromView = useCallback(async () => {
@@ -96,6 +149,13 @@ export function NotificationsCenter({
   }, [loadNotifications]);
 
   useEffect(() => {
+    if (role !== "estudiante") return;
+    loadStudentAlerts();
+    const interval = setInterval(loadStudentAlerts, 10000);
+    return () => clearInterval(interval);
+  }, [role, loadStudentAlerts]);
+
+  useEffect(() => {
     if (role !== "psicologo") return;
     fetchRedAlertsFromView();
 
@@ -121,9 +181,31 @@ export function NotificationsCenter({
     };
   }, [role, fetchRedAlertsFromView]);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const studentAlertNotifications: AppNotification[] =
+    role === "estudiante"
+      ? studentAlerts.map((alerta) => {
+          const formatted = formatStudentAlertText(alerta);
+          return {
+            id: `student-alerta::${alerta.id}`,
+            recipientRole: "estudiante",
+            type: formatted.type,
+            title: formatted.title,
+            message: formatted.body,
+            timestamp: new Date(alerta.created_at).toLocaleDateString("es-MX", {
+              day: "2-digit",
+              month: "short",
+            }),
+            read: Boolean(alerta.leida_estudiante),
+            priority: "alta",
+            actionLabel: "Agendar cita",
+          };
+        })
+      : [];
 
-  const filteredNotifications = notifications.filter((n) => {
+  const combinedNotifications = [...studentAlertNotifications, ...notifications];
+  const unreadCount = combinedNotifications.filter((n) => !n.read).length;
+
+  const filteredNotifications = combinedNotifications.filter((n) => {
     if (filter === "alerts") {
       return n.type === "alerta_roja" || n.type === "alerta_amarilla";
     }
@@ -133,20 +215,35 @@ export function NotificationsCenter({
     return true;
   });
 
-  const handleMarkAsRead = (id: string, e?: React.MouseEvent) => {
+  const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (id.startsWith("student-alerta::")) {
+      const realId = id.replace("student-alerta::", "");
+      await markStudentAlertaAsRead(realId);
+      setStudentAlerts((prev) => prev.filter((a) => a.id !== realId));
+      return;
+    }
     markNotificationAsRead(id);
     loadNotifications();
   };
 
-  const handleMarkAllRead = () => {
+  const handleMarkAllRead = async () => {
+    for (const alerta of studentAlerts) {
+      await markStudentAlertaAsRead(alerta.id);
+    }
+    setStudentAlerts([]);
     markAllNotificationsAsRead(role);
     loadNotifications();
     toast.success("Todas las notificaciones marcadas como leídas");
   };
 
-  const handleAction = (notif: AppNotification) => {
-    handleMarkAsRead(notif.id);
+  const handleAction = async (notif: AppNotification) => {
+    await handleMarkAsRead(notif.id);
+    if (notif.id.startsWith("student-alerta::")) {
+      setIsOpen(false);
+      navigate({ to: "/citas" });
+      return;
+    }
     if (notif.caseId && onSelectCase) {
       setIsOpen(false);
       onSelectCase(notif.caseId);
@@ -278,7 +375,7 @@ export function NotificationsCenter({
                 filter === "all" ? "bg-primary text-primary-foreground" : "bg-card/70"
               }`}
             >
-              Todas ({notifications.length})
+              Todas ({combinedNotifications.length})
             </Button>
             <Button
               size="sm"
@@ -288,7 +385,7 @@ export function NotificationsCenter({
                 filter === "alerts" ? "bg-rose-500 text-white" : "bg-card/70"
               }`}
             >
-              Alertas ({notifications.filter((n) => n.type.startsWith("alerta")).length})
+              Alertas ({combinedNotifications.filter((n) => n.type.startsWith("alerta")).length})
             </Button>
             <Button
               size="sm"
@@ -298,7 +395,7 @@ export function NotificationsCenter({
                 filter === "citas" ? "bg-teal text-white" : "bg-card/70"
               }`}
             >
-              Citas ({notifications.filter((n) => n.type.startsWith("cita")).length})
+              Citas ({combinedNotifications.filter((n) => n.type.startsWith("cita")).length})
             </Button>
           </div>
         </SheetHeader>

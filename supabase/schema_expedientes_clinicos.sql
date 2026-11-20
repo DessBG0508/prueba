@@ -1,6 +1,11 @@
 -- ==============================================================================
 -- TABLA DE EXPEDIENTES CLÍNICOS - EQUILIBRA TESH
 -- Conexión: Supabase PostgreSQL
+-- Base de datos normalizada en Tercera Forma Normal (3FN):
+--   entidad independiente con clave primaria UUID, referencia normalizada a
+--   `auth.users(id)` y restricción única `(folio, psicologo_id)`.
+-- Respaldos: Supabase proporciona respaldos automáticos diarios (PITR),
+--   cifrado TLS 1.3 en tránsito, AES-256 en reposo y logs de consultas en Dashboard.
 -- ==============================================================================
 
 -- 1. Crear tabla expedientes_clinicos si no existe
