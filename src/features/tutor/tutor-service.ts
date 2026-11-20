@@ -15,6 +15,26 @@ export interface TutorProfile {
   rol?: string;
 }
 
+export const TESH_TUTORIAS_CARRERAS = [
+  "Ing. en Sistemas Computacionales",
+  "Ing. Industrial",
+  "Ing. en Gestión Empresarial",
+  "Contaduría Pública",
+  "Administración",
+  "Arquitectura",
+  "Derecho",
+] as const;
+
+export const TESH_PERIODOS_SUGERIDOS = ["2026-1", "2026-2", "2027-1", "2027-2"] as const;
+
+export function getPreviousPeriodo(periodo: string): string {
+  const match = periodo.trim().match(/^(\d{4})-(1|2)$/);
+  if (!match) return "2026-1";
+  const year = Number(match[1]);
+  const term = match[2];
+  return term === "2" ? `${year}-1` : `${year - 1}-2`;
+}
+
 export interface TutorGrupoAssignment {
   id: string;
   tutor_id: string;
@@ -22,6 +42,7 @@ export interface TutorGrupoAssignment {
   carrera: string;
   grupo: string;
   semestre: string;
+  periodo?: string;
   activo?: boolean;
   created_at?: string;
 }
@@ -75,6 +96,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 const TUTORES_GRUPO_KEY = "equilibra_tutores_grupo_v1";
 const CANALIZACIONES_KEY = "equilibra_canalizaciones_v1";
 const ALERTAS_TUTOR_KEY = "equilibra_alertas_inasistencia_v1";
+const DEMO_STUDENTS_KEY = "equilibra_demo_students_v1";
 
 const DEMO_TUTOR_PROFILES: TutorProfile[] = [
   {
@@ -102,9 +124,29 @@ const DEMO_TUTOR_PROFILES: TutorProfile[] = [
     nombre: "Mtro. Héctor Ramírez",
     email: "hector.tutor@tesh.mx",
     matricula: "TUT-40108",
-    carrera: "Ing. Mecatrónica",
+    carrera: "Ing. en Gestión Empresarial",
     grupo: "401",
     semestre: "4",
+    rol: "tutor",
+  },
+  {
+    id: "demo-tutor-patricia",
+    nombre: "Mtra. Patricia Morales",
+    email: "patricia.tutor@tesh.mx",
+    matricula: "TUT-20112",
+    carrera: "Contaduría Pública",
+    grupo: "201",
+    semestre: "2",
+    rol: "tutor",
+  },
+  {
+    id: "demo-tutor-roberto",
+    nombre: "Mtro. Roberto Aguilar",
+    email: "roberto.tutor@tesh.mx",
+    matricula: "TUT-10105",
+    carrera: "Arquitectura",
+    grupo: "101",
+    semestre: "1",
     rol: "tutor",
   },
 ];
@@ -117,6 +159,7 @@ const SEED_TUTORES_GRUPO: TutorGrupoAssignment[] = [
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "501",
     semestre: "5",
+    periodo: "2026-2",
     activo: true,
     created_at: new Date(Date.now() - 86400000 * 14).toISOString(),
   },
@@ -127,6 +170,7 @@ const SEED_TUTORES_GRUPO: TutorGrupoAssignment[] = [
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "601",
     semestre: "6",
+    periodo: "2026-2",
     activo: true,
     created_at: new Date(Date.now() - 86400000 * 12).toISOString(),
   },
@@ -137,6 +181,7 @@ const SEED_TUTORES_GRUPO: TutorGrupoAssignment[] = [
     carrera: "Ing. Industrial",
     grupo: "302",
     semestre: "3",
+    periodo: "2026-2",
     activo: true,
     created_at: new Date(Date.now() - 86400000 * 10).toISOString(),
   },
@@ -206,6 +251,54 @@ const SEED_STUDENTS_DEMO: TutorStudentItem[] = [
     carrera: "Ing. en Sistemas Computacionales",
     grupo: "601",
     semestre: "6",
+  },
+  {
+    id: "demo-student-ind-302-1",
+    nombre: "Alejandro Torres",
+    matricula: "202410218",
+    carrera: "Ing. Industrial",
+    grupo: "302",
+    semestre: "3",
+  },
+  {
+    id: "demo-student-ige-401-1",
+    nombre: "Mariana Vega",
+    matricula: "202320114",
+    carrera: "Ing. en Gestión Empresarial",
+    grupo: "401",
+    semestre: "4",
+  },
+  {
+    id: "demo-student-cp-201-1",
+    nombre: "Luis Ángel Pérez",
+    matricula: "202510088",
+    carrera: "Contaduría Pública",
+    grupo: "201",
+    semestre: "2",
+  },
+  {
+    id: "demo-student-adm-101-1",
+    nombre: "Andrea Castillo",
+    matricula: "202610042",
+    carrera: "Administración",
+    grupo: "101",
+    semestre: "1",
+  },
+  {
+    id: "demo-student-arq-501-1",
+    nombre: "Sebastián Domínguez",
+    matricula: "202310720",
+    carrera: "Arquitectura",
+    grupo: "501",
+    semestre: "5",
+  },
+  {
+    id: "demo-student-der-701-1",
+    nombre: "Renata Mendoza",
+    matricula: "202210890",
+    carrera: "Derecho",
+    grupo: "701",
+    semestre: "7",
   },
 ];
 
@@ -382,6 +475,7 @@ export async function getAllTutorGroupAssignments(): Promise<TutorGrupoAssignmen
         carrera: String(row.carrera || ""),
         grupo: String(row.grupo || ""),
         semestre: String(row.semestre || ""),
+        periodo: row.periodo ? String(row.periodo) : "2026-2",
         activo: row.activo !== undefined ? Boolean(row.activo) : true,
         created_at: row.created_at ? String(row.created_at) : undefined,
       }));
@@ -393,7 +487,30 @@ export async function getAllTutorGroupAssignments(): Promise<TutorGrupoAssignmen
     // Fallback local
   }
 
-  return local;
+  return local.map((item) => ({
+    ...item,
+    periodo: item.periodo || "2026-2",
+    activo: item.activo !== undefined ? item.activo : true,
+  }));
+}
+
+/**
+ * Obtener asignaciones de tutores filtradas por periodo (ej. '2026-2')
+ */
+export async function getTutorGroupAssignmentsByPeriod(
+  periodo: string,
+): Promise<TutorGrupoAssignment[]> {
+  const all = await getAllTutorGroupAssignments();
+  const target = periodo.trim();
+  return all
+    .filter((a) => (a.periodo || "2026-2") === target)
+    .sort((a, b) => {
+      const c = a.carrera.localeCompare(b.carrera, "es");
+      if (c !== 0) return c;
+      const s = Number(normalizeSemestre(a.semestre)) - Number(normalizeSemestre(b.semestre));
+      if (!isNaN(s) && s !== 0) return s;
+      return a.grupo.localeCompare(b.grupo, "es");
+    });
 }
 
 /**
@@ -436,6 +553,7 @@ export async function getTutorGroupAssignments(
             carrera: String(row.carrera || ""),
             grupo: String(row.grupo || ""),
             semestre: String(row.semestre || ""),
+            periodo: row.periodo ? String(row.periodo) : undefined,
             activo: row.activo !== undefined ? Boolean(row.activo) : true,
             created_at: row.created_at ? String(row.created_at) : undefined,
           }));
@@ -447,16 +565,6 @@ export async function getTutorGroupAssignments(
 
   const matchedLocal = local.filter((a) => a.tutor_id === effectiveTutorId && a.activo !== false);
   if (matchedLocal.length > 0) {
-    // Si es la cuenta demo principal y aún no tiene el segundo grupo en caché local, unir semillas faltantes
-    if (effectiveTutorId === "demo-tutor-carlos") {
-      const seen = new Set(matchedLocal.map((m) => m.id));
-      const missingSeeds = SEED_TUTORES_GRUPO.filter(
-        (s) => s.tutor_id === "demo-tutor-carlos" && !seen.has(s.id),
-      );
-      if (missingSeeds.length > 0) {
-        return [...matchedLocal, ...missingSeeds];
-      }
-    }
     return matchedLocal;
   }
 
@@ -469,16 +577,39 @@ export async function getTutorGroupAssignments(
         carrera: fallbackUser.carrera,
         grupo: fallbackUser.grupo,
         semestre: fallbackUser.semestre || "5",
+        periodo: "2026-2",
         activo: true,
       },
     ];
   }
 
-  return SEED_TUTORES_GRUPO.filter((s) => s.tutor_id === "demo-tutor-carlos" && s.activo !== false);
+  return local.filter((s) => s.tutor_id === "demo-tutor-carlos" && s.activo !== false);
+}
+
+/**
+ * Desactiva asignaciones anteriores (activo = false) para la misma combinación carrera + grupo + semestre
+ */
+async function deactivatePriorAssignmentsForGroup(params: {
+  carrera: string;
+  grupo: string;
+  semestre: string;
+}): Promise<void> {
+  try {
+    await supabase
+      .from("tutores_grupo")
+      .update({ activo: false })
+      .eq("carrera", params.carrera)
+      .eq("grupo", params.grupo)
+      .eq("semestre", params.semestre)
+      .eq("activo", true);
+  } catch {
+    // Continuar con sincronización local
+  }
 }
 
 /**
  * Asignar tutor a carrera + grupo + semestre (INSERT en tutores_grupo)
+ * Automáticamente desactiva asignaciones anteriores del mismo carrera+grupo+semestre.
  */
 export async function assignTutorToGroup(input: {
   tutor_id: string;
@@ -486,38 +617,58 @@ export async function assignTutorToGroup(input: {
   carrera: string;
   grupo: string;
   semestre: string;
+  periodo?: string;
 }): Promise<{ ok: boolean; assignment?: TutorGrupoAssignment; error?: string }> {
   const cleanGrupo = input.grupo.trim();
   const cleanSemestre = input.semestre.trim();
   const cleanCarrera = input.carrera.trim();
+  const cleanPeriodo = (input.periodo || "2026-2").trim();
 
   if (!input.tutor_id || !cleanCarrera || !cleanGrupo || !cleanSemestre) {
     return { ok: false, error: "Selecciona tutor, carrera, semestre y grupo." };
   }
 
   const localRecord: TutorGrupoAssignment = {
-    id: `tg-${Date.now().toString(36)}`,
+    id: `tg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     tutor_id: input.tutor_id,
     tutor_nombre: input.tutor_nombre || "Tutor TESH",
     carrera: cleanCarrera,
     grupo: cleanGrupo,
     semestre: cleanSemestre,
+    periodo: cleanPeriodo,
     activo: true,
     created_at: new Date().toISOString(),
   };
 
   if (UUID_REGEX.test(input.tutor_id)) {
     try {
-      const { data, error } = await supabase
+      await deactivatePriorAssignmentsForGroup({
+        carrera: cleanCarrera,
+        grupo: cleanGrupo,
+        semestre: cleanSemestre,
+      });
+
+      const fullPayload: Record<string, unknown> = {
+        tutor_id: input.tutor_id,
+        carrera: cleanCarrera,
+        grupo: cleanGrupo,
+        semestre: cleanSemestre,
+        periodo: cleanPeriodo,
+        activo: true,
+      };
+
+      let { data, error } = await supabase
         .from("tutores_grupo")
-        .insert({
-          tutor_id: input.tutor_id,
-          carrera: cleanCarrera,
-          grupo: cleanGrupo,
-          semestre: cleanSemestre,
-        })
+        .insert(fullPayload)
         .select()
         .single();
+
+      if (error && error.message.toLowerCase().includes("periodo")) {
+        delete fullPayload.periodo;
+        const retry = await supabase.from("tutores_grupo").insert(fullPayload).select().single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         return { ok: false, error: error.message };
@@ -536,17 +687,395 @@ export async function assignTutorToGroup(input: {
   }
 
   const existing = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
-  const filtered = existing.filter(
-    (item) =>
-      !(
+  const updatedExisting = existing
+    .filter(
+      (item) =>
+        !(
+          (item.periodo || "2026-2") === cleanPeriodo &&
+          normalizeText(item.carrera) === normalizeText(cleanCarrera) &&
+          normalizeText(item.grupo) === normalizeText(cleanGrupo) &&
+          normalizeSemestre(item.semestre) === normalizeSemestre(cleanSemestre)
+        ),
+    )
+    .map((item) => {
+      const sameGroup =
         normalizeText(item.carrera) === normalizeText(cleanCarrera) &&
         normalizeText(item.grupo) === normalizeText(cleanGrupo) &&
-        item.tutor_id === input.tutor_id
-      ),
-  );
-  writeLocal(TUTORES_GRUPO_KEY, [localRecord, ...filtered]);
+        normalizeSemestre(item.semestre) === normalizeSemestre(cleanSemestre);
+      return sameGroup ? { ...item, activo: false } : item;
+    });
+
+  writeLocal(TUTORES_GRUPO_KEY, [localRecord, ...updatedExisting]);
 
   return { ok: true, assignment: localRecord };
+}
+
+/**
+ * Guardado masivo de asignaciones para un periodo (INSERT masivo en tutores_grupo)
+ * Automáticamente marca activo = false las asignaciones anteriores de los mismos carrera+grupo+semestre.
+ */
+export async function saveBulkTutorAssignments(input: {
+  periodo: string;
+  assignments: Array<{
+    tutor_id: string;
+    tutor_nombre?: string;
+    carrera: string;
+    semestre: string;
+    grupo: string;
+  }>;
+}): Promise<{ ok: boolean; savedCount: number; error?: string }> {
+  const cleanPeriodo = input.periodo.trim();
+  if (!cleanPeriodo) {
+    return { ok: false, savedCount: 0, error: "Selecciona un periodo académico." };
+  }
+
+  const validItems = input.assignments.filter(
+    (a) => a.tutor_id.trim() && a.carrera.trim() && a.semestre.trim() && a.grupo.trim(),
+  );
+  if (validItems.length === 0) {
+    return {
+      ok: false,
+      savedCount: 0,
+      error: "Selecciona al menos un tutor en la grilla antes de guardar.",
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+  const newRecords: TutorGrupoAssignment[] = validItems.map((item, idx) => ({
+    id: `tg-${Date.now().toString(36)}-${idx}`,
+    tutor_id: item.tutor_id.trim(),
+    tutor_nombre: item.tutor_nombre || "Tutor TESH",
+    carrera: item.carrera.trim(),
+    semestre: item.semestre.trim(),
+    grupo: item.grupo.trim(),
+    periodo: cleanPeriodo,
+    activo: true,
+    created_at: nowIso,
+  }));
+
+  const dbItems = validItems.filter((item) => UUID_REGEX.test(item.tutor_id.trim()));
+  if (dbItems.length > 0) {
+    try {
+      await Promise.all(
+        dbItems.map((item) =>
+          deactivatePriorAssignmentsForGroup({
+            carrera: item.carrera.trim(),
+            grupo: item.grupo.trim(),
+            semestre: item.semestre.trim(),
+          }),
+        ),
+      );
+
+      const bulkPayload = dbItems.map((item) => ({
+        tutor_id: item.tutor_id.trim(),
+        carrera: item.carrera.trim(),
+        grupo: item.grupo.trim(),
+        semestre: item.semestre.trim(),
+        periodo: cleanPeriodo,
+        activo: true,
+      }));
+
+      let { data, error } = await supabase.from("tutores_grupo").insert(bulkPayload).select();
+
+      if (error && error.message.toLowerCase().includes("periodo")) {
+        const fallbackPayload = bulkPayload.map(({ periodo: _p, ...rest }) => {
+          void _p;
+          return rest;
+        });
+        const retry = await supabase.from("tutores_grupo").insert(fallbackPayload).select();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        return { ok: false, savedCount: 0, error: error.message };
+      }
+
+      if (Array.isArray(data)) {
+        data.forEach((row: Record<string, unknown>, idx: number) => {
+          const targetIdx = newRecords.findIndex(
+            (r) =>
+              r.tutor_id === String(row.tutor_id) &&
+              r.carrera === String(row.carrera) &&
+              r.grupo === String(row.grupo) &&
+              normalizeSemestre(r.semestre) === normalizeSemestre(String(row.semestre)),
+          );
+          const resolvedIdx = targetIdx !== -1 ? targetIdx : idx;
+          if (newRecords[resolvedIdx]) {
+            newRecords[resolvedIdx].id = String(row.id);
+            if (row.created_at) newRecords[resolvedIdx].created_at = String(row.created_at);
+          }
+        });
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        savedCount: 0,
+        error: err instanceof Error ? err.message : "Error al guardar asignaciones masivas.",
+      };
+    }
+  }
+
+  const keySet = new Set(
+    newRecords.map(
+      (n) =>
+        `${normalizeText(n.carrera)}|${normalizeSemestre(n.semestre)}|${normalizeText(n.grupo)}`,
+    ),
+  );
+
+  const existing = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
+  const updatedExisting = existing
+    .filter((item) => {
+      const k = `${normalizeText(item.carrera)}|${normalizeSemestre(item.semestre)}|${normalizeText(item.grupo)}`;
+      return !((item.periodo || "2026-2") === cleanPeriodo && keySet.has(k));
+    })
+    .map((item) => {
+      const k = `${normalizeText(item.carrera)}|${normalizeSemestre(item.semestre)}|${normalizeText(item.grupo)}`;
+      return keySet.has(k) ? { ...item, activo: false } : item;
+    });
+
+  writeLocal(TUTORES_GRUPO_KEY, [...newRecords, ...updatedExisting]);
+
+  return { ok: true, savedCount: newRecords.length };
+}
+
+/**
+ * Copiar asignaciones del periodo anterior hacia el periodo destino:
+ * - Duplica asignaciones con activo = true y periodo = targetPeriodo
+ * - Marca las asignaciones del periodo anterior como activo = false
+ */
+export async function copyTutorAssignmentsFromPreviousPeriod(input: {
+  targetPeriodo: string;
+  sourcePeriodo?: string;
+}): Promise<{
+  ok: boolean;
+  copiedCount: number;
+  sourcePeriodo: string;
+  error?: string;
+}> {
+  const targetPeriodo = input.targetPeriodo.trim();
+  const sourcePeriodo = (input.sourcePeriodo || getPreviousPeriodo(targetPeriodo)).trim();
+
+  if (!targetPeriodo || sourcePeriodo === targetPeriodo) {
+    return {
+      ok: false,
+      copiedCount: 0,
+      sourcePeriodo,
+      error: "El periodo destino debe ser distinto al periodo origen.",
+    };
+  }
+
+  const all = await getAllTutorGroupAssignments();
+  const sourceRowsAll = all.filter((a) => (a.periodo || "2026-2") === sourcePeriodo);
+  const activeSource = sourceRowsAll.filter((a) => a.activo !== false);
+  const baseRows = activeSource.length > 0 ? activeSource : sourceRowsAll;
+
+  // Deduplicar por carrera+semestre+grupo tomando la más reciente
+  const uniqueMap = new Map<string, TutorGrupoAssignment>();
+  for (const row of baseRows) {
+    const k = `${normalizeText(row.carrera)}|${normalizeSemestre(row.semestre)}|${normalizeText(row.grupo)}`;
+    if (!uniqueMap.has(k)) {
+      uniqueMap.set(k, row);
+    }
+  }
+  const toCopy = Array.from(uniqueMap.values());
+
+  if (toCopy.length === 0) {
+    return {
+      ok: false,
+      copiedCount: 0,
+      sourcePeriodo,
+      error: `No hay asignaciones registradas en el periodo anterior (${sourcePeriodo}).`,
+    };
+  }
+
+  // Marcar como activo = false todas las asignaciones del periodo anterior en Supabase
+  try {
+    await supabase
+      .from("tutores_grupo")
+      .update({ activo: false })
+      .eq("periodo", sourcePeriodo)
+      .eq("activo", true);
+  } catch {
+    // Continuar con desactivación por grupo y localStorage
+  }
+
+  // Marcar como activo = false en localStorage para el periodo origen
+  const existingLocal = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
+  const markedLocal = existingLocal.map((item) =>
+    (item.periodo || "2026-2") === sourcePeriodo ? { ...item, activo: false } : item,
+  );
+  writeLocal(TUTORES_GRUPO_KEY, markedLocal);
+
+  const bulkRes = await saveBulkTutorAssignments({
+    periodo: targetPeriodo,
+    assignments: toCopy.map((item) => ({
+      tutor_id: item.tutor_id,
+      tutor_nombre: item.tutor_nombre,
+      carrera: item.carrera,
+      semestre: item.semestre,
+      grupo: item.grupo,
+    })),
+  });
+
+  if (!bulkRes.ok) {
+    return {
+      ok: false,
+      copiedCount: 0,
+      sourcePeriodo,
+      error: bulkRes.error,
+    };
+  }
+
+  return {
+    ok: true,
+    copiedCount: bulkRes.savedCount,
+    sourcePeriodo,
+  };
+}
+
+/**
+ * Actualizar tutor asignado o estado activo de una asignación existente
+ */
+export async function updateTutorAssignment(input: {
+  id: string;
+  tutor_id?: string;
+  tutor_nombre?: string;
+  activo?: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (UUID_REGEX.test(input.id)) {
+    try {
+      const payload: Record<string, unknown> = {};
+      if (input.tutor_id && UUID_REGEX.test(input.tutor_id)) payload.tutor_id = input.tutor_id;
+      if (input.activo !== undefined) payload.activo = input.activo;
+
+      if (Object.keys(payload).length > 0) {
+        const { error } = await supabase.from("tutores_grupo").update(payload).eq("id", input.id);
+        if (error) {
+          return { ok: false, error: error.message };
+        }
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "No se pudo actualizar la asignación.",
+      };
+    }
+  }
+
+  const local = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
+  const updated = local.map((item) => {
+    if (item.id !== input.id) return item;
+    return {
+      ...item,
+      ...(input.tutor_id ? { tutor_id: input.tutor_id } : {}),
+      ...(input.tutor_nombre ? { tutor_nombre: input.tutor_nombre } : {}),
+      ...(input.activo !== undefined ? { activo: input.activo } : {}),
+    };
+  });
+  writeLocal(TUTORES_GRUPO_KEY, updated);
+
+  return { ok: true };
+}
+
+/**
+ * Obtener catálogo de estudiantes (para gestión de recursamiento en Directivo)
+ */
+export async function getAllStudentsForDirectivo(): Promise<TutorStudentItem[]> {
+  const localStudents = readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
+
+  try {
+    let { data, error } = await supabase
+      .from("profiles")
+      .select("id, nombre, matricula, carrera, grupo, semestre, rol")
+      .order("nombre", { ascending: true });
+
+    if (error && error.message.toLowerCase().includes("rol")) {
+      const retry = await supabase
+        .from("profiles")
+        .select("id, nombre, matricula, carrera, grupo, semestre, role")
+        .order("nombre", { ascending: true });
+      data = retry.data as typeof data;
+      error = retry.error;
+    }
+
+    if (!error && Array.isArray(data)) {
+      const dbStudents: TutorStudentItem[] = data
+        .filter((p: Record<string, unknown>) => {
+          const r = String(p.rol || p.role || "estudiante").toLowerCase();
+          return r === "estudiante" || r === "";
+        })
+        .map((p: Record<string, unknown>) => ({
+          id: String(p.id),
+          nombre: String(p.nombre || "Estudiante TESH"),
+          matricula: String(p.matricula || "Sin matrícula"),
+          carrera: String(p.carrera || "Ing. en Sistemas Computacionales"),
+          grupo: String(p.grupo || "101"),
+          semestre: String(p.semestre || "1"),
+        }));
+
+      const seen = new Set(dbStudents.map((s) => s.id));
+      return [...dbStudents, ...localStudents.filter((l) => !seen.has(l.id))];
+    }
+  } catch {
+    // Fallback local
+  }
+
+  return localStudents;
+}
+
+/**
+ * Cambiar carrera, semestre y grupo de un estudiante que recursa
+ */
+export async function updateStudentAcademicGroup(input: {
+  studentId: string;
+  carrera: string;
+  semestre: string;
+  grupo: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const cleanCarrera = input.carrera.trim();
+  const cleanSemestre = input.semestre.trim();
+  const cleanGrupo = input.grupo.trim();
+
+  if (!cleanCarrera || !cleanSemestre || !cleanGrupo) {
+    return { ok: false, error: "Carrera, semestre y grupo son obligatorios." };
+  }
+
+  if (UUID_REGEX.test(input.studentId)) {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          carrera: cleanCarrera,
+          semestre: cleanSemestre,
+          grupo: cleanGrupo,
+        })
+        .eq("id", input.studentId);
+
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          err instanceof Error ? err.message : "No se pudo actualizar el grupo del estudiante.",
+      };
+    }
+  }
+
+  const localStudents = readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
+  const existsLocally = localStudents.some((s) => s.id === input.studentId);
+  if (existsLocally) {
+    const updated = localStudents.map((s) =>
+      s.id === input.studentId
+        ? { ...s, carrera: cleanCarrera, semestre: cleanSemestre, grupo: cleanGrupo }
+        : s,
+    );
+    writeLocal(DEMO_STUDENTS_KEY, updated);
+  }
+
+  return { ok: true };
 }
 
 /**
@@ -607,8 +1136,9 @@ export async function getGroupStudents(
     // Fallback abajo
   }
 
-  // Fallback demostrativo por grupo + semestre para entorno demo
-  const matchingDemo = SEED_STUDENTS_DEMO.filter(
+  // Fallback demostrativo leyendo almacenamiento local actualizado (refleja cambios de recursamiento)
+  const localStudents = readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
+  const matchingDemo = localStudents.filter(
     (s) =>
       normalizeText(s.carrera) === normalizeText(carrera) &&
       normalizeText(s.grupo) === normalizeText(grupo) &&
@@ -618,8 +1148,20 @@ export async function getGroupStudents(
     return matchingDemo;
   }
 
-  return SEED_STUDENTS_DEMO.filter((s) => s.grupo === "501")
-    .slice(0, 4)
+  // Si es uno de los grupos demo ya poblados originalmente y quedó vacío tras mover alumnos, respetar lista vacía
+  const isOriginallySeededGroup = SEED_STUDENTS_DEMO.some(
+    (s) =>
+      normalizeText(s.carrera) === normalizeText(carrera) &&
+      normalizeText(s.grupo) === normalizeText(grupo) &&
+      (!targetSemestreNorm || normalizeSemestre(s.semestre) === targetSemestreNorm),
+  );
+  if (isOriginallySeededGroup) {
+    return [];
+  }
+
+  return localStudents
+    .filter((s) => s.grupo === "501")
+    .slice(0, 3)
     .map((s, idx) => ({
       ...s,
       id: `${s.id}-${grupo}-${idx}`,
