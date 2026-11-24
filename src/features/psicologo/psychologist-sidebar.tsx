@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Library,
+  Megaphone,
   UserPlus,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -25,7 +26,8 @@ export type PsychologistNavSection =
   | "agenda"
   | "bitacora"
   | "encuestas"
-  | "recursos";
+  | "recursos"
+  | "anuncios";
 
 interface PsychologistSidebarProps {
   activeSection: PsychologistNavSection;
@@ -98,6 +100,12 @@ export function PsychologistSidebar({
       id: "recursos" as PsychologistNavSection,
       label: "Recursos y Videos",
       icon: Library,
+      badge: null,
+    },
+    {
+      id: "anuncios" as PsychologistNavSection,
+      label: "Anuncios y Talleres",
+      icon: Megaphone,
       badge: null,
     },
   ];

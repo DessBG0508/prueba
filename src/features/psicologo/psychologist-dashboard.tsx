@@ -47,6 +47,7 @@ import { GestionRecursos } from "./recursos/gestion-recursos";
 import { SemaforoPacientes } from "./semaforo-pacientes";
 import { ResultadosEncuesta } from "./ResultadosEncuesta";
 import { CanalizacionesPanel } from "./canalizaciones-panel";
+import { AnunciosPanel } from "./anuncios-panel";
 import { getCanalizaciones } from "@/features/tutor/tutor-service";
 import { AjustesModal } from "@/components/settings/ajustes-modal";
 import { useAuth } from "@/lib/auth-context";
@@ -412,6 +413,7 @@ export function PsychologistDashboard() {
                 {activeSection === "bitacora" && "Bitácora Clínica"}
                 {activeSection === "encuestas" && "Encuestas de Satisfacción PB-021"}
                 {activeSection === "recursos" && "Gestión de Recursos y Videos Psicoeducativos"}
+                {activeSection === "anuncios" && "Anuncios y Talleres Públicos"}
               </h1>
             </div>
 
@@ -453,6 +455,7 @@ export function PsychologistDashboard() {
                 {activeSection === "bitacora" && "Bitácora Clínica"}
                 {activeSection === "encuestas" && "Encuestas PB-021"}
                 {activeSection === "recursos" && "Recursos y Videos"}
+                {activeSection === "anuncios" && "Anuncios y Talleres"}
               </button>
 
               {selectedCaseForDetail && (
@@ -999,6 +1002,9 @@ export function PsychologistDashboard() {
 
           {/* SECCIÓN 7: GESTIÓN DE RECURSOS Y VIDEOS PSICOEDUCATIVOS */}
           {activeSection === "recursos" && <GestionRecursos />}
+
+          {/* SECCIÓN 8: ANUNCIOS Y TALLERES PÚBLICOS */}
+          {activeSection === "anuncios" && <AnunciosPanel />}
         </main>
       </div>
 

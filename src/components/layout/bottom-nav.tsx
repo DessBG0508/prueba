@@ -1,4 +1,4 @@
-import { CalendarDays, Home, Library, Sparkles, UserRound } from "lucide-react";
+import { CalendarDays, Home, Library, Megaphone, Sparkles, UserRound } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 
 interface NavItemConfig {
@@ -10,6 +10,7 @@ interface NavItemConfig {
 const leftNavItems: NavItemConfig[] = [
   { label: "Inicio", icon: Home, route: "/" },
   { label: "Recursos", icon: Library, route: "/recursos" },
+  { label: "Anuncios", icon: Megaphone, route: "/anuncios" },
 ];
 
 const rightNavItems: NavItemConfig[] = [
@@ -24,6 +25,7 @@ export function BottomNav() {
   // Identificar el tab activo de forma precisa en todas las rutas
   const isInicioActive = currentPath === "/";
   const isRecursosActive = currentPath.startsWith("/recursos");
+  const isAnunciosActive = currentPath.startsWith("/anuncios");
   const isCitasActive = currentPath.startsWith("/citas");
   const isPerfilActive = currentPath.startsWith("/perfil");
 
@@ -39,11 +41,16 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/90 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-nav backdrop-blur-xl lg:bottom-6 lg:left-1/2 lg:right-auto lg:w-[34rem] lg:-translate-x-1/2 lg:rounded-3xl lg:border"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card/90 px-2 sm:px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-nav backdrop-blur-xl lg:bottom-6 lg:left-1/2 lg:right-auto lg:w-[40rem] lg:-translate-x-1/2 lg:rounded-3xl lg:border"
     >
-      <div className="grid grid-cols-5 items-end">
+      <div className="grid grid-cols-6 items-end gap-0.5 sm:gap-1">
         {leftNavItems.map((item) => {
-          const active = item.route === "/" ? isInicioActive : isRecursosActive;
+          const active =
+            item.route === "/"
+              ? isInicioActive
+              : item.route === "/recursos"
+                ? isRecursosActive
+                : isAnunciosActive;
           return <NavItem key={item.label} {...item} active={active} />;
         })}
 
@@ -54,13 +61,16 @@ export function BottomNav() {
             aria-label="Check-in emocional y apoyo"
             title="Check-in emocional y apoyo"
             aria-current={isCenterActive ? "page" : undefined}
-            className={`-mt-7 flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-float transition-all duration-200 ${
+            className={`-mt-7 flex size-12 sm:size-14 items-center justify-center rounded-full bg-gradient-to-br from-[#1B198F] to-[#6857E4] shadow-float transition-all duration-200 ${
               isCenterActive
                 ? "ring-4 ring-[#6857E4]/30 scale-105 shadow-md"
                 : "ring-4 ring-background hover:scale-105 active:scale-95"
             }`}
           >
-            <Sparkles className="size-6 text-white" strokeWidth={isCenterActive ? 2.5 : 2} />
+            <Sparkles
+              className="size-5 sm:size-6 text-white"
+              strokeWidth={isCenterActive ? 2.5 : 2}
+            />
           </Link>
         </div>
 
@@ -78,21 +88,21 @@ function NavItem({ label, icon: Icon, route, active }: NavItemConfig & { active:
     <Link
       to={route}
       aria-current={active ? "page" : undefined}
-      className={`group flex h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 py-1 text-[0.68rem] transition-all duration-150 ${
+      className={`group flex h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 sm:px-2 py-1 text-[0.62rem] sm:text-[0.68rem] transition-all duration-150 ${
         active
           ? "bg-indigo-50 text-indigo-600 font-bold dark:bg-indigo-950/60 dark:text-indigo-400"
           : "bg-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50/80 dark:text-slate-500 dark:hover:text-slate-300 dark:hover:bg-slate-900/30"
       }`}
     >
       <Icon
-        className={`size-5 transition-transform group-hover:scale-105 ${
+        className={`size-4.5 sm:size-5 transition-transform group-hover:scale-105 ${
           active
             ? "text-indigo-600 dark:text-indigo-400"
             : "text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300"
         }`}
         strokeWidth={active ? 2.5 : 2}
       />
-      <span className="leading-none tracking-tight">{label}</span>
+      <span className="leading-none tracking-tight truncate max-w-full">{label}</span>
     </Link>
   );
 }

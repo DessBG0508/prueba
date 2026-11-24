@@ -30,6 +30,15 @@ import {
   getStudentPendingCanalizaciones,
   type CanalizacionRecord,
 } from "@/features/tutor/tutor-service";
+import {
+  getActiveAnuncios,
+  getStudentAnuncioInscripciones,
+  getStudentLatestRiskLevel,
+  subscribeToAnunciosChanges,
+  type AnuncioPublicoObjetivo,
+  type AnuncioRecord,
+} from "@/features/anuncios/anuncios-service";
+import { AnuncioHeroCarousel } from "@/components/anuncios/anuncio-hero-carousel";
 
 const staggerContainer = {
   hidden: { opacity: 0 },
@@ -78,19 +87,55 @@ export function HomePage() {
   });
   const [isBreathingModalOpen, setIsBreathingModalOpen] = useState(false);
   const [pendingCanalizaciones, setPendingCanalizaciones] = useState<CanalizacionRecord[]>([]);
+  const [anuncios, setAnuncios] = useState<AnuncioRecord[]>([]);
+  const [studentRiskLevel, setStudentRiskLevel] =
+    useState<Exclude<AnuncioPublicoObjetivo, "todos">>("sin_tamizaje");
+  const [enrolledAnuncioIds, setEnrolledAnuncioIds] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
-    if (!user?.id) return;
-    getStudentPendingCanalizaciones(user.id)
-      .then((list) => {
-        if (active) setPendingCanalizaciones(list);
-      })
-      .catch(() => {});
+    const loadAnunciosData = async () => {
+      try {
+        const [activeAnuncios, riskLvl, enrolledIds] = await Promise.all([
+          getActiveAnuncios(),
+          getStudentLatestRiskLevel(user?.id, user?.email),
+          user?.id ? getStudentAnuncioInscripciones(user.id) : Promise.resolve([]),
+        ]);
+        if (!active) return;
+        setAnuncios(activeAnuncios);
+        setStudentRiskLevel(riskLvl);
+        setEnrolledAnuncioIds(enrolledIds);
+      } catch {
+        // Ignore non-blocking load errors
+      }
+    };
+
+    loadAnunciosData();
+    const unsubscribe = subscribeToAnunciosChanges(() => {
+      getActiveAnuncios()
+        .then((list) => {
+          if (active) setAnuncios(list);
+        })
+        .catch(() => {});
+    });
+
+    if (user?.id) {
+      getStudentPendingCanalizaciones(user.id)
+        .then((list) => {
+          if (active) setPendingCanalizaciones(list);
+        })
+        .catch(() => {});
+    }
+
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, [user?.id]);
+  }, [user?.id, user?.email]);
+
+  const visibleAnuncios = anuncios.filter(
+    (a) => a.publico_objetivo === "todos" || a.publico_objetivo === studentRiskLevel,
+  );
 
   // Sincronía inversa: si se edita desde el panel de métricas o cambia hoy, actualizar el emocionómetro
   useEffect(() => {
@@ -117,6 +162,8 @@ export function HomePage() {
   return (
     <PageShell>
       <main>
+        <AnuncioHeroCarousel anuncios={visibleAnuncios} enrolledIds={enrolledAnuncioIds} />
+
         {pendingCanalizaciones.length > 0 && (
           <section
             aria-label="Aviso de canalización pendiente"
