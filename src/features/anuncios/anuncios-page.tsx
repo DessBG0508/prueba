@@ -1,22 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
-import { Calendar, CheckCircle2, MapPin, Megaphone, Search, Users } from "lucide-react";
+import { Megaphone, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { AnuncioBannerCard } from "@/components/anuncios/anuncio-banner-card";
-import { ANUNCIO_TIPO_META, formatAnuncioFecha } from "@/components/anuncios/anuncio-meta";
+import { AnuncioBannerCard, AnuncioDetailModal } from "@/components/anuncios/anuncio-banner-card";
 import {
+  cancelarInscripcionEnAnuncio,
   getActiveAnuncios,
   getStudentAnuncioInscripciones,
   getStudentLatestRiskLevel,
@@ -80,7 +70,7 @@ export function AnunciosPage() {
     );
   }, [anuncios, studentRiskLevel]);
 
-  // Si llega redirigido desde el Hero Carousel con ?anuncio=ID, abrir directamente el flyer/detalle para inscribirse
+  // Si llega redirigido desde el Hero Carousel con ?anuncio=ID, abrir directamente el flyer/detalle
   useEffect(() => {
     const targetId = search?.anuncio;
     if (!targetId || handledDeepLinkId === targetId || visibleAnuncios.length === 0) return;
@@ -102,6 +92,8 @@ export function AnunciosPage() {
         q === "" ||
         a.titulo.toLowerCase().includes(q) ||
         a.descripcion.toLowerCase().includes(q) ||
+        (a.descripcion_larga || "").toLowerCase().includes(q) ||
+        (a.ponente || "").toLowerCase().includes(q) ||
         (a.lugar || "").toLowerCase().includes(q);
 
       return matchesFilter && matchesQuery;
@@ -142,6 +134,37 @@ export function AnunciosPage() {
           ? `Ya estás inscrito en "${anuncio.titulo}".`
           : `Inscripción confirmada en "${anuncio.titulo}".`,
       );
+    } finally {
+      setEnrollingId(null);
+    }
+  };
+
+  const handleCancelarInscripcion = async (anuncio: AnuncioRecord) => {
+    if (!user?.id) return;
+
+    setEnrollingId(anuncio.id);
+    try {
+      const res = await cancelarInscripcionEnAnuncio({
+        anuncioId: anuncio.id,
+        studentId: user.id,
+      });
+
+      if (!res.ok) {
+        toast.error(res.error || "No se pudo cancelar la inscripción.");
+        return;
+      }
+
+      setEnrolledIds((prev) => prev.filter((id) => id !== anuncio.id));
+      if (res.inscritos !== undefined) {
+        setAnuncios((prev) =>
+          prev.map((a) => (a.id === anuncio.id ? { ...a, inscritos: res.inscritos! } : a)),
+        );
+        setSelectedDetail((prev) =>
+          prev && prev.id === anuncio.id ? { ...prev, inscritos: res.inscritos! } : prev,
+        );
+      }
+
+      toast.info(`Cancelaste tu inscripción en "${anuncio.titulo}".`);
     } finally {
       setEnrollingId(null);
     }
@@ -199,7 +222,7 @@ export function AnunciosPage() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar taller o evento..."
+              placeholder="Buscar taller, ponente o lugar..."
               className="pl-9 rounded-xl text-xs h-9"
             />
           </div>
@@ -237,6 +260,7 @@ export function AnunciosPage() {
                 isEnrolled={enrolledIds.includes(anuncio.id)}
                 isSubmitting={enrollingId === anuncio.id}
                 onInscribirme={handleInscribirme}
+                onCancelarInscripcion={handleCancelarInscripcion}
                 onOpenDetail={(item) => setSelectedDetail(item)}
               />
             ))}
@@ -244,119 +268,18 @@ export function AnunciosPage() {
         )}
       </main>
 
-      {/* Modal de Flyer completo y registro directo */}
-      <Dialog
+      {/* Modal de detalle enriquecido */}
+      <AnuncioDetailModal
+        anuncio={selectedDetail}
         open={Boolean(selectedDetail)}
         onOpenChange={(open) => {
           if (!open) setSelectedDetail(null);
         }}
-      >
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl">
-          {selectedDetail &&
-            (() => {
-              const meta = ANUNCIO_TIPO_META[selectedDetail.tipo] || ANUNCIO_TIPO_META.informativo;
-              const fecha = formatAnuncioFecha(selectedDetail.fecha_evento);
-              const hasCupo =
-                selectedDetail.cupo !== null &&
-                selectedDetail.cupo !== undefined &&
-                selectedDetail.cupo > 0;
-              const isEnrolled = enrolledIds.includes(selectedDetail.id);
-              const isCupoLleno = hasCupo && selectedDetail.inscritos >= (selectedDetail.cupo ?? 0);
-              const canEnroll =
-                selectedDetail.tipo === "taller" || selectedDetail.tipo === "evento" || hasCupo;
-
-              return (
-                <>
-                  <DialogHeader>
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <Badge variant="outline" className={`${meta.badgeClass} text-xs font-bold`}>
-                        {meta.label}
-                      </Badge>
-                      {hasCupo && (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-semibold text-foreground">
-                          <Users className="size-3.5 text-[#1B198F] dark:text-indigo-300" />
-                          {selectedDetail.inscritos}/{selectedDetail.cupo} inscritos
-                        </span>
-                      )}
-                    </div>
-                    <DialogTitle className="text-lg font-bold text-foreground">
-                      {selectedDetail.titulo}
-                    </DialogTitle>
-                    <DialogDescription className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                      {selectedDetail.descripcion}
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <div className="space-y-4 py-1">
-                    {selectedDetail.imagen_url && (
-                      <div className="overflow-hidden rounded-xl border border-border bg-muted/30">
-                        <img
-                          src={selectedDetail.imagen_url}
-                          alt={`Flyer completo: ${selectedDetail.titulo}`}
-                          className="w-full max-h-[420px] object-contain mx-auto"
-                        />
-                      </div>
-                    )}
-
-                    {(fecha || selectedDetail.lugar) && (
-                      <div className="rounded-xl border border-border bg-muted/20 p-3.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold text-foreground">
-                        {fecha && (
-                          <span className="inline-flex items-center gap-1.5 capitalize">
-                            <Calendar className="size-4 text-[#1B198F] dark:text-indigo-300" />
-                            {fecha}
-                          </span>
-                        )}
-                        {selectedDetail.lugar && (
-                          <span className="inline-flex items-center gap-1.5">
-                            <MapPin className="size-4 text-[#1B198F] dark:text-indigo-300" />
-                            {selectedDetail.lugar}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <DialogFooter className="gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setSelectedDetail(null)}
-                      className="rounded-xl text-xs font-semibold"
-                    >
-                      Cerrar
-                    </Button>
-
-                    {canEnroll &&
-                      (isEnrolled ? (
-                        <div className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40 px-4 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                          <CheckCircle2 className="size-4" />
-                          Inscrito
-                        </div>
-                      ) : isCupoLleno ? (
-                        <Button
-                          type="button"
-                          disabled
-                          variant="outline"
-                          className="rounded-xl border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold"
-                        >
-                          Cupo lleno
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          disabled={enrollingId === selectedDetail.id}
-                          onClick={() => handleInscribirme(selectedDetail)}
-                          className="rounded-xl bg-[#1B198F] hover:bg-[#1B198F]/90 text-white text-xs font-bold px-5"
-                        >
-                          {enrollingId === selectedDetail.id ? "Inscribiendo..." : "Inscribirme"}
-                        </Button>
-                      ))}
-                  </DialogFooter>
-                </>
-              );
-            })()}
-        </DialogContent>
-      </Dialog>
+        isEnrolled={selectedDetail ? enrolledIds.includes(selectedDetail.id) : false}
+        isSubmitting={selectedDetail ? enrollingId === selectedDetail.id : false}
+        onInscribirme={handleInscribirme}
+        onCancelarInscripcion={handleCancelarInscripcion}
+      />
     </PageShell>
   );
 }

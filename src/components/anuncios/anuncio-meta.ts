@@ -1,6 +1,4 @@
 import { Bell, GraduationCap, Info, Sparkles } from "lucide-react";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import type { AnuncioTipo } from "@/features/anuncios/anuncios-service";
 
 export const ANUNCIO_TIPO_META: Record<
@@ -58,8 +56,67 @@ export function formatAnuncioFecha(fechaStr?: string | null): string | null {
   try {
     const parsed = new Date(`${fechaStr.slice(0, 10)}T12:00:00`);
     if (isNaN(parsed.getTime())) return fechaStr;
-    return format(parsed, "EEEE d 'de' MMMM, yyyy", { locale: es });
+    const raw = parsed
+      .toLocaleDateString("es-MX", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+      .replace(/^([a-záéíóúñ]+),\s+/i, "$1 ");
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
   } catch {
     return fechaStr;
   }
+}
+
+export function formatAnuncioHorario(
+  horaInicio?: string | null,
+  horaFin?: string | null,
+): string | null {
+  const start = horaInicio?.trim().slice(0, 5);
+  const end = horaFin?.trim().slice(0, 5);
+  if (start && end) return `${start} - ${end} hrs`;
+  if (start) return `${start} hrs`;
+  if (end) return `Hasta las ${end} hrs`;
+  return null;
+}
+
+export function getCleanAnuncioTitulo(titulo: string): string {
+  const cleaned = titulo.replace(/^(taller|evento|informativo|recordatorio)\s*:\s*/i, "").trim();
+  return cleaned || titulo;
+}
+
+export function getCupoProgressInfo(inscritos: number, cupo: number) {
+  const safeCupo = Math.max(1, cupo);
+  const safeInscritos = Math.max(0, inscritos);
+  const pct = Math.min(100, Math.round((safeInscritos / safeCupo) * 100));
+  const remaining = Math.max(0, safeCupo - safeInscritos);
+  const isFull = remaining === 0;
+
+  let barClass = "bg-emerald-500";
+  let textClass = "text-emerald-700 dark:text-emerald-300";
+
+  if (pct > 90 || isFull) {
+    barClass = "bg-rose-500";
+    textClass = "text-rose-700 dark:text-rose-300";
+  } else if (pct >= 70) {
+    barClass = "bg-amber-500";
+    textClass = "text-amber-700 dark:text-amber-300";
+  }
+
+  const remainingText = isFull
+    ? "Cupo lleno"
+    : remaining === 1
+      ? "1 lugar disponible"
+      : `${remaining} lugares disponibles`;
+
+  return {
+    pct,
+    remaining,
+    isFull,
+    barClass,
+    textClass,
+    remainingText,
+  };
 }

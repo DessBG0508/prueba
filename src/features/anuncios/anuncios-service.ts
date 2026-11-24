@@ -9,9 +9,14 @@ export interface AnuncioRecord {
   id: string;
   titulo: string;
   descripcion: string;
+  descripcion_larga?: string | null;
   tipo: AnuncioTipo;
   fecha_evento: string | null;
+  hora_inicio?: string | null;
+  hora_fin?: string | null;
   lugar: string | null;
+  ponente?: string | null;
+  requisitos?: string | null;
   cupo: number | null;
   inscritos: number;
   imagen_url?: string | null;
@@ -25,9 +30,14 @@ export interface AnuncioRecord {
 export interface AnuncioInput {
   titulo: string;
   descripcion: string;
+  descripcion_larga?: string | null;
   tipo: AnuncioTipo;
   fecha_evento?: string | null;
+  hora_inicio?: string | null;
+  hora_fin?: string | null;
   lugar?: string | null;
+  ponente?: string | null;
+  requisitos?: string | null;
   cupo?: number | null;
   imagen_url?: string | null;
   publico_objetivo: AnuncioPublicoObjetivo;
@@ -58,12 +68,18 @@ function getUpcomingDateISO(daysAhead: number): string {
 const SEED_ANUNCIOS: AnuncioRecord[] = [
   {
     id: "anuncio-taller-estres",
-    titulo: "Taller: Manejo del Estrés Académico y Regulación Emocional",
+    titulo: "Manejo del Estrés Académico y Regulación Emocional",
     descripcion:
       "Aprende herramientas prácticas de respiración, organización previa a exámenes y pausas activas para cuidar tu equilibrio durante el semestre.",
+    descripcion_larga:
+      "Objetivos del taller:\n• Identificar señales tempranas de sobrecarga académica y agotamiento.\n• Practicar técnicas breves de respiración diafragmática y relajación muscular progresiva.\n• Organizar bloques de estudio con descansos efectivos antes de evaluaciones parciales.\n• Elaborar un plan personal de autocuidado semanal aplicable en el TESH.",
     tipo: "taller",
     fecha_evento: getUpcomingDateISO(4),
+    hora_inicio: "12:00",
+    hora_fin: "13:30",
     lugar: "Auditorio Edificio B · TESH",
+    ponente: "Psic. Marta Elena Ríos · Departamento de Psicología",
+    requisitos: "Traer libreta o dispositivo para notas, ropa cómoda y botella de agua.",
     cupo: 30,
     inscritos: 14,
     publico_objetivo: "todos",
@@ -74,12 +90,18 @@ const SEED_ANUNCIOS: AnuncioRecord[] = [
   },
   {
     id: "anuncio-taller-sueno",
-    titulo: "Taller de Higiene del Sueño y Descanso Reparador",
+    titulo: "Higiene del Sueño y Descanso Reparador",
     descripcion:
       "Sesión práctica sobre hábitos nocturnos, reducción de fatiga mental y estrategias para descansar mejor antes de jornadas escolares intensas.",
+    descripcion_larga:
+      "Temario de la sesión:\n1. Cómo afecta el desvelo y las pantallas al rendimiento académico.\n2. Rutina nocturna de desconexión en 30 minutos.\n3. Manejo de pensamientos acelerados antes de dormir.\n4. Checklist de hábitos saludables durante periodo de entregas.",
     tipo: "taller",
     fecha_evento: getUpcomingDateISO(8),
+    hora_inicio: "10:00",
+    hora_fin: "11:30",
     lugar: "Sala Audiovisual · Edificio A",
+    ponente: "Mtra. Sofía Navarrete · Psicología Clínica TESH",
+    requisitos: "Ninguno. Se entregará guía impresa de hábitos de descanso.",
     cupo: 25,
     inscritos: 9,
     publico_objetivo: "todos",
@@ -90,12 +112,18 @@ const SEED_ANUNCIOS: AnuncioRecord[] = [
   },
   {
     id: "anuncio-taller-nutricion",
-    titulo: "Taller de Nutrición Consciente y Energía Universitaria",
+    titulo: "Nutrición Consciente y Energía Universitaria",
     descripcion:
       "Recomendaciones accesibles de alimentación para mantener tu concentración, estado de ánimo estable y energía a lo largo del día.",
+    descripcion_larga:
+      "Qué aprenderás:\n• Armar colaciones prácticas y económicas para tus días en el campus.\n• Relación entre hidratación, glucosa estable y capacidad de concentración.\n• Mitos comunes sobre bebidas energéticas y café en época de exámenes.",
     tipo: "taller",
     fecha_evento: getUpcomingDateISO(12),
+    hora_inicio: "13:00",
+    hora_fin: "14:15",
     lugar: "Centro de Bienestar · Cubículo 3",
+    ponente: "Lic. Valeria Mendoza · Nutrición y Bienestar",
+    requisitos: "Credencial vigente de estudiante TESH.",
     cupo: 20,
     inscritos: 20,
     publico_objetivo: "todos",
@@ -106,12 +134,18 @@ const SEED_ANUNCIOS: AnuncioRecord[] = [
   },
   {
     id: "anuncio-informativo-orientacion",
-    titulo: "Recordatorio: Horarios de Atención Psicológica Presencial TESH",
+    titulo: "Horarios de Atención Psicológica Presencial TESH",
     descripcion:
       "El Departamento de Psicología brinda orientación presencial de lunes a viernes de 9:00 a 17:00 hrs en el Cubículo 3. Puedes agendar tu espacio desde Mis Citas.",
+    descripcion_larga:
+      "Modalidades disponibles:\n• Orientación individual presencial en el Cubículo 3 (Edificio Administrativo).\n• Seguimiento a canalizaciones de tutoría.\n• En caso de urgencia emocional dentro del campus, acude directamente sin cita previa.",
     tipo: "recordatorio",
     fecha_evento: null,
+    hora_inicio: "09:00",
+    hora_fin: "17:00",
     lugar: "Cubículo 3 · Edificio Administrativo",
+    ponente: "Departamento de Psicología TESH",
+    requisitos: "Agendar cita desde el módulo Citas o presentar pase de tutoría.",
     cupo: null,
     inscritos: 0,
     publico_objetivo: "todos",
@@ -125,9 +159,15 @@ const SEED_ANUNCIOS: AnuncioRecord[] = [
     titulo: "Jornada Universitaria de Bienestar Integral TESH",
     descripcion:
       "Módulos informativos, actividades de activación física, orientación nutricional y charlas breves abiertas a toda la comunidad estudiantil.",
+    descripcion_larga:
+      "Programa de actividades:\n• 09:30 hrs — Activación física grupal en Explanada Central.\n• 11:00 hrs — Charla: Equilibrio entre estudio, trabajo y descanso.\n• 12:30 hrs — Módulos interactivos de salud mental y nutrición.",
     tipo: "evento",
     fecha_evento: getUpcomingDateISO(15),
+    hora_inicio: "09:30",
+    hora_fin: "14:00",
     lugar: "Explanada Central TESH",
+    ponente: "Área de Psicología, Tutorías y Actividades Deportivas TESH",
+    requisitos: "Asistencia libre con ropa cómoda.",
     cupo: 100,
     inscritos: 42,
     publico_objetivo: "todos",
@@ -168,9 +208,14 @@ function mapDbRowToAnuncio(row: Record<string, unknown>): AnuncioRecord {
     id: String(row.id),
     titulo: String(row.titulo || ""),
     descripcion: String(row.descripcion || ""),
+    descripcion_larga: row.descripcion_larga ? String(row.descripcion_larga) : null,
     tipo: (row.tipo as AnuncioTipo) || "informativo",
     fecha_evento: row.fecha_evento ? String(row.fecha_evento).slice(0, 10) : null,
+    hora_inicio: row.hora_inicio ? String(row.hora_inicio).slice(0, 5) : null,
+    hora_fin: row.hora_fin ? String(row.hora_fin).slice(0, 5) : null,
     lugar: row.lugar ? String(row.lugar) : null,
+    ponente: row.ponente ? String(row.ponente) : null,
+    requisitos: row.requisitos ? String(row.requisitos) : null,
     cupo: rawCupo !== null && rawCupo !== undefined ? Number(rawCupo) : null,
     inscritos: Number(row.inscritos ?? 0),
     imagen_url: row.imagen_url ? String(row.imagen_url) : null,
@@ -283,9 +328,14 @@ export async function saveAnuncio(
       existingId || `anuncio-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     titulo: tituloClean,
     descripcion: descripcionClean,
+    descripcion_larga: input.descripcion_larga?.trim() || null,
     tipo: input.tipo,
     fecha_evento: input.fecha_evento ? input.fecha_evento.trim() : null,
+    hora_inicio: input.hora_inicio?.trim() || null,
+    hora_fin: input.hora_fin?.trim() || null,
     lugar: input.lugar ? input.lugar.trim() : null,
+    ponente: input.ponente?.trim() || null,
+    requisitos: input.requisitos?.trim() || null,
     cupo: cupoClean,
     inscritos: existingLocal?.inscritos ?? 0,
     imagen_url: input.imagen_url ? input.imagen_url.trim() : null,
@@ -296,14 +346,44 @@ export async function saveAnuncio(
     updated_at: nowIso,
   };
 
+  const EXTRA_OPTIONAL_COLS = [
+    "imagen_url",
+    "hora_inicio",
+    "hora_fin",
+    "ponente",
+    "requisitos",
+    "descripcion_larga",
+  ] as const;
+
+  const stripOptionalColumns = (payload: Record<string, unknown>) => {
+    for (const col of EXTRA_OPTIONAL_COLS) {
+      delete payload[col];
+    }
+  };
+
+  const mergeOptionalFields = (mapped: AnuncioRecord): AnuncioRecord => ({
+    ...mapped,
+    imagen_url: mapped.imagen_url || nextRecord.imagen_url || null,
+    hora_inicio: mapped.hora_inicio || nextRecord.hora_inicio || null,
+    hora_fin: mapped.hora_fin || nextRecord.hora_fin || null,
+    ponente: mapped.ponente || nextRecord.ponente || null,
+    requisitos: mapped.requisitos || nextRecord.requisitos || null,
+    descripcion_larga: mapped.descripcion_larga || nextRecord.descripcion_larga || null,
+  });
+
   try {
     if (existingId && UUID_REGEX.test(existingId)) {
       const updatePayload: Record<string, unknown> = {
         titulo: nextRecord.titulo,
         descripcion: nextRecord.descripcion,
+        descripcion_larga: nextRecord.descripcion_larga || null,
         tipo: nextRecord.tipo,
         fecha_evento: nextRecord.fecha_evento || null,
+        hora_inicio: nextRecord.hora_inicio || null,
+        hora_fin: nextRecord.hora_fin || null,
         lugar: nextRecord.lugar || null,
+        ponente: nextRecord.ponente || null,
+        requisitos: nextRecord.requisitos || null,
         cupo: nextRecord.cupo,
         imagen_url: nextRecord.imagen_url || null,
         publico_objetivo: nextRecord.publico_objetivo,
@@ -318,8 +398,8 @@ export async function saveAnuncio(
         .select()
         .single();
 
-      if (error && error.message.toLowerCase().includes("imagen_url")) {
-        delete updatePayload.imagen_url;
+      if (error && EXTRA_OPTIONAL_COLS.some((c) => error?.message.toLowerCase().includes(c))) {
+        stripOptionalColumns(updatePayload);
         const retry = await supabase
           .from("anuncios")
           .update(updatePayload)
@@ -331,16 +411,12 @@ export async function saveAnuncio(
       }
 
       if (!error && data) {
-        const mapped = mapDbRowToAnuncio(data as Record<string, unknown>);
-        if (!mapped.imagen_url && nextRecord.imagen_url) {
-          mapped.imagen_url = nextRecord.imagen_url;
-        }
+        const mapped = mergeOptionalFields(mapDbRowToAnuncio(data as Record<string, unknown>));
         const updatedLocal = [mapped, ...localList.filter((a) => a.id !== mapped.id)];
         writeLocal(ANUNCIOS_STORAGE_KEY, updatedLocal);
         return { ok: true, anuncio: mapped };
       }
       if (error && !error.message.toLowerCase().includes("does not exist")) {
-        // If DB explicitly denied or rejected when authenticated in prod
         if (authUid) {
           return { ok: false, error: error.message };
         }
@@ -349,9 +425,14 @@ export async function saveAnuncio(
       const insertPayload: Record<string, unknown> = {
         titulo: nextRecord.titulo,
         descripcion: nextRecord.descripcion,
+        descripcion_larga: nextRecord.descripcion_larga || null,
         tipo: nextRecord.tipo,
         fecha_evento: nextRecord.fecha_evento || null,
+        hora_inicio: nextRecord.hora_inicio || null,
+        hora_fin: nextRecord.hora_fin || null,
         lugar: nextRecord.lugar || null,
+        ponente: nextRecord.ponente || null,
+        requisitos: nextRecord.requisitos || null,
         cupo: nextRecord.cupo,
         imagen_url: nextRecord.imagen_url || null,
         publico_objetivo: nextRecord.publico_objetivo,
@@ -361,18 +442,15 @@ export async function saveAnuncio(
 
       let { data, error } = await supabase.from("anuncios").insert(insertPayload).select().single();
 
-      if (error && error.message.toLowerCase().includes("imagen_url")) {
-        delete insertPayload.imagen_url;
+      if (error && EXTRA_OPTIONAL_COLS.some((c) => error?.message.toLowerCase().includes(c))) {
+        stripOptionalColumns(insertPayload);
         const retry = await supabase.from("anuncios").insert(insertPayload).select().single();
         data = retry.data;
         error = retry.error;
       }
 
       if (!error && data) {
-        const mapped = mapDbRowToAnuncio(data as Record<string, unknown>);
-        if (!mapped.imagen_url && nextRecord.imagen_url) {
-          mapped.imagen_url = nextRecord.imagen_url;
-        }
+        const mapped = mergeOptionalFields(mapDbRowToAnuncio(data as Record<string, unknown>));
         const updatedLocal = [mapped, ...localList.filter((a) => a.id !== mapped.id)];
         writeLocal(ANUNCIOS_STORAGE_KEY, updatedLocal);
         return { ok: true, anuncio: mapped };
@@ -640,6 +718,84 @@ export async function inscribirEstudianteEnAnuncio(input: {
     fecha: new Date().toISOString(),
   };
   writeLocal(INSCRIPCIONES_STORAGE_KEY, [nextInsc, ...localInsc]);
+
+  return { ok: true, inscritos: nextCount };
+}
+
+/**
+ * Cancelar inscripción de un estudiante en un taller o evento
+ */
+export async function cancelarInscripcionEnAnuncio(input: {
+  anuncioId: string;
+  studentId: string;
+}): Promise<{ ok: boolean; inscritos?: number; error?: string }> {
+  const authUid = await getAuthUid();
+  const effectiveStudentId = authUid || input.studentId;
+  if (!effectiveStudentId) {
+    return { ok: false, error: "Inicia sesión para gestionar tu inscripción." };
+  }
+
+  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
+  const localAnuncios = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
+  const targetAnuncio = localAnuncios.find((a) => a.id === input.anuncioId);
+
+  if (UUID_REGEX.test(input.anuncioId) && UUID_REGEX.test(effectiveStudentId)) {
+    try {
+      const { error } = await supabase
+        .from("anuncios_inscripciones")
+        .delete()
+        .eq("anuncio_id", input.anuncioId)
+        .eq("estudiante_id", effectiveStudentId);
+
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+
+      const { data: refreshed } = await supabase
+        .from("anuncios")
+        .select("inscritos")
+        .eq("id", input.anuncioId)
+        .maybeSingle();
+
+      const nextCount = Math.max(
+        0,
+        Number(refreshed?.inscritos ?? (targetAnuncio?.inscritos ?? 1) - 1),
+      );
+      writeLocal(
+        INSCRIPCIONES_STORAGE_KEY,
+        localInsc.filter(
+          (i) => !(i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId),
+        ),
+      );
+      return { ok: true, inscritos: nextCount };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "No se pudo cancelar la inscripción.",
+      };
+    }
+  }
+
+  // Modo demo / local
+  const wasEnrolled = localInsc.some(
+    (i) => i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId,
+  );
+  const nextCount = Math.max(0, (targetAnuncio?.inscritos ?? 0) - (wasEnrolled ? 1 : 0));
+
+  writeLocal(
+    ANUNCIOS_STORAGE_KEY,
+    localAnuncios.map((a) =>
+      a.id === input.anuncioId
+        ? { ...a, inscritos: nextCount, updated_at: new Date().toISOString() }
+        : a,
+    ),
+  );
+  writeLocal(
+    INSCRIPCIONES_STORAGE_KEY,
+    localInsc.filter(
+      (i) => !(i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId),
+    ),
+  );
 
   return { ok: true, inscritos: nextCount };
 }

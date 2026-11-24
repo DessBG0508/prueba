@@ -7,12 +7,18 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   MapPin,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ANUNCIO_TIPO_META, formatAnuncioFecha } from "@/components/anuncios/anuncio-meta";
+import {
+  ANUNCIO_TIPO_META,
+  formatAnuncioFecha,
+  formatAnuncioHorario,
+  getCleanAnuncioTitulo,
+} from "@/components/anuncios/anuncio-meta";
 import type { AnuncioRecord } from "@/features/anuncios/anuncios-service";
 
 interface AnuncioHeroCarouselProps {
@@ -67,7 +73,9 @@ export function AnuncioHeroCarousel({
   const current = anuncios[safeIndex];
   const meta = ANUNCIO_TIPO_META[current.tipo] || ANUNCIO_TIPO_META.informativo;
   const Icon = meta.Icon;
+  const cleanTitle = getCleanAnuncioTitulo(current.titulo);
   const fechaFormateada = formatAnuncioFecha(current.fecha_evento);
+  const horario = formatAnuncioHorario(current.hora_inicio, current.hora_fin);
 
   const hasCupo = current.cupo !== null && current.cupo !== undefined && current.cupo > 0;
   const isEnrolled = enrolledIds.includes(current.id);
@@ -202,19 +210,25 @@ export function AnuncioHeroCarousel({
                 </div>
 
                 <h2 className="font-display text-lg sm:text-xl font-bold text-foreground leading-snug group-hover:text-[#1B198F] dark:group-hover:text-indigo-300 transition-colors">
-                  {current.titulo}
+                  {cleanTitle}
                 </h2>
 
                 <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed line-clamp-2">
                   {current.descripcion}
                 </p>
 
-                {(fechaFormateada || current.lugar) && (
+                {(fechaFormateada || horario || current.lugar) && (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-0.5 text-xs font-medium text-foreground/85">
                     {fechaFormateada && (
-                      <span className="inline-flex items-center gap-1.5 capitalize">
+                      <span className="inline-flex items-center gap-1.5">
                         <Calendar className="size-3.5 text-[#1B198F] dark:text-indigo-300 shrink-0" />
                         {fechaFormateada}
+                      </span>
+                    )}
+                    {horario && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Clock className="size-3.5 text-[#1B198F] dark:text-indigo-300 shrink-0" />
+                        {horario}
                       </span>
                     )}
                     {current.lugar && (

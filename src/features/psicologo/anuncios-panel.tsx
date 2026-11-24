@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Calendar,
+  Clock,
   Eye,
   EyeOff,
   ImagePlus,
@@ -13,6 +14,7 @@ import {
   Search,
   Trash2,
   UploadCloud,
+  User,
   Users,
   X,
 } from "lucide-react";
@@ -30,7 +32,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AnuncioBannerCard } from "@/components/anuncios/anuncio-banner-card";
+import { AnuncioBannerCard, AnuncioDetailModal } from "@/components/anuncios/anuncio-banner-card";
+import {
+  formatAnuncioFecha,
+  formatAnuncioHorario,
+  getCleanAnuncioTitulo,
+} from "@/components/anuncios/anuncio-meta";
 import {
   deleteAnuncio,
   getAllAnuncios,
@@ -72,9 +79,14 @@ export function AnunciosPanel() {
   // Campos del formulario
   const [titulo, setTitulo] = useState("");
   const [descripcion, setDescripcion] = useState("");
+  const [descripcionLarga, setDescripcionLarga] = useState("");
   const [tipo, setTipo] = useState<AnuncioTipo>("taller");
   const [fechaEvento, setFechaEvento] = useState("");
+  const [horaInicio, setHoraInicio] = useState("");
+  const [horaFin, setHoraFin] = useState("");
   const [lugar, setLugar] = useState("");
+  const [ponente, setPonente] = useState("");
+  const [requisitos, setRequisitos] = useState("");
   const [cupo, setCupo] = useState("");
   const [imagenUrl, setImagenUrl] = useState("");
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
@@ -114,9 +126,14 @@ export function AnunciosPanel() {
     setEditingAnuncio(null);
     setTitulo("");
     setDescripcion("");
+    setDescripcionLarga("");
     setTipo("taller");
     setFechaEvento("");
+    setHoraInicio("");
+    setHoraFin("");
     setLugar("");
+    setPonente("");
+    setRequisitos("");
     setCupo("30");
     setImagenUrl("");
     setPublicoObjetivo("todos");
@@ -128,9 +145,14 @@ export function AnunciosPanel() {
     setEditingAnuncio(item);
     setTitulo(item.titulo);
     setDescripcion(item.descripcion);
+    setDescripcionLarga(item.descripcion_larga || "");
     setTipo(item.tipo);
     setFechaEvento(item.fecha_evento || "");
+    setHoraInicio(item.hora_inicio || "");
+    setHoraFin(item.hora_fin || "");
     setLugar(item.lugar || "");
+    setPonente(item.ponente || "");
+    setRequisitos(item.requisitos || "");
     setCupo(item.cupo !== null && item.cupo !== undefined ? String(item.cupo) : "");
     setImagenUrl(item.imagen_url || "");
     setPublicoObjetivo(item.publico_objetivo);
@@ -169,9 +191,14 @@ export function AnunciosPanel() {
         {
           titulo: titulo.trim(),
           descripcion: descripcion.trim(),
+          descripcion_larga: descripcionLarga.trim() || null,
           tipo,
           fecha_evento: fechaEvento.trim() || null,
+          hora_inicio: horaInicio.trim() || null,
+          hora_fin: horaFin.trim() || null,
           lugar: lugar.trim() || null,
+          ponente: ponente.trim() || null,
+          requisitos: requisitos.trim() || null,
           cupo: parsedCupo !== null && !Number.isNaN(parsedCupo) ? parsedCupo : null,
           imagen_url: imagenUrl.trim() || null,
           publico_objetivo: publicoObjetivo,
@@ -250,13 +277,18 @@ export function AnunciosPanel() {
   // Objeto de vista previa en tiempo real mientras se llena el formulario
   const livePreviewAnuncio: AnuncioRecord = {
     id: editingAnuncio?.id || "preview",
-    titulo: titulo || "Taller: Manejo del Estrés Académico",
+    titulo: titulo || "Manejo del Estrés Académico",
     descripcion:
       descripcion ||
       "Comparte los beneficios, horario e indicaciones clave para invitar a la comunidad estudiantil.",
+    descripcion_larga: descripcionLarga.trim() || null,
     tipo,
     fecha_evento: fechaEvento || null,
+    hora_inicio: horaInicio || null,
+    hora_fin: horaFin || null,
     lugar: lugar || null,
+    ponente: ponente || null,
+    requisitos: requisitos || null,
     cupo: cupo.trim() === "" ? null : Math.max(0, Number(cupo) || 0),
     inscritos: editingAnuncio?.inscritos ?? 0,
     imagen_url: imagenUrl.trim() || null,
@@ -457,7 +489,7 @@ export function AnunciosPanel() {
                   </div>
 
                   <h3 className="text-base font-bold text-foreground leading-snug">
-                    {item.titulo}
+                    {getCleanAnuncioTitulo(item.titulo)}
                   </h3>
                   {item.imagen_url && (
                     <div className="overflow-hidden rounded-xl border border-border bg-muted/30 aspect-[16/9]">
@@ -472,18 +504,30 @@ export function AnunciosPanel() {
                     {item.descripcion}
                   </p>
 
-                  {(item.fecha_evento || item.lugar) && (
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
+                  {(item.fecha_evento || item.hora_inicio || item.lugar || item.ponente) && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground pt-1">
                       {item.fecha_evento && (
                         <span className="inline-flex items-center gap-1">
                           <Calendar className="size-3.5 text-[#1B198F] dark:text-indigo-300" />
-                          {item.fecha_evento}
+                          {formatAnuncioFecha(item.fecha_evento)}
+                        </span>
+                      )}
+                      {formatAnuncioHorario(item.hora_inicio, item.hora_fin) && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="size-3.5 text-[#1B198F] dark:text-indigo-300" />
+                          {formatAnuncioHorario(item.hora_inicio, item.hora_fin)}
                         </span>
                       )}
                       {item.lugar && (
                         <span className="inline-flex items-center gap-1">
                           <MapPin className="size-3.5 text-[#1B198F] dark:text-indigo-300" />
                           {item.lugar}
+                        </span>
+                      )}
+                      {item.ponente && (
+                        <span className="inline-flex items-center gap-1">
+                          <User className="size-3.5 text-[#1B198F] dark:text-indigo-300" />
+                          {item.ponente}
                         </span>
                       )}
                     </div>
@@ -586,15 +630,29 @@ export function AnunciosPanel() {
 
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="anuncio-descripcion" className="text-xs font-bold">
-                  Descripción *
+                  Descripción corta *
                 </Label>
                 <Textarea
                   id="anuncio-descripcion"
                   required
-                  rows={3}
+                  rows={2}
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Describe brevemente de qué trata el taller o aviso y qué aprenderá el estudiante..."
+                  placeholder="Resumen breve que aparece en la tarjeta y en el carrusel del inicio..."
+                  className="rounded-xl text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="anuncio-descripcion-larga" className="text-xs font-bold">
+                  Descripción extendida / Temario y objetivos (opcional)
+                </Label>
+                <Textarea
+                  id="anuncio-descripcion-larga"
+                  rows={4}
+                  value={descripcionLarga}
+                  onChange={(e) => setDescripcionLarga(e.target.value)}
+                  placeholder="Temario detallado, objetivos del taller o qué aprenderán los estudiantes..."
                   className="rounded-xl text-xs sm:text-sm"
                 />
               </div>
@@ -662,6 +720,32 @@ export function AnunciosPanel() {
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="anuncio-hora-inicio" className="text-xs font-bold">
+                  Hora de inicio (opcional)
+                </Label>
+                <Input
+                  id="anuncio-hora-inicio"
+                  type="time"
+                  value={horaInicio}
+                  onChange={(e) => setHoraInicio(e.target.value)}
+                  className="rounded-xl text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="anuncio-hora-fin" className="text-xs font-bold">
+                  Hora de fin (opcional)
+                </Label>
+                <Input
+                  id="anuncio-hora-fin"
+                  type="time"
+                  value={horaFin}
+                  onChange={(e) => setHoraFin(e.target.value)}
+                  className="rounded-xl text-xs sm:text-sm"
+                />
+              </div>
+
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="anuncio-lugar" className="text-xs font-bold">
                   Lugar / Sede
@@ -671,6 +755,33 @@ export function AnunciosPanel() {
                   value={lugar}
                   onChange={(e) => setLugar(e.target.value)}
                   placeholder="Ej. Auditorio Edificio B · TESH"
+                  className="rounded-xl text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="anuncio-ponente" className="text-xs font-bold">
+                  Ponente / Facilitador (opcional)
+                </Label>
+                <Input
+                  id="anuncio-ponente"
+                  value={ponente}
+                  onChange={(e) => setPonente(e.target.value)}
+                  placeholder="Ej. Psic. Marta Elena Ríos · Departamento de Psicología"
+                  className="rounded-xl text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="anuncio-requisitos" className="text-xs font-bold">
+                  Requisitos para asistir (opcional)
+                </Label>
+                <Textarea
+                  id="anuncio-requisitos"
+                  rows={2}
+                  value={requisitos}
+                  onChange={(e) => setRequisitos(e.target.value)}
+                  placeholder="Ej. Credencial vigente TESH, libreta para notas y ropa cómoda..."
                   className="rounded-xl text-xs sm:text-sm"
                 />
               </div>
@@ -814,43 +925,15 @@ export function AnunciosPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Vista Previa */}
-      <Dialog
+      {/* Modal Vista Previa completa (igual al modal de detalle del estudiante) */}
+      <AnuncioDetailModal
+        anuncio={previewAnuncio}
         open={Boolean(previewAnuncio)}
         onOpenChange={(open) => {
           if (!open) setPreviewAnuncio(null);
         }}
-      >
-        <DialogContent className="sm:max-w-2xl rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#1B198F] dark:text-foreground">
-              Vista previa en el Home del estudiante
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
-              {previewAnuncio
-                ? `Segmento: ${PUBLICO_LABEL[previewAnuncio.publico_objetivo]} (los estudiantes no ven etiquetas de segmentación).`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-
-          {previewAnuncio && (
-            <div className="py-2">
-              <AnuncioBannerCard anuncio={previewAnuncio} isPreview />
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPreviewAnuncio(null)}
-              className="rounded-xl text-xs font-semibold"
-            >
-              Cerrar vista previa
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        isPreview
+      />
 
       {/* Modal Confirmar Eliminación */}
       <Dialog

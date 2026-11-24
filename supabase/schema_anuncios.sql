@@ -15,9 +15,14 @@ CREATE TABLE IF NOT EXISTS public.anuncios (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   titulo TEXT NOT NULL,
   descripcion TEXT NOT NULL,
+  descripcion_larga TEXT,
   tipo TEXT NOT NULL CHECK (tipo IN ('taller', 'recordatorio', 'informativo', 'evento')),
   fecha_evento DATE,
+  hora_inicio TEXT,
+  hora_fin TEXT,
   lugar TEXT,
+  ponente TEXT,
+  requisitos TEXT,
   cupo INTEGER CHECK (cupo IS NULL OR cupo >= 0),
   inscritos INTEGER NOT NULL DEFAULT 0 CHECK (inscritos >= 0),
   imagen_url TEXT,
@@ -31,7 +36,12 @@ CREATE TABLE IF NOT EXISTS public.anuncios (
 );
 
 ALTER TABLE public.anuncios
-  ADD COLUMN IF NOT EXISTS imagen_url TEXT;
+  ADD COLUMN IF NOT EXISTS imagen_url TEXT,
+  ADD COLUMN IF NOT EXISTS hora_inicio TEXT,
+  ADD COLUMN IF NOT EXISTS hora_fin TEXT,
+  ADD COLUMN IF NOT EXISTS ponente TEXT,
+  ADD COLUMN IF NOT EXISTS requisitos TEXT,
+  ADD COLUMN IF NOT EXISTS descripcion_larga TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_anuncios_activo_fecha ON public.anuncios(activo, fecha_evento);
 CREATE INDEX IF NOT EXISTS idx_anuncios_publico ON public.anuncios(publico_objetivo);
