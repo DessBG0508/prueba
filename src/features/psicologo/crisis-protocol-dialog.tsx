@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { activateCrisisProtocol } from "@/lib/psychologist-store";
+import { useAuth } from "@/lib/auth-context";
+import { supabase, hasRealSupabaseSession, isDemoUserId } from "@/lib/supabase";
 import type { CaseSummary } from "@/lib/types";
 
 interface CrisisProtocolDialogProps {
@@ -28,6 +30,8 @@ export function CrisisProtocolDialog({
   onOpenChange,
   onSuccess,
 }: CrisisProtocolDialogProps) {
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
   const [details, setDetails] = useState<string>(
     "Estudiante contactado en condición de angustia o riesgo alto. Se brinda contención inmediata y se vincula con redes institucionales y Línea de la Vida.",
   );
@@ -35,11 +39,59 @@ export function CrisisProtocolDialog({
 
   if (!caseItem) return null;
 
-  const handleActivate = (e: React.FormEvent) => {
+  const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      activateCrisisProtocol(caseItem.id, details, "Dra. Marta Gómez");
+      const authorName = user?.name || "Psicología TESH";
+      const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+
+      if (isRealSession && user?.id) {
+        const targetFolio = caseItem.folio || caseItem.id;
+        const { data: existingExp } = await supabase
+          .from("expedientes_clinicos")
+          .select("campos_clinicos")
+          .eq("folio", targetFolio)
+          .eq("psicologo_id", user.id)
+          .maybeSingle();
+
+        const prevCampos = (existingExp?.campos_clinicos as Record<string, unknown>) || {};
+        const prevObj = (prevCampos.objetivos_sesion as Record<string, unknown>) || {};
+        const prevNotas = String(prevObj.notas_libres || "").trim();
+        const stamp = new Date().toLocaleString("es-MX");
+        const entry = `[${stamp} · PROTOCOLO DE CRISIS — ${authorName}]\n${details.trim()}`;
+        const nextNotas = prevNotas ? `${entry}\n\n${prevNotas}` : entry;
+
+        const { error } = await supabase.from("expedientes_clinicos").upsert(
+          {
+            folio: targetFolio,
+            psicologo_id: user.id,
+            campos_clinicos: {
+              ...prevCampos,
+              objetivos_sesion: {
+                ...prevObj,
+                notas_libres: nextNotas,
+              },
+            },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "folio,psicologo_id" },
+        );
+
+        if (error) {
+          toast.error(`No se pudo registrar el protocolo en Supabase: ${error.message}`);
+          return;
+        }
+
+        toast.error("Protocolo de Emergencia Activado (Supabase)", {
+          description: `Se registró en el expediente clínico de ${caseItem.studentName || caseItem.initials}.`,
+        });
+        onOpenChange(false);
+        onSuccess?.();
+        return;
+      }
+
+      activateCrisisProtocol(caseItem.id, details, authorName);
       toast.error("Protocolo de Emergencia Activado", {
         description: `Se registró en la bitácora clínica la activación del protocolo para ${caseItem.studentName || caseItem.initials}.`,
       });

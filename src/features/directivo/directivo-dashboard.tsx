@@ -68,12 +68,15 @@ import {
 import { BRAND } from "@/lib/branding";
 import {
   TESH_CAREERS,
-  getDirectivoInstitutionalStats,
+  getDirectivoDashboardData,
   getDirectivoKPIs,
   getSemesterChartData,
+  type DirectivoAggregatedKPIs,
   type DirectivoInstitutionalStats,
+  type SemesterBarData,
   type TeshCareer,
 } from "@/lib/directivo-data";
+import { isDemoUserId } from "@/lib/supabase";
 
 type DirectivoSidebarSection = "dashboard" | "metricas" | "auditoria";
 
@@ -103,9 +106,33 @@ const SIDEBAR_ITEMS: Array<{
   },
 ];
 
+const EMPTY_STATS: DirectivoInstitutionalStats = {
+  totalTamizados: 0,
+  pctVerde: 0,
+  pctAmarillo: 0,
+  pctRojo: 0,
+  totalCanalizaciones: 0,
+  citasAgendadas: 0,
+  citasCompletadas: 0,
+  recursosPublicados: 0,
+};
+
+const EMPTY_KPIS: DirectivoAggregatedKPIs = {
+  avgAnimo: 0,
+  avgSueno: 0,
+  avgEstres: 0,
+  avgEnergia: 0,
+  pctVerde: 0,
+  pctAmarillo: 0,
+  pctRojo: 0,
+  weeklyTrendPercent: 0,
+  totalSamples: 0,
+};
+
 export function DirectivoDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
 
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
@@ -118,6 +145,7 @@ export function DirectivoDashboard() {
 
   // Estadísticas agregadas (sin nombres ni datos clínicos)
   const [institutionalStats, setInstitutionalStats] = useState<DirectivoInstitutionalStats>(() => {
+    if (isRealUser) return EMPTY_STATS;
     const base = getDirectivoKPIs("all");
     return {
       totalTamizados: base.totalSamples,
@@ -130,6 +158,19 @@ export function DirectivoDashboard() {
       recursosPublicados: 8,
     };
   });
+  const [kpis, setKpis] = useState<DirectivoAggregatedKPIs>(() =>
+    isRealUser ? EMPTY_KPIS : getDirectivoKPIs("all"),
+  );
+  const [semesterData, setSemesterData] = useState<SemesterBarData[]>(() =>
+    isRealUser
+      ? Array.from({ length: 9 }, (_, i) => ({
+          semesterLabel: `${i + 1}º`,
+          semesterNum: i + 1,
+          bienestarScore: 0,
+          hasData: false,
+        }))
+      : getSemesterChartData("all"),
+  );
   const [isLoadingStats, setIsLoadingStats] = useState(false);
 
   // Datos de Auditoría embebidos para el Directivo
@@ -140,14 +181,13 @@ export function DirectivoDashboard() {
   const [verificacion, setVerificacion] = useState<VerificationResult | null>(null);
   const [isVerifying, startVerifyTransition] = useTransition();
 
-  const kpis = useMemo(() => getDirectivoKPIs(selectedCareer), [selectedCareer]);
-  const semesterData = useMemo(() => getSemesterChartData(selectedCareer), [selectedCareer]);
-
   const loadStats = useCallback(async () => {
     setIsLoadingStats(true);
     try {
-      const stats = await getDirectivoInstitutionalStats(selectedCareer);
-      setInstitutionalStats(stats);
+      const bundle = await getDirectivoDashboardData(selectedCareer);
+      setInstitutionalStats(bundle.institutionalStats);
+      setKpis(bundle.kpis);
+      setSemesterData(bundle.semesterData);
     } finally {
       setIsLoadingStats(false);
     }

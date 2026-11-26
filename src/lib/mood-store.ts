@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { MoodCheckIn, MoodId } from "./types";
 import { saveCheckIn } from "./api-client";
 import { mapCheckInRiskRD02 } from "./metric-rules";
+import { getRealSupabaseUserId, hasRealSupabaseSession, supabase } from "./supabase";
 
 export const MOOD_STORAGE_KEY = "equilibra_mood_checkins_v1";
 export const DEFAULT_MOCK_MOOD_DISPLAY = 3.4;
@@ -92,9 +93,19 @@ export interface MoodStatsResult {
   totalRecordsInWindow: number;
 }
 
-export function calculateMoodStats(records: MoodCheckIn[]): MoodStatsResult {
+export function calculateMoodStats(records: MoodCheckIn[], isRealSession = false): MoodStatsResult {
   const last7 = records.filter((r) => isWithinLast7Days(r.date));
   if (last7.length === 0) {
+    if (isRealSession) {
+      return {
+        hasRecords: false,
+        promedioInterno: null,
+        valorMostrado: 0,
+        displayValue: "0.0",
+        progress: 0,
+        totalRecordsInWindow: 0,
+      };
+    }
     return {
       hasRecords: false,
       promedioInterno: null,
@@ -135,7 +146,6 @@ export function getTodayMoodCheckIn(): MoodCheckIn | null {
  */
 export function saveMoodCheckInToday(moodIdOrScore: MoodId | number): MoodCheckIn {
   const todayStr = getTodayDateStr();
-  const records = getStoredMoodCheckIns();
 
   let moodId: MoodId;
   let internalValue: 1 | 2 | 3 | 4 | 5;
@@ -148,7 +158,6 @@ export function saveMoodCheckInToday(moodIdOrScore: MoodId | number): MoodCheckI
     internalValue = MOOD_TO_INTERNAL_VALUE[moodId] || 3;
   }
 
-  const existingIndex = records.findIndex((r) => r.date === todayStr);
   const newRecord: MoodCheckIn = {
     date: todayStr,
     value: internalValue,
@@ -156,44 +165,112 @@ export function saveMoodCheckInToday(moodIdOrScore: MoodId | number): MoodCheckI
     createdAt: new Date().toISOString(),
   };
 
-  if (existingIndex >= 0) {
-    records[existingIndex] = newRecord;
-  } else {
-    records.push(newRecord);
-  }
+  void (async () => {
+    const realUid = await getRealSupabaseUserId();
+    if (realUid) {
+      try {
+        await saveCheckIn(
+          {
+            id: `mood-${todayStr}`,
+            studentId: realUid,
+            academicLoad: internalValue,
+            emotions: [moodId],
+            createdAt: newRecord.createdAt,
+            riskLevel: mapCheckInRiskRD02(internalValue),
+          },
+          realUid,
+          { silentNotice: true },
+        );
+      } catch {
+        // Error registrado por saveCheckIn
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("equilibra-mood-update", {
+            detail: { record: newRecord },
+          }),
+        );
+      }
+      return;
+    }
 
-  if (typeof window !== "undefined") {
+    const records = getStoredMoodCheckIns();
+    const existingIndex = records.findIndex((r) => r.date === todayStr);
+    if (existingIndex >= 0) {
+      records[existingIndex] = newRecord;
+    } else {
+      records.push(newRecord);
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(MOOD_STORAGE_KEY, JSON.stringify(records));
+        window.dispatchEvent(
+          new CustomEvent("equilibra-mood-update", {
+            detail: { record: newRecord, records },
+          }),
+        );
+      } catch {
+        // LocalStorage fallback
+      }
+    }
+
     try {
-      localStorage.setItem(MOOD_STORAGE_KEY, JSON.stringify(records));
-      window.dispatchEvent(
-        new CustomEvent("equilibra-mood-update", {
-          detail: { record: newRecord, records },
-        }),
+      await saveCheckIn(
+        {
+          id: `mood-${todayStr}`,
+          studentId: "demo-student-dess",
+          academicLoad: internalValue,
+          emotions: [moodId],
+          createdAt: newRecord.createdAt,
+          riskLevel: mapCheckInRiskRD02(internalValue),
+        },
+        undefined,
+        { silentNotice: true },
       );
     } catch {
-      // LocalStorage fallback
+      // Demo fallback
     }
-  }
-
-  // Notificar al triaje / saveCheckIn en mock sin alterar lógica
-  try {
-    saveCheckIn(
-      {
-        id: `mood-${todayStr}`,
-        studentId: "demo-student-dess",
-        academicLoad: internalValue,
-        emotions: [moodId],
-        createdAt: new Date().toISOString(),
-        riskLevel: mapCheckInRiskRD02(internalValue),
-      },
-      undefined,
-      { silentNotice: true },
-    ).catch(() => {});
-  } catch {
-    // Demo fallback
-  }
+  })();
 
   return newRecord;
+}
+
+async function fetchRealMoodCheckIns(): Promise<MoodCheckIn[]> {
+  const uid = await getRealSupabaseUserId();
+  if (!uid) return [];
+  try {
+    const { data, error } = await supabase
+      .from("checkins")
+      .select("escala, emociones, created_at")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (error || !Array.isArray(data)) return [];
+    const byDate = new Map<string, MoodCheckIn>();
+    for (const row of data) {
+      const created = String(row.created_at || new Date().toISOString());
+      const dateStr = created.slice(0, 10);
+      if (byDate.has(dateStr)) continue;
+      const escala = Math.max(1, Math.min(5, Number(row.escala || 3))) as 1 | 2 | 3 | 4 | 5;
+      const emociones = Array.isArray(row.emociones) ? row.emociones : [];
+      const firstMood = String(emociones[0] || "") as MoodId;
+      const moodId =
+        firstMood in MOOD_TO_INTERNAL_VALUE
+          ? firstMood
+          : INTERNAL_VALUE_TO_MOOD[escala] || "regular";
+      byDate.set(dateStr, {
+        date: dateStr,
+        value: escala,
+        moodId,
+        createdAt: created,
+      });
+    }
+    return Array.from(byDate.values());
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -201,24 +278,47 @@ export function saveMoodCheckInToday(moodIdOrScore: MoodId | number): MoodCheckI
  */
 export function useMoodStats() {
   const [records, setRecords] = useState<MoodCheckIn[]>(getStoredMoodCheckIns);
+  const [isRealSession, setIsRealSession] = useState(false);
 
   useEffect(() => {
-    setRecords(getStoredMoodCheckIns());
+    let active = true;
 
-    const handleUpdate = () => {
-      setRecords(getStoredMoodCheckIns());
+    const syncMoods = async (optimisticRecord?: MoodCheckIn) => {
+      const real = await hasRealSupabaseSession();
+      if (!active) return;
+      setIsRealSession(real);
+      if (real) {
+        const dbRecords = await fetchRealMoodCheckIns();
+        if (!active) return;
+        if (optimisticRecord) {
+          const filtered = dbRecords.filter((r) => r.date !== optimisticRecord.date);
+          setRecords([optimisticRecord, ...filtered]);
+        } else {
+          setRecords(dbRecords);
+        }
+      } else {
+        setRecords(getStoredMoodCheckIns());
+      }
+    };
+
+    void syncMoods();
+
+    const handleUpdate = (e: Event) => {
+      const custom = e as CustomEvent<{ record?: MoodCheckIn }>;
+      void syncMoods(custom.detail?.record);
     };
 
     window.addEventListener("equilibra-mood-update", handleUpdate);
     window.addEventListener("storage", handleUpdate);
 
     return () => {
+      active = false;
       window.removeEventListener("equilibra-mood-update", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
   }, []);
 
-  const stats = calculateMoodStats(records);
+  const stats = calculateMoodStats(records, isRealSession);
   const todayStr = getTodayDateStr();
   const todayRecord = records.find((r) => r.date === todayStr) || null;
   const todayMood = todayRecord ? todayRecord.moodId : null;

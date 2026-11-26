@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { scheduleSessionFromPsychologist, getStoredAppointments } from "@/lib/psychologist-store";
+import { useAuth } from "@/lib/auth-context";
+import { hasRealSupabaseSession, isDemoUserId, getRealSupabaseUserId } from "@/lib/supabase";
+import { getCitasOcupadasPorFecha, crearSolicitudCita } from "../agenda/agenda-service";
 import type { CaseSummary, AppointmentModality } from "@/lib/types";
 
 interface ScheduleSessionDialogProps {
@@ -48,21 +51,52 @@ export function ScheduleSessionDialog({
   onOpenChange,
   onSuccess,
 }: ScheduleSessionDialogProps) {
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
   // Default to next workday
-  const [date, setDate] = useState<string>("2026-09-28");
+  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [timeSlot, setTimeSlot] = useState<string>("11:00 - 11:50");
-  const [modality, setModality] = useState<AppointmentModality>("presencial");
+  const [modality] = useState<AppointmentModality>("presencial");
   const [topic, setTopic] = useState<string>(TOPICS[0] ?? "Primera sesión de valoración");
   const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [dbOccupiedHours, setDbOccupiedHours] = useState<string[]>([]);
 
-  const appointments = useMemo(() => (isOpen ? getStoredAppointments() : []), [isOpen]);
+  useEffect(() => {
+    if (!isOpen || !isRealUser || !date) {
+      setDbOccupiedHours([]);
+      return;
+    }
+    let active = true;
+    getCitasOcupadasPorFecha(date)
+      .then((hours) => {
+        if (active) setDbOccupiedHours(hours);
+      })
+      .catch(() => {
+        if (active) setDbOccupiedHours([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, isRealUser, date]);
+
+  const appointments = useMemo(
+    () => (isOpen && !isRealUser ? getStoredAppointments() : []),
+    [isOpen, isRealUser],
+  );
 
   const occupiedSlots = useMemo(() => {
+    if (isRealUser) {
+      return TIME_SLOTS.filter((slot) => {
+        const startHour = slot.slice(0, 5);
+        return dbOccupiedHours.some((h) => h.startsWith(startHour));
+      });
+    }
     return appointments
       .filter((a) => a.date === date && (a.status === "confirmada" || a.status === "pendiente"))
       .map((a) => a.timeSlot);
-  }, [appointments, date]);
+  }, [isRealUser, dbOccupiedHours, appointments, date]);
 
   // Si el horario seleccionado queda ocupado al cambiar la fecha, cambiar al primer disponible
   useEffect(() => {
@@ -76,7 +110,7 @@ export function ScheduleSessionDialog({
 
   if (!caseItem) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!date) {
       toast.error("Por favor selecciona una fecha para la sesión.");
@@ -90,6 +124,37 @@ export function ScheduleSessionDialog({
 
     setIsSubmitting(true);
     try {
+      const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+      if (isRealSession) {
+        const realPsyId = await getRealSupabaseUserId();
+        const folio = caseItem.matricula || caseItem.id;
+        const horaInicio = timeSlot.slice(0, 5);
+        const res = await crearSolicitudCita({
+          folio,
+          user_id: realPsyId || user?.id || "",
+          psicologo_id: realPsyId,
+          nombre_psicologo: user?.name || "Psicología TESH",
+          iniciales_estudiante: caseItem.initials,
+          fecha_cita: date,
+          hora_cita: horaInicio,
+          modalidad: "presencial",
+          estado: "confirmada",
+          motivo: notes ? `${topic}: ${notes}` : topic,
+        });
+
+        if (!res.ok) {
+          toast.error(res.error || "No se pudo agendar la cita en Supabase.");
+          return;
+        }
+
+        toast.success("Sesión agendada en Supabase", {
+          description: `Cita programada con ${caseItem.studentName || caseItem.initials} para el ${date} a las ${horaInicio}.`,
+        });
+        onOpenChange(false);
+        onSuccess?.();
+        return;
+      }
+
       scheduleSessionFromPsychologist({
         caseId: caseItem.id,
         studentInitials: caseItem.initials,

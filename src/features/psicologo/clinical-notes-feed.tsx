@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getAllClinicalNotes } from "@/lib/psychologist-store";
+import { useAuth } from "@/lib/auth-context";
+import { supabase, hasRealSupabaseSession, isDemoUserId } from "@/lib/supabase";
 import type { ClinicalNote } from "@/lib/types";
 
 interface ClinicalNotesFeedProps {
@@ -37,17 +39,70 @@ const categoryStyles: Record<
 };
 
 export function ClinicalNotesFeed({ onSelectCase }: ClinicalNotesFeedProps) {
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
   const [notes, setNotes] = useState<ClinicalNote[]>([]);
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const load = () => {
-    setNotes(getAllClinicalNotes());
-  };
-
   useEffect(() => {
-    load();
-  }, []);
+    let active = true;
+    async function load() {
+      const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+      if (!isRealSession) {
+        if (active) setNotes(getAllClinicalNotes());
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("expedientes_clinicos")
+          .select("folio, campos_clinicos, updated_at")
+          .order("updated_at", { ascending: false });
+
+        if (!error && Array.isArray(data) && active) {
+          const mapped: ClinicalNote[] = data
+            .map((row: Record<string, unknown>) => {
+              const campos = (row.campos_clinicos as Record<string, unknown>) || {};
+              const objetivos = (campos.objetivos_sesion as Record<string, unknown>) || {};
+              const notasLibres = String(objetivos.notas_libres || "").trim();
+              const motivo = String(campos.motivo_en_palabras || "").trim();
+              const hipotesis = String(campos.hipotesis_trabajo || "").trim();
+              const content = [motivo, hipotesis, notasLibres].filter(Boolean).join("\n\n");
+              if (!content) return null;
+
+              return {
+                id: `exp-${String(row.folio)}`,
+                caseId: String(row.folio),
+                date: row.updated_at
+                  ? new Date(String(row.updated_at)).toLocaleDateString("es-MX", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "Reciente",
+                author: user?.name || "Psicología TESH",
+                category: "seguimiento" as const,
+                title: `Expediente Clínico — Folio ${String(row.folio)}`,
+                content,
+              };
+            })
+            .filter((item): item is ClinicalNote => item !== null);
+          setNotes(mapped);
+          return;
+        }
+        if (active) setNotes([]);
+      } catch {
+        if (active) setNotes([]);
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [isRealUser, user?.name]);
 
   const filteredNotes = notes.filter((n) => {
     const matchesFilter = filter === "all" || n.category === filter;

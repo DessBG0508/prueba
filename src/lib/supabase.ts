@@ -38,3 +38,40 @@ export const isSupabaseConfigured = Boolean(
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
+
+export const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Determina si un ID corresponde a un usuario de demostración local (sin cuenta real en Supabase Auth).
+ */
+export function isDemoUserId(userId?: string | null): boolean {
+  if (!userId) return true;
+  return userId.startsWith("demo-") || !UUID_REGEX.test(userId);
+}
+
+/**
+ * Devuelve el UUID del usuario autenticado en Supabase Auth si existe una sesión real;
+ * devuelve null si se está operando con una cuenta demo o sin sesión en la nube.
+ */
+export async function getRealSupabaseUserId(): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    return uid && UUID_REGEX.test(uid) ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Devuelve true únicamente cuando el usuario actual inició sesión con una cuenta real
+ * registrada en Supabase Auth (no en modo demo).
+ */
+export async function hasRealSupabaseSession(): Promise<boolean> {
+  const uid = await getRealSupabaseUserId();
+  return uid !== null;
+}

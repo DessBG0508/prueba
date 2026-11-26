@@ -27,11 +27,13 @@ import {
   completeAppointment,
   cancelAppointment,
 } from "@/lib/psychologist-store";
+import { useAuth } from "@/lib/auth-context";
+import { hasRealSupabaseSession, isDemoUserId, UUID_REGEX } from "@/lib/supabase";
 import type { Appointment, AppointmentStatus } from "@/lib/types";
 import { ListaSolicitudes } from "./ListaSolicitudes";
 import { DetalleCita } from "./DetalleCita";
 import { getSolicitudesPsicologo, actualizarEstadoCitaPsicologo } from "../agenda/agenda-service";
-import type { SolicitudCita, EstadoCita } from "../agenda/types";
+import type { SolicitudCita } from "../agenda/types";
 
 interface PsychologistAgendaProps {
   appointments?: Appointment[];
@@ -72,8 +74,11 @@ export function PsychologistAgenda({
   onScheduleNew,
   onAppointmentsChange,
 }: PsychologistAgendaProps) {
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
   const [internalAppointments, setInternalAppointments] = useState<Appointment[]>(() =>
-    getStoredAppointments(),
+    isRealUser ? [] : getStoredAppointments(),
   );
 
   const appointments = externalAppointments || internalAppointments;
@@ -104,8 +109,24 @@ export function PsychologistAgenda({
     });
   }, [appointments, filter]);
 
-  const handleConfirmComplete = () => {
+  const handleConfirmComplete = async () => {
     if (!completingApt) return;
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+
+    if (isRealSession && UUID_REGEX.test(completingApt.id)) {
+      const res = await actualizarEstadoCitaPsicologo(completingApt.id, "completada");
+      if (!res.ok) {
+        toast.error("No se pudo marcar la cita como completada en Supabase.");
+        return;
+      }
+      setCompletingApt(null);
+      setFilter("past");
+      await fetchSolicitudes();
+      onAppointmentsChange?.();
+      toast.success("Sesión completada y guardada en Supabase.");
+      return;
+    }
+
     const result = completeAppointment(completingApt.id);
     setInternalAppointments(result.appointments);
     setCompletingApt(null);
@@ -114,8 +135,28 @@ export function PsychologistAgenda({
     toast.success("Sesión completada y registrada en bitácora");
   };
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = async () => {
     if (!cancellingApt) return;
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+
+    if (isRealSession && UUID_REGEX.test(cancellingApt.id)) {
+      const res = await actualizarEstadoCitaPsicologo(
+        cancellingApt.id,
+        "cancelada",
+        "Cancelada desde agenda clínica",
+      );
+      if (!res.ok) {
+        toast.error("No se pudo cancelar la cita en Supabase.");
+        return;
+      }
+      setCancellingApt(null);
+      setFilter("past");
+      await fetchSolicitudes();
+      onAppointmentsChange?.();
+      toast.success("Cita cancelada en Supabase.");
+      return;
+    }
+
     const updated = cancelAppointment(cancellingApt.id);
     setInternalAppointments(updated);
     setCancellingApt(null);

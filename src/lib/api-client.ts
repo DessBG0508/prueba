@@ -1,6 +1,13 @@
 import { toast } from "sonner";
 import { DEMO_MODE } from "./mock-data";
-import { supabase, isSupabaseConfigured, supabaseUrl, supabaseAnonKey } from "./supabase";
+import {
+  supabase,
+  isSupabaseConfigured,
+  supabaseUrl,
+  supabaseAnonKey,
+  hasRealSupabaseSession,
+  UUID_REGEX,
+} from "./supabase";
 import { mapCheckInRiskRD02 } from "./metric-rules";
 import type { CheckIn } from "./types";
 
@@ -92,19 +99,15 @@ export async function saveCheckIn(
     }
   }
 
-  if (!activeUserId && checkIn.studentId && checkIn.studentId !== "demo-student-dess") {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (!activeUserId && checkIn.studentId && !checkIn.studentId.startsWith("demo-")) {
     activeUserId = checkIn.studentId;
   }
 
-  // 2. Si Supabase está configurado y hay un usuario de sesión activa, registrar en tabla 'checkins'
-  if (isSupabaseConfigured && activeUserId) {
+  // 2. Si Supabase está configurado y hay un usuario con UUID real, registrar en tabla 'checkins'
+  if (isSupabaseConfigured && activeUserId && UUID_REGEX.test(activeUserId)) {
     try {
-      // Mapeo EXACTO a las columnas reales de la tabla 'checkins':
-      // - user_id: uuid (usuario de sesión activa useAuth, nunca hardcodeado)
-      // - escala: integer (1-5)
-      // - emociones: array de texto (los chips)
-      // - riesgo: enum nivel_riesgo ('verde' | 'amarillo' | 'rojo' - RD02: escala 1-3 -> 'verde', 4-5 -> 'rojo', sin 'amarillo')
-      // NOTA: 'id' y 'creado_en' son generados automáticamente por la base de datos.
       const riesgoCalculado = mapCheckInRiskRD02(checkIn.academicLoad);
       const { data, error } = await supabase
         .from("checkins")
@@ -123,8 +126,7 @@ export async function saveCheckIn(
         const causaReal = parseSupabaseError(error);
         console.error("Error al registrar check-in en Supabase (tabla 'checkins'):", causaReal);
 
-        // El respaldo silencioso está prohibido: advertir en DEMO_MODE o lanzar error fuera de él
-        if (DEMO_MODE) {
+        if (!isRealSession && DEMO_MODE) {
           if (!options?.silentNotice) {
             toast.warning(
               `Aviso (Modo Demo): El check-in se guardó localmente. El dato NO se guardó en la nube (${causaReal}).`,
@@ -139,7 +141,6 @@ export async function saveCheckIn(
         }
       }
 
-      // Inserción exitosa en la nube
       if (data?.id) {
         return {
           ...checkIn,
@@ -158,7 +159,7 @@ export async function saveCheckIn(
       const causaReal = parseSupabaseError(err);
       console.error("Excepción al guardar check-in en Supabase (tabla 'checkins'):", causaReal);
 
-      if (DEMO_MODE) {
+      if (!isRealSession && DEMO_MODE) {
         if (!options?.silentNotice) {
           toast.warning(
             `Aviso (Modo Demo): El check-in se guardó localmente. El dato NO se guardó en la nube (${causaReal}).`,
@@ -171,8 +172,8 @@ export async function saveCheckIn(
     }
   }
 
-  // 3. Fallback local: SOLO aplica en DEMO_MODE con advertencia explícita al usuario
-  if (DEMO_MODE) {
+  // 3. Fallback local: SOLO aplica cuando NO es una sesión real de Supabase
+  if (!isRealSession && DEMO_MODE) {
     if (!options?.silentNotice) {
       toast.warning(
         "Aviso (Modo Demo): El check-in se registró solo de manera local. El dato NO se guardó en la nube.",
@@ -181,7 +182,6 @@ export async function saveCheckIn(
     return checkIn;
   }
 
-  // Fuera de DEMO_MODE, el respaldo silencioso está estrictamente prohibido
   throw new Error(
     "No hay una sesión activa de Supabase para guardar el check-in en la nube. Inicia sesión con tus credenciales institucionales.",
   );

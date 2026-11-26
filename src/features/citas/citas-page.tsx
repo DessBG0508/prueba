@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth-context";
+import { isDemoUserId } from "@/lib/supabase";
 import { getStoredUserFolio, clearLegacyUnscopedScreeningData } from "@/lib/screening-storage";
 import { CalendarioCitas } from "@/features/agenda/CalendarioCitas";
 import { FormularioSolicitud } from "@/features/agenda/FormularioSolicitud";
@@ -78,13 +79,16 @@ function formatDateDisplay(dateStr: string) {
 }
 
 export function CitasPage() {
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    if (isRealUser) return [];
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Normalizar modalidad a presencial según decisión clínica
           const normalized = parsed.map((a: Appointment) => ({
             ...a,
             modality: "presencial" as const,
@@ -93,7 +97,6 @@ export function CitasPage() {
                 ? "Consultorio 3, Edificio de Bienestar Integral TESH"
                 : a.locationOrLink || "Consultorio 3, Edificio de Bienestar Integral TESH",
           }));
-          // Asegurar que la cita inicial de prueba tenga folio EQ-1234 visible si aún no tenía
           if (!normalized.some((a: Appointment) => a.folio_tamizaje || a.folioTamizaje)) {
             normalized[0].folio_tamizaje = "EQ-1234";
             normalized[0].folioTamizaje = "EQ-1234";
@@ -129,15 +132,15 @@ export function CitasPage() {
   const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
 
   useEffect(() => {
+    if (isRealUser) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(appointments));
     } catch (e) {
       console.error("Error al persistir citas", e);
     }
-  }, [appointments]);
+  }, [appointments, isRealUser]);
 
   // Estados del Flujo Oficial PB-009 (Canva)
-  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"pb009_solicitud" | "historial">("pb009_solicitud");
   const [pbEtapa, setPbEtapa] = useState<"calendario" | "solicitud" | "estado">("calendario");
   const [pbFecha, setPbFecha] = useState<string>("");
@@ -149,15 +152,45 @@ export function CitasPage() {
 
   const cargarCitasPb = useCallback(async () => {
     if (!user) return;
-    const solicitudes = await getSolicitudesEstudiante(user.id, user.matricula);
+    const storedFolio = getStoredUserFolio(user.id, user.email);
+    const solicitudes = await getSolicitudesEstudiante(
+      user.id,
+      storedFolio || user.matricula || undefined,
+    );
     const activa = solicitudes.find((s) => s.estado === "pendiente" || s.estado === "confirmada");
     if (activa) {
       setPbCitaActiva(activa);
       setPbEtapa("estado");
     } else if (solicitudes.length > 0) {
       setPbCitaActiva(solicitudes[0]);
+    } else if (isRealUser) {
+      setPbCitaActiva(null);
+      setPbEtapa("calendario");
     }
-  }, [user]);
+
+    if (isRealUser) {
+      const mapped: Appointment[] = solicitudes.map((s) => ({
+        id: s.id,
+        date: s.fecha_cita,
+        timeSlot: s.hora_cita ? s.hora_cita.slice(0, 5) : "",
+        modality: "presencial",
+        psychologistName: s.nombre_psicologo || "Área de Psicología TESH",
+        psychologistRole: "Psicología clínica TESH",
+        locationOrLink: "Consultorio 3, Edificio de Bienestar Integral TESH",
+        status:
+          s.estado === "completada"
+            ? "realizada"
+            : s.estado === "no_asistio"
+              ? "cancelada"
+              : s.estado,
+        createdAt: s.fecha_solicitud || s.created_at || new Date().toISOString(),
+        folio_tamizaje: s.folio,
+        folioTamizaje: s.folio,
+        serviceType: "TERAPIA PSICOLÓGICA",
+      }));
+      setAppointments(mapped);
+    }
+  }, [user, isRealUser]);
 
   useEffect(() => {
     cargarCitasPb();
@@ -192,7 +225,7 @@ export function CitasPage() {
       const res = await crearSolicitudCita({
         folio: activeFolio,
         user_id: user?.id || "demo-student",
-        psicologo_id: "psy-001",
+        psicologo_id: isRealUser ? null : "psy-001",
         nombre_psicologo: "Dra. Marta Gómez",
         iniciales_estudiante: user?.name ? user.name.slice(0, 2).toUpperCase() : "D.B.",
         fecha_cita: pbFecha,
@@ -205,6 +238,9 @@ export function CitasPage() {
       if (res.ok && res.cita) {
         setPbCitaActiva(res.cita);
         setPbEtapa("estado");
+        if (isRealUser) {
+          void cargarCitasPb();
+        }
         toast.success("Solicitud de cita presencial registrada exitosamente.");
       } else {
         toast.error(res.error || "No fue posible registrar la cita.");
@@ -282,7 +318,7 @@ export function CitasPage() {
     setIsFormOpen(true);
   };
 
-  const handleConfirmForm = () => {
+  const handleConfirmForm = async () => {
     // Validación estricta en cliente de fecha, horario y modalidad
     if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
       toast.error("Por favor selecciona una fecha válida para tu cita.");
@@ -300,6 +336,30 @@ export function CitasPage() {
 
     const cleanedFolio = folioTamizaje.trim() ? folioTamizaje.trim().toUpperCase() : undefined;
 
+    if (isRealUser) {
+      const res = await crearSolicitudCita({
+        folio:
+          cleanedFolio || getStoredUserFolio(user?.id, user?.email) || user?.matricula || "EQ-0000",
+        user_id: user?.id || "",
+        psicologo_id: null,
+        nombre_psicologo: psychInfo.name,
+        iniciales_estudiante: user?.name ? user.name.slice(0, 2).toUpperCase() : "E.T.",
+        fecha_cita: selectedDate,
+        hora_cita: selectedSlot.slice(0, 5),
+        modalidad: "presencial",
+        estado: "pendiente",
+        motivo: `${selectedServiceType} (${psychInfo.name})`,
+      });
+      if (!res.ok) {
+        toast.error(res.error || "No fue posible registrar la cita en Supabase.");
+        return;
+      }
+      await cargarCitasPb();
+      setIsFormOpen(false);
+      setShowSuccessOverlay(true);
+      return;
+    }
+
     if (editingAppointment) {
       // Reprogramar
       setAppointments((prev) =>
@@ -314,7 +374,6 @@ export function CitasPage() {
                 psychologistRole: psychInfo.role,
                 locationOrLink: location,
                 status: "confirmada",
-                // TODO(Supabase): mapear a solicitudes_cita.folio_tamizaje
                 folio_tamizaje: cleanedFolio,
                 folioTamizaje: cleanedFolio,
                 serviceType: selectedServiceType,
@@ -336,7 +395,6 @@ export function CitasPage() {
         locationOrLink: location,
         status: "confirmada",
         createdAt: new Date().toISOString(),
-        // TODO(Supabase): mapear a solicitudes_cita.folio_tamizaje
         folio_tamizaje: cleanedFolio,
         folioTamizaje: cleanedFolio,
         serviceType: selectedServiceType,
@@ -347,15 +405,31 @@ export function CitasPage() {
     }
   };
 
-  const handleConfirmCancel = () => {
+  const handleConfirmCancel = async () => {
     if (!appointmentToCancel) return;
+
+    if (isRealUser) {
+      const res = await cancelarCitaEstudiante(
+        appointmentToCancel.id,
+        appointmentToCancel.date,
+        appointmentToCancel.timeSlot.slice(0, 5),
+        "Cancelada por el estudiante vía historial de citas",
+      );
+      if (!res.ok) {
+        toast.error(res.error || "No se pudo cancelar la cita en Supabase.");
+        return;
+      }
+      await cargarCitasPb();
+      setAppointmentToCancel(null);
+      toast.success("Cita cancelada con éxito en Supabase.");
+      return;
+    }
 
     setAppointments((prev) =>
       prev.map((item) =>
         item.id === appointmentToCancel.id ? { ...item, status: "cancelada" } : item,
       ),
     );
-    const cancelledName = appointmentToCancel.psychologistName;
     setAppointmentToCancel(null);
     toast.success("Cita cancelada con éxito", {
       description: "No pasa nada, puedes reagendar cuando quieras.",

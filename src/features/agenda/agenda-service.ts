@@ -1,4 +1,9 @@
-import { supabase } from "@/lib/supabase";
+import {
+  supabase,
+  hasRealSupabaseSession,
+  getRealSupabaseUserId,
+  UUID_REGEX,
+} from "@/lib/supabase";
 import type { SolicitudCita, EstadoCita } from "./types";
 import { verificarVentanaCancelacion } from "./types";
 import { triggerEnvioEncuesta } from "../encuesta/encuesta-service";
@@ -81,28 +86,42 @@ export async function getSolicitudesEstudiante(
   userId: string,
   folio?: string,
 ): Promise<SolicitudCita[]> {
+  const realUid = await getRealSupabaseUserId();
+  const isRealSession = realUid !== null;
+
   try {
     let query = supabase
       .from("solicitudes_cita")
       .select("*")
       .order("fecha_cita", { ascending: false });
 
-    if (userId) {
-      query = query.eq("user_id", userId);
+    const effectiveUid = realUid || (UUID_REGEX.test(userId) ? userId : "");
+    if (effectiveUid) {
+      query = query.eq("user_id", effectiveUid);
     } else if (folio) {
       query = query.eq("folio", folio);
     }
 
     const { data, error } = await query;
 
-    if (!error && data && data.length > 0) {
-      return data as SolicitudCita[];
+    if (!error && Array.isArray(data)) {
+      if (isRealSession) {
+        return data as SolicitudCita[];
+      }
+      if (data.length > 0) {
+        return data as SolicitudCita[];
+      }
+    }
+    if (isRealSession) {
+      return [];
     }
   } catch {
-    // Continuar a fallback
+    if (isRealSession) {
+      return [];
+    }
   }
 
-  // Fallback local
+  // Fallback local (solo modo demo)
   const localList = getLocalSolicitudes();
   if (folio) {
     const filtered = localList.filter((s) => s.folio === folio || s.user_id === userId);
@@ -118,6 +137,8 @@ export async function getSolicitudesPsicologo(filtros?: {
   fecha?: string;
   estado?: EstadoCita;
 }): Promise<SolicitudCita[]> {
+  const isRealSession = await hasRealSupabaseSession();
+
   try {
     let query = supabase
       .from("solicitudes_cita")
@@ -134,11 +155,21 @@ export async function getSolicitudesPsicologo(filtros?: {
 
     const { data, error } = await query;
 
-    if (!error && data && data.length > 0) {
-      return data as SolicitudCita[];
+    if (!error && Array.isArray(data)) {
+      if (isRealSession) {
+        return data as SolicitudCita[];
+      }
+      if (data.length > 0) {
+        return data as SolicitudCita[];
+      }
+    }
+    if (isRealSession) {
+      return [];
     }
   } catch {
-    // Continuar a fallback
+    if (isRealSession) {
+      return [];
+    }
   }
 
   let list = getLocalSolicitudes();
@@ -172,6 +203,8 @@ export async function getCitasOcupadasPorFecha(
   psicologoId?: string,
 ): Promise<string[]> {
   const horasSet = new Set<string>();
+  const isRealSession = await hasRealSupabaseSession();
+  const validPsychUuid = psicologoId && UUID_REGEX.test(psicologoId) ? psicologoId : undefined;
 
   // 1. Consultar Supabase en tiempo real (citas pendientes o confirmadas)
   try {
@@ -181,8 +214,8 @@ export async function getCitasOcupadasPorFecha(
       .eq("fecha_cita", fecha)
       .in("estado", ["pendiente", "confirmada"]);
 
-    if (psicologoId) {
-      query = query.eq("psicologo_id", psicologoId);
+    if (validPsychUuid) {
+      query = query.eq("psicologo_id", validPsychUuid);
     }
 
     const { data, error } = await query;
@@ -194,23 +227,25 @@ export async function getCitasOcupadasPorFecha(
       }
     }
   } catch {
-    // Continuar con fallback local
+    // Continuar
   }
 
-  // 2. Consultar citas en localStorage (híbrido/offline/demo)
-  try {
-    const localList = getLocalSolicitudes();
-    for (const c of localList) {
-      if (c.fecha_cita === fecha && (c.estado === "pendiente" || c.estado === "confirmada")) {
-        if (!psicologoId || !c.psicologo_id || c.psicologo_id === psicologoId) {
-          if (c.hora_cita) {
-            horasSet.add(normalizarHoraSlot(c.hora_cita));
+  // 2. Consultar citas en localStorage únicamente en modo demo
+  if (!isRealSession) {
+    try {
+      const localList = getLocalSolicitudes();
+      for (const c of localList) {
+        if (c.fecha_cita === fecha && (c.estado === "pendiente" || c.estado === "confirmada")) {
+          if (!psicologoId || !c.psicologo_id || c.psicologo_id === psicologoId) {
+            if (c.hora_cita) {
+              horasSet.add(normalizarHoraSlot(c.hora_cita));
+            }
           }
         }
       }
+    } catch {
+      // Ignore
     }
-  } catch {
-    // Ignore
   }
 
   return Array.from(horasSet);
@@ -245,8 +280,17 @@ export async function crearSolicitudCita(
     };
   }
 
+  const realUid = await getRealSupabaseUserId();
+  const isRealSession = realUid !== null;
+  const sanitizedPsychId =
+    solicitud.psicologo_id && UUID_REGEX.test(solicitud.psicologo_id)
+      ? solicitud.psicologo_id
+      : null;
+
   const nuevaCita: SolicitudCita = {
     ...solicitud,
+    user_id: realUid || solicitud.user_id,
+    psicologo_id: sanitizedPsychId,
     hora_cita: horaNormalizada,
     id: `sol-${Date.now().toString(36)}`,
     fecha_solicitud: new Date().toISOString(),
@@ -254,27 +298,42 @@ export async function crearSolicitudCita(
     estado: "pendiente",
   };
 
-  try {
-    const { data, error } = await supabase
-      .from("solicitudes_cita")
-      .insert({
-        folio: nuevaCita.folio,
-        user_id: nuevaCita.user_id,
-        psicologo_id: nuevaCita.psicologo_id || null,
-        fecha_cita: nuevaCita.fecha_cita,
-        hora_cita: nuevaCita.hora_cita,
-        modalidad: "presencial",
-        estado: "pendiente",
-        motivo: nuevaCita.motivo || null,
-      })
-      .select()
-      .single();
+  if (isRealSession && realUid) {
+    try {
+      const { data, error } = await supabase
+        .from("solicitudes_cita")
+        .insert({
+          folio: nuevaCita.folio,
+          user_id: realUid,
+          psicologo_id: sanitizedPsychId,
+          fecha_cita: nuevaCita.fecha_cita,
+          hora_cita: nuevaCita.hora_cita,
+          modalidad: "presencial",
+          estado: "pendiente",
+          motivo: nuevaCita.motivo || null,
+        })
+        .select()
+        .single();
 
-    if (!error && data) {
-      nuevaCita.id = data.id;
+      if (error) {
+        return {
+          ok: false,
+          error: error.message || "No se pudo registrar la solicitud de cita en Supabase.",
+        };
+      }
+      if (data) {
+        return { ok: true, cita: data as SolicitudCita };
+      }
+      return { ok: true, cita: nuevaCita };
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Error de conexión al registrar la cita en Supabase.",
+      };
     }
-  } catch {
-    // Fallback local
   }
 
   const localList = getLocalSolicitudes();
@@ -300,18 +359,30 @@ export async function cancelarCitaEstudiante(
     };
   }
 
-  try {
-    await supabase
-      .from("solicitudes_cita")
-      .update({
-        estado: "cancelada",
-        cancelado_por: "estudiante",
-        motivo_cancelacion: motivo || "Cancelada por el estudiante vía portal",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", citaId);
-  } catch {
-    // Continuar local
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (isRealSession && UUID_REGEX.test(citaId)) {
+    try {
+      const { error } = await supabase
+        .from("solicitudes_cita")
+        .update({
+          estado: "cancelada",
+          cancelado_por: "estudiante",
+          motivo_cancelacion: motivo || "Cancelada por el estudiante vía portal",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", citaId);
+
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "No se pudo cancelar la cita en Supabase.",
+      };
+    }
   }
 
   const localList = getLocalSolicitudes();
@@ -343,49 +414,60 @@ export async function actualizarEstadoCitaPsicologo(
   let triggerEncuestaAbandono = false;
   let triggerEncuestaAlta = false;
 
-  const localList = getLocalSolicitudes();
+  const isRealSession = await hasRealSupabaseSession();
+  const localList = isRealSession ? [] : getLocalSolicitudes();
   let targetCita: SolicitudCita | undefined = localList.find((c) => c.id === citaId);
 
-  try {
-    const updatePayload: Record<string, unknown> = {
-      estado: nuevoEstado,
-      updated_at: new Date().toISOString(),
-    };
+  if (isRealSession || UUID_REGEX.test(citaId)) {
+    try {
+      const updatePayload: Record<string, unknown> = {
+        estado: nuevoEstado,
+        updated_at: new Date().toISOString(),
+      };
 
-    if (nuevoEstado === "cancelada") {
-      updatePayload.cancelado_por = "psicologo";
-      updatePayload.motivo_cancelacion =
-        motivoCancelacion || "Cancelada por el psicólogo por causas de fuerza mayor";
+      if (nuevoEstado === "cancelada") {
+        updatePayload.cancelado_por = "psicologo";
+        updatePayload.motivo_cancelacion =
+          motivoCancelacion || "Cancelada por el psicólogo por causas de fuerza mayor";
+      }
+
+      const { data, error } = await supabase
+        .from("solicitudes_cita")
+        .update(updatePayload)
+        .eq("id", citaId)
+        .select()
+        .maybeSingle();
+
+      if (error && isRealSession) {
+        return { ok: false, triggerEncuestaAbandono: false };
+      }
+
+      if (data) {
+        targetCita = data as SolicitudCita;
+      }
+    } catch {
+      if (isRealSession) {
+        return { ok: false, triggerEncuestaAbandono: false };
+      }
     }
-
-    const { data } = await supabase
-      .from("solicitudes_cita")
-      .update(updatePayload)
-      .eq("id", citaId)
-      .select()
-      .maybeSingle();
-
-    if (data && !targetCita) {
-      targetCita = data as SolicitudCita;
-    }
-  } catch {
-    // Continuar local
   }
 
-  const index = localList.findIndex((c) => c.id === citaId);
-  if (index !== -1) {
-    const target = localList[index];
-    localList[index] = {
-      ...target,
-      estado: nuevoEstado,
-      cancelado_por: nuevoEstado === "cancelada" ? "psicologo" : target.cancelado_por,
-      motivo_cancelacion:
-        nuevoEstado === "cancelada"
-          ? motivoCancelacion || "Cancelada por el psicólogo"
-          : target.motivo_cancelacion,
-    };
-    targetCita = localList[index];
-    saveLocalSolicitudes(localList);
+  if (!isRealSession) {
+    const index = localList.findIndex((c) => c.id === citaId);
+    if (index !== -1) {
+      const target = localList[index];
+      localList[index] = {
+        ...target,
+        estado: nuevoEstado,
+        cancelado_por: nuevoEstado === "cancelada" ? "psicologo" : target.cancelado_por,
+        motivo_cancelacion:
+          nuevoEstado === "cancelada"
+            ? motivoCancelacion || "Cancelada por el psicólogo"
+            : target.motivo_cancelacion,
+      };
+      targetCita = localList[index];
+      saveLocalSolicitudes(localList);
+    }
   }
 
   // DISPARADORES AUTOMÁTICOS PB-021 (MIN-008):

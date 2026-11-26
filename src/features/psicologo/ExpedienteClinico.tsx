@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, hasRealSupabaseSession, isDemoUserId } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import {
@@ -300,8 +300,11 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
         // Fallback a localStorage
       }
 
-      // Si no se cargó de Supabase, intentar de localStorage
-      if (!recordLoaded) {
+      // Si no se cargó de Supabase y es sesión demo, intentar de localStorage
+      const isRealSession =
+        (await hasRealSupabaseSession()) || Boolean(user?.id && !isDemoUserId(user.id));
+
+      if (!recordLoaded && !isRealSession) {
         try {
           const cached = localStorage.getItem(storageKey);
           if (cached) {
@@ -319,13 +322,13 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [folio, storageKey]);
+  }, [folio, storageKey, user?.id]);
 
   useEffect(() => {
     cargarDatos();
   }, [cargarDatos]);
 
-  // Guardar en Supabase y localStorage
+  // Guardar en Supabase (y localStorage solo en modo demo)
   const handleGuardar = async () => {
     // 1. VALIDACIÓN DE CONSENTIMIENTO (CRÍTICO)
     if (!campos.objetivos_sesion.consentimiento_firmado) {
@@ -334,6 +337,9 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
       );
       return;
     }
+
+    const isRealSession =
+      (await hasRealSupabaseSession()) || Boolean(user?.id && !isDemoUserId(user.id));
 
     try {
       setIsSaving(true);
@@ -358,11 +364,12 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
         setCampos(camposParaGuardar);
       }
 
-      // Guardado local inmediato de seguridad
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(camposParaGuardar));
-      } catch {
-        // Ignore
+      if (!isRealSession) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(camposParaGuardar));
+        } catch {
+          // Ignore
+        }
       }
 
       // Upsert en Supabase
@@ -378,6 +385,10 @@ export const ExpedienteClinico: React.FC<ExpedienteClinicoProps> = ({
         .upsert(recordPayload, { onConflict: "folio,psicologo_id" });
 
       if (error) {
+        if (isRealSession) {
+          toast.error(`No se pudo guardar en Supabase: ${error.message}`);
+          return;
+        }
         console.warn("Aviso al guardar en expedientes_clinicos de Supabase:", error);
         toast.success(
           `Expediente ${camposParaGuardar.numero_expediente} guardado localmente (copia segura protegida).`,

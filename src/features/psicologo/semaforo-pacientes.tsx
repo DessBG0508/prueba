@@ -18,7 +18,7 @@ import {
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasRealSupabaseSession, isDemoUserId } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { EscucharVozNota } from "@/components/voz/EscucharVozNota";
 import { NotasVozModal } from "./notas-voz-modal";
@@ -176,7 +176,10 @@ export function SemaforoPacientes() {
     };
   }, [pacienteParaContacto]);
 
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
   const fetchPacientes = useCallback(async () => {
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
     try {
       setIsLoading(true);
       setErrorMessage(null);
@@ -187,6 +190,47 @@ export function SemaforoPacientes() {
         .select("*")
         .order("ultimo_nivel");
 
+      if (isRealSession) {
+        if (!error && Array.isArray(data)) {
+          setPacientes(data as PacienteParaPsicologo[]);
+          setErrorMessage(null);
+          return;
+        }
+
+        // Fallback secundario únicamente a la tabla pacientes en BD si la vista fallara
+        const { data: pacientesDb, error: pacErr } = await supabase
+          .from("pacientes")
+          .select("*")
+          .order("fecha_registro", { ascending: false });
+
+        if (!pacErr && Array.isArray(pacientesDb)) {
+          const mapped: PacienteParaPsicologo[] = pacientesDb.map((p: Record<string, unknown>) => ({
+            folio: String(p.folio || p.id),
+            iniciales: String(p.iniciales || "E.A."),
+            edad: p.edad !== undefined && p.edad !== null ? Number(p.edad) : null,
+            sexo: p.sexo ? String(p.sexo) : null,
+            semestre: p.semestre ? String(p.semestre) : null,
+            carrera: p.carrera ? String(p.carrera) : null,
+            grupo: p.grupo ? String(p.grupo) : null,
+            ultimo_nivel: p.bloqueado ? "rojo" : "amarillo",
+            gad7_total: 0,
+            phq9_total: 0,
+            item9: 0,
+            bloqueado: Boolean(p.bloqueado),
+            tiene_alerta_activa: Boolean(p.bloqueado),
+            ultimo_tamizaje: p.fecha_registro ? String(p.fecha_registro) : null,
+            alertas_pendientes: p.bloqueado ? 1 : 0,
+          }));
+          setPacientes(mapped);
+          setErrorMessage(null);
+          return;
+        }
+
+        setPacientes([]);
+        setErrorMessage(error?.message || pacErr?.message || "No se pudo consultar Supabase.");
+        return;
+      }
+
       if (error || !Array.isArray(data) || data.length === 0) {
         if (error) {
           console.warn(
@@ -194,7 +238,7 @@ export function SemaforoPacientes() {
             error.message,
           );
         }
-        // Fallback silencioso a datos de demostración
+        // Fallback silencioso a datos de demostración solo para sesiones demo
         const mockCases = getPsychologistCases();
         const fallbackPacientes = mockCases.map(mockCaseToPaciente);
         setPacientes(fallbackPacientes);
@@ -205,8 +249,14 @@ export function SemaforoPacientes() {
       setPacientes((data as PacienteParaPsicologo[]) || []);
       setErrorMessage(null);
     } catch (err: unknown) {
+      if (isRealSession) {
+        setPacientes([]);
+        setErrorMessage(
+          err instanceof Error ? err.message : "Error de conexión al consultar pacientes.",
+        );
+        return;
+      }
       console.warn("Aviso al consultar vista para_psicologo, activando fallback silencioso:", err);
-      // Fallback silencioso a los datos de demostración (mock-data), NO mostrar error rojo
       const mockCases = getPsychologistCases();
       const fallbackPacientes = mockCases.map(mockCaseToPaciente);
       setPacientes(fallbackPacientes);
@@ -214,7 +264,7 @@ export function SemaforoPacientes() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isRealUser]);
 
   useEffect(() => {
     fetchPacientes();

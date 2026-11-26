@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { recordPatientContact } from "@/lib/psychologist-store";
+import { useAuth } from "@/lib/auth-context";
+import { supabase, hasRealSupabaseSession, isDemoUserId } from "@/lib/supabase";
 import type { CaseSummary } from "@/lib/types";
 
 interface ContactPatientDialogProps {
@@ -43,6 +45,8 @@ export function ContactPatientDialog({
   onOpenChange,
   onSuccess,
 }: ContactPatientDialogProps) {
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
   const [channel, setChannel] = useState<string>(CHANNELS[0]?.id ?? "llamada_telefonica");
   const [outcome, setOutcome] = useState<string>(
     OUTCOMES[0] ?? "Paciente contactado/a exitosamente",
@@ -60,11 +64,59 @@ export function ContactPatientDialog({
 
   if (!caseItem) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      recordPatientContact(caseItem.id, channel, outcome, notes, "Dra. Marta Gómez");
+      const authorName = user?.name || "Psicología TESH";
+      const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+
+      if (isRealSession && user?.id) {
+        const targetFolio = caseItem.folio || caseItem.id;
+        const { data: existingExp } = await supabase
+          .from("expedientes_clinicos")
+          .select("campos_clinicos")
+          .eq("folio", targetFolio)
+          .eq("psicologo_id", user.id)
+          .maybeSingle();
+
+        const prevCampos = (existingExp?.campos_clinicos as Record<string, unknown>) || {};
+        const prevObj = (prevCampos.objetivos_sesion as Record<string, unknown>) || {};
+        const prevNotas = String(prevObj.notas_libres || "").trim();
+        const stamp = new Date().toLocaleString("es-MX");
+        const entry = `[${stamp} · Contacto (${channel}) — ${authorName}]\nResultado: ${outcome}\n${notes.trim()}`;
+        const nextNotas = prevNotas ? `${entry}\n\n${prevNotas}` : entry;
+
+        const { error } = await supabase.from("expedientes_clinicos").upsert(
+          {
+            folio: targetFolio,
+            psicologo_id: user.id,
+            campos_clinicos: {
+              ...prevCampos,
+              objetivos_sesion: {
+                ...prevObj,
+                notas_libres: nextNotas,
+              },
+            },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "folio,psicologo_id" },
+        );
+
+        if (error) {
+          toast.error(`No se pudo guardar el contacto en Supabase: ${error.message}`);
+          return;
+        }
+
+        toast.success("Contacto registrado en expediente (Supabase)", {
+          description: `Se guardó el registro para ${caseItem.studentName || caseItem.initials}.`,
+        });
+        onOpenChange(false);
+        onSuccess?.();
+        return;
+      }
+
+      recordPatientContact(caseItem.id, channel, outcome, notes, authorName);
 
       toast.success("Contacto registrado en expediente", {
         description: `Se añadió el registro para ${caseItem.studentName || caseItem.initials} en la bitácora clínica.`,

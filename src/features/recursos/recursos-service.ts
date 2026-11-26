@@ -1,6 +1,7 @@
 import { psychoResources } from "@/lib/resources-data";
 import type { PsychoResource, VideoOrientation } from "@/lib/types";
 import { supabase } from "@/integrations/supabase/client";
+import { hasRealSupabaseSession } from "@/lib/supabase";
 
 const STORAGE_KEY = "equilibra_recursos_catalogo_v1";
 const DELETED_SEEDS_KEY = "equilibra_recursos_deleted_seeds_v1";
@@ -407,40 +408,56 @@ export function getStoredResources(): PsychoResource[] {
   return SEEDED_RESOURCES;
 }
 
+function mapSupabaseResourceRow(row: Record<string, unknown>): PsychoResource {
+  return {
+    id: String(row.id || crypto.randomUUID()),
+    title: String(row.title || "Recurso"),
+    shortDescription: String(row.short_description || ""),
+    category: (row.category as PsychoResource["category"]) || "Ansiedad",
+    readTime: String(row.read_time || "4 min"),
+    iconName: (row.icon_name as PsychoResource["iconName"]) || "bookOpen",
+    tone: (row.tone as PsychoResource["tone"]) || "teal",
+    content: Array.isArray(row.content)
+      ? (row.content as string[])
+      : typeof row.content === "string"
+        ? (row.content as string).split("\n\n")
+        : [],
+    keyTakeaway: row.key_takeaway ? String(row.key_takeaway) : undefined,
+    videoUrl: row.video_url ? String(row.video_url) : undefined,
+    videoTitle: row.video_title ? String(row.video_title) : undefined,
+    videoOrientation: (row.video_orientation as VideoOrientation) || "auto",
+    format: (row.format as PsychoResource["format"]) || "lectura",
+    author: row.author ? String(row.author) : "Área de Psicología TESH",
+    updatedAt: row.updated_at ? String(row.updated_at).slice(0, 10) : "Hoy",
+    active: row.active !== false,
+  };
+}
+
 /**
- * Carga recursos asíncronamente intentando sincronizar con Supabase,
- * fusionando los recursos semilla nuevos y conservando videos locales de IndexedDB.
+ * Carga recursos asíncronamente desde Supabase.
+ * En sesión real de Supabase retorna exclusivamente lo guardado en BD (sin semillas ni localStorage).
+ * En modo demo fusiona los recursos semilla y conserva videos locales de IndexedDB.
  */
 export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
+  const isRealSession = await hasRealSupabaseSession();
+
   try {
     const { data, error } = await supabase
       .from("recursos")
       .select("*")
       .order("created_at", { ascending: false });
 
+    if (isRealSession) {
+      if (error || !Array.isArray(data)) {
+        return [];
+      }
+      return data.map((row) => mapSupabaseResourceRow(row as Record<string, unknown>));
+    }
+
     if (!error && data && data.length > 0) {
-      const mapped: PsychoResource[] = data.map((row: Record<string, unknown>) => ({
-        id: String(row.id || crypto.randomUUID()),
-        title: String(row.title || "Recurso"),
-        shortDescription: String(row.short_description || ""),
-        category: (row.category as PsychoResource["category"]) || "Ansiedad",
-        readTime: String(row.read_time || "4 min"),
-        iconName: (row.icon_name as PsychoResource["iconName"]) || "bookOpen",
-        tone: (row.tone as PsychoResource["tone"]) || "teal",
-        content: Array.isArray(row.content)
-          ? (row.content as string[])
-          : typeof row.content === "string"
-            ? (row.content as string).split("\n\n")
-            : [],
-        keyTakeaway: row.key_takeaway ? String(row.key_takeaway) : undefined,
-        videoUrl: row.video_url ? String(row.video_url) : undefined,
-        videoTitle: row.video_title ? String(row.video_title) : undefined,
-        videoOrientation: (row.video_orientation as VideoOrientation) || "auto",
-        format: (row.format as PsychoResource["format"]) || "lectura",
-        author: row.author ? String(row.author) : "Área de Psicología TESH",
-        updatedAt: row.updated_at ? String(row.updated_at).slice(0, 10) : "Hoy",
-        active: row.active !== false,
-      }));
+      const mapped: PsychoResource[] = data.map((row) =>
+        mapSupabaseResourceRow(row as Record<string, unknown>),
+      );
 
       // Preservar videos locales (indexeddb://) que no puedan vivir en Supabase Storage
       let mergedBase = mapped;
@@ -466,7 +483,7 @@ export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
 
       const { resources: finalResources, missingSeeds } = normalizeAndMergeWithSeeds(mergedBase);
 
-      // Si hay sesión autorizada y faltaban ejemplos en Supabase, intentar sincronizarlos en segundo plano
+      // Si faltaban ejemplos en Supabase en modo demo, intentar sincronizarlos
       if (missingSeeds.length > 0) {
         void supabase.from("recursos").upsert(
           missingSeeds.map((r) => ({
@@ -490,7 +507,6 @@ export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
         );
       }
 
-      // Cachear localmente la lista fusionada completa
       try {
         if (typeof localStorage !== "undefined") {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(finalResources));
@@ -502,7 +518,13 @@ export async function fetchResourcesAsync(): Promise<PsychoResource[]> {
       return finalResources;
     }
   } catch {
-    // Si no existe la tabla o hay error de red, usar almacenamiento local
+    if (isRealSession) {
+      return [];
+    }
+  }
+
+  if (isRealSession) {
+    return [];
   }
 
   return getStoredResources();
@@ -520,7 +542,7 @@ export interface SaveResourceResult {
 export async function saveResourceWithStatus(
   resource: Partial<PsychoResource> & { title: string },
 ): Promise<SaveResourceResult> {
-  const current = getStoredResources();
+  const isRealSession = await hasRealSupabaseSession();
   const id = resource.id || `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   const finalResource: PsychoResource = {
@@ -548,23 +570,26 @@ export async function saveResourceWithStatus(
     active: resource.active !== false,
   };
 
-  const existingIndex = current.findIndex((r) => r.id === id);
-  let updatedList: PsychoResource[];
+  if (!isRealSession) {
+    const current = getStoredResources();
+    const existingIndex = current.findIndex((r) => r.id === id);
+    let updatedList: PsychoResource[];
 
-  if (existingIndex >= 0) {
-    updatedList = [...current];
-    updatedList[existingIndex] = finalResource;
-  } else {
-    updatedList = [finalResource, ...current];
+    if (existingIndex >= 0) {
+      updatedList = [...current];
+      updatedList[existingIndex] = finalResource;
+    } else {
+      updatedList = [finalResource, ...current];
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
+    } catch {
+      // ignore
+    }
   }
 
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
-  } catch {
-    // ignore
-  }
-
-  // Intentar sincronizar en Supabase
+  // Sincronizar en Supabase
   let syncedToDb = false;
   let dbError: string | undefined;
 
@@ -614,6 +639,17 @@ export async function saveResource(
  * Elimina un recurso por su ID
  */
 export async function deleteResource(id: string): Promise<boolean> {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (isRealSession) {
+    try {
+      const { error } = await supabase.from("recursos").delete().eq("id", id);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
   const current = getStoredResources();
   const updated = current.filter((r) => r.id !== id);
 
@@ -642,6 +678,29 @@ export async function deleteResource(id: string): Promise<boolean> {
  * Alterna el estado activo/inactivo de un recurso
  */
 export async function toggleResourceActive(id: string): Promise<boolean> {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (isRealSession) {
+    try {
+      const { data, error: readErr } = await supabase
+        .from("recursos")
+        .select("active")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (readErr || !data) return false;
+      const nextActive = data.active === false;
+      const { error: updErr } = await supabase
+        .from("recursos")
+        .update({ active: nextActive, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (updErr) return data.active !== false;
+      return nextActive;
+    } catch {
+      return false;
+    }
+  }
+
   const current = getStoredResources();
   const index = current.findIndex((r) => r.id === id);
   if (index === 0 || index > 0) {

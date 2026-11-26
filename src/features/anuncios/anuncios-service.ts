@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, hasRealSupabaseSession } from "@/lib/supabase";
 import { getChatSessionsStorageKey } from "@/lib/screening-storage";
 
 export type AnuncioTipo = "taller" | "recordatorio" | "informativo" | "evento";
@@ -243,7 +243,7 @@ async function getAuthUid(): Promise<string | null> {
  * Obtener todos los anuncios (para el panel de psicología: activos y ocultos)
  */
 export async function getAllAnuncios(): Promise<AnuncioRecord[]> {
-  const local = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
+  const isRealSession = await hasRealSupabaseSession();
 
   try {
     const { data, error } = await supabase
@@ -253,16 +253,26 @@ export async function getAllAnuncios(): Promise<AnuncioRecord[]> {
 
     if (!error && Array.isArray(data)) {
       const dbRows = data.map((row) => mapDbRowToAnuncio(row as Record<string, unknown>));
+      if (isRealSession) {
+        return dbRows;
+      }
+      const local = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
       if (dbRows.length > 0) {
         const dbIds = new Set(dbRows.map((r) => r.id));
         return [...dbRows, ...local.filter((l) => !UUID_REGEX.test(l.id) && !dbIds.has(l.id))];
       }
       return local;
     }
+    if (isRealSession) {
+      return [];
+    }
   } catch {
-    // Fallback local
+    if (isRealSession) {
+      return [];
+    }
   }
 
+  const local = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
   return [...local].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
@@ -272,8 +282,7 @@ export async function getAllAnuncios(): Promise<AnuncioRecord[]> {
  * Obtener anuncios públicos activos (para el home del estudiante)
  */
 export async function getActiveAnuncios(): Promise<AnuncioRecord[]> {
-  const local = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
-  const localActive = local.filter((a) => a.activo);
+  const isRealSession = await hasRealSupabaseSession();
 
   try {
     const { data, error } = await supabase
@@ -285,6 +294,11 @@ export async function getActiveAnuncios(): Promise<AnuncioRecord[]> {
 
     if (!error && Array.isArray(data)) {
       const dbRows = data.map((row) => mapDbRowToAnuncio(row as Record<string, unknown>));
+      if (isRealSession) {
+        return dbRows;
+      }
+      const local = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
+      const localActive = local.filter((a) => a.activo);
       if (dbRows.length > 0) {
         const dbIds = new Set(dbRows.map((r) => r.id));
         const extraLocal = localActive.filter((l) => !UUID_REGEX.test(l.id) && !dbIds.has(l.id));
@@ -292,11 +306,17 @@ export async function getActiveAnuncios(): Promise<AnuncioRecord[]> {
       }
       return localActive;
     }
+    if (isRealSession) {
+      return [];
+    }
   } catch {
-    // Fallback local
+    if (isRealSession) {
+      return [];
+    }
   }
 
-  return localActive;
+  const local = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
+  return local.filter((a) => a.activo);
 }
 
 /**
@@ -455,9 +475,21 @@ export async function saveAnuncio(
         writeLocal(ANUNCIOS_STORAGE_KEY, updatedLocal);
         return { ok: true, anuncio: mapped };
       }
+      if (authUid && error) {
+        return { ok: false, error: error.message };
+      }
     }
-  } catch {
-    // Fallback local
+  } catch (err) {
+    if (authUid) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : "No se pudo guardar el anuncio en Supabase.",
+      };
+    }
+  }
+
+  if (authUid) {
+    return { ok: false, error: "No se pudo guardar el anuncio en la base de datos." };
   }
 
   const updatedLocal = existingId
@@ -474,7 +506,12 @@ export async function toggleAnuncioActivo(
   anuncioId: string,
   activo: boolean,
 ): Promise<{ ok: boolean; error?: string }> {
+  const authUid = await getAuthUid();
   const nowIso = new Date().toISOString();
+
+  if (authUid && !UUID_REGEX.test(anuncioId)) {
+    return { ok: false, error: "ID de anuncio inválido para Supabase." };
+  }
 
   if (UUID_REGEX.test(anuncioId)) {
     try {
@@ -493,6 +530,10 @@ export async function toggleAnuncioActivo(
     }
   }
 
+  if (authUid) {
+    return { ok: true };
+  }
+
   const localList = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
   writeLocal(
     ANUNCIOS_STORAGE_KEY,
@@ -505,6 +546,12 @@ export async function toggleAnuncioActivo(
  * Eliminar un anuncio
  */
 export async function deleteAnuncio(anuncioId: string): Promise<{ ok: boolean; error?: string }> {
+  const authUid = await getAuthUid();
+
+  if (authUid && !UUID_REGEX.test(anuncioId)) {
+    return { ok: false, error: "ID de anuncio inválido para Supabase." };
+  }
+
   if (UUID_REGEX.test(anuncioId)) {
     try {
       const { error } = await supabase.from("anuncios").delete().eq("id", anuncioId);
@@ -517,6 +564,10 @@ export async function deleteAnuncio(anuncioId: string): Promise<{ ok: boolean; e
         error: err instanceof Error ? err.message : "No se pudo eliminar el anuncio.",
       };
     }
+  }
+
+  if (authUid) {
+    return { ok: true };
   }
 
   const localList = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
@@ -567,7 +618,12 @@ export async function getStudentLatestRiskLevel(
     }
   }
 
-  // Fallback local: revisar sesiones de tamizaje scoped del usuario
+  if (authUid) {
+    // En sesión real de Supabase, no mezclar nivel residual de localStorage
+    return "sin_tamizaje";
+  }
+
+  // Fallback local: revisar sesiones de tamizaje scoped del usuario demo
   if (typeof window !== "undefined") {
     const keys = [userId, userEmail].filter(Boolean).map((id) => getChatSessionsStorageKey(id));
 
@@ -603,12 +659,7 @@ export async function getStudentAnuncioInscripciones(studentId?: string | null):
   const effectiveId = authUid || studentId || "";
   if (!effectiveId) return [];
 
-  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
-  const localIds = localInsc
-    .filter((i) => i.estudiante_id === effectiveId)
-    .map((i) => i.anuncio_id);
-
-  if (UUID_REGEX.test(effectiveId)) {
+  if (authUid && UUID_REGEX.test(effectiveId)) {
     try {
       const { data, error } = await supabase
         .from("anuncios_inscripciones")
@@ -616,13 +667,18 @@ export async function getStudentAnuncioInscripciones(studentId?: string | null):
         .eq("estudiante_id", effectiveId);
 
       if (!error && Array.isArray(data)) {
-        const dbIds = data.map((r) => String(r.anuncio_id));
-        return Array.from(new Set([...dbIds, ...localIds]));
+        return data.map((r) => String(r.anuncio_id));
       }
+      return [];
     } catch {
-      // Fallback local
+      return [];
     }
   }
+
+  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
+  const localIds = localInsc
+    .filter((i) => i.estudiante_id === effectiveId)
+    .map((i) => i.anuncio_id);
 
   return Array.from(new Set(localIds));
 }
@@ -641,28 +697,23 @@ export async function inscribirEstudianteEnAnuncio(input: {
     return { ok: false, error: "Inicia sesión para inscribirte." };
   }
 
-  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
-  const alreadyLocal = localInsc.some(
-    (i) => i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId,
-  );
-  if (alreadyLocal) {
-    return { ok: true, alreadyEnrolled: true };
-  }
-
-  const localAnuncios = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
-  const targetAnuncio = localAnuncios.find((a) => a.id === input.anuncioId);
-
-  if (
-    targetAnuncio &&
-    targetAnuncio.cupo !== null &&
-    targetAnuncio.cupo > 0 &&
-    targetAnuncio.inscritos >= targetAnuncio.cupo
-  ) {
-    return { ok: false, error: "Cupo lleno" };
-  }
-
-  if (UUID_REGEX.test(input.anuncioId) && UUID_REGEX.test(effectiveStudentId)) {
+  if (authUid && UUID_REGEX.test(input.anuncioId) && UUID_REGEX.test(effectiveStudentId)) {
     try {
+      const { data: dbAnuncio } = await supabase
+        .from("anuncios")
+        .select("cupo, inscritos")
+        .eq("id", input.anuncioId)
+        .maybeSingle();
+
+      if (
+        dbAnuncio &&
+        dbAnuncio.cupo !== null &&
+        Number(dbAnuncio.cupo) > 0 &&
+        Number(dbAnuncio.inscritos ?? 0) >= Number(dbAnuncio.cupo)
+      ) {
+        return { ok: false, error: "Cupo lleno" };
+      }
+
       const { error } = await supabase.from("anuncios_inscripciones").insert({
         anuncio_id: input.anuncioId,
         estudiante_id: effectiveStudentId,
@@ -685,14 +736,7 @@ export async function inscribirEstudianteEnAnuncio(input: {
         .eq("id", input.anuncioId)
         .maybeSingle();
 
-      const nextCount = Number(refreshed?.inscritos ?? (targetAnuncio?.inscritos ?? 0) + 1);
-      const nextInsc: AnuncioInscripcionRecord = {
-        id: `insc-${Date.now().toString(36)}`,
-        anuncio_id: input.anuncioId,
-        estudiante_id: effectiveStudentId,
-        fecha: new Date().toISOString(),
-      };
-      writeLocal(INSCRIPCIONES_STORAGE_KEY, [nextInsc, ...localInsc]);
+      const nextCount = Number(refreshed?.inscritos ?? Number(dbAnuncio?.inscritos ?? 0) + 1);
       return { ok: true, inscritos: nextCount };
     } catch (err) {
       return {
@@ -700,6 +744,30 @@ export async function inscribirEstudianteEnAnuncio(input: {
         error: err instanceof Error ? err.message : "No se pudo completar la inscripción.",
       };
     }
+  }
+
+  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
+  const alreadyLocal = localInsc.some(
+    (i) => i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId,
+  );
+  if (alreadyLocal) {
+    return { ok: true, alreadyEnrolled: true };
+  }
+
+  const localAnuncios = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
+  const targetAnuncio = localAnuncios.find((a) => a.id === input.anuncioId);
+
+  if (
+    targetAnuncio &&
+    targetAnuncio.cupo !== null &&
+    targetAnuncio.cupo > 0 &&
+    targetAnuncio.inscritos >= targetAnuncio.cupo
+  ) {
+    return { ok: false, error: "Cupo lleno" };
+  }
+
+  if (authUid) {
+    return { ok: false, error: "No se pudo verificar el anuncio en la base de datos." };
   }
 
   // Modo demo / local
@@ -735,9 +803,9 @@ export async function cancelarInscripcionEnAnuncio(input: {
     return { ok: false, error: "Inicia sesión para gestionar tu inscripción." };
   }
 
-  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
-  const localAnuncios = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
-  const targetAnuncio = localAnuncios.find((a) => a.id === input.anuncioId);
+  if (authUid && (!UUID_REGEX.test(input.anuncioId) || !UUID_REGEX.test(effectiveStudentId))) {
+    return { ok: false, error: "No se pudo verificar el anuncio en la base de datos." };
+  }
 
   if (UUID_REGEX.test(input.anuncioId) && UUID_REGEX.test(effectiveStudentId)) {
     try {
@@ -757,16 +825,16 @@ export async function cancelarInscripcionEnAnuncio(input: {
         .eq("id", input.anuncioId)
         .maybeSingle();
 
-      const nextCount = Math.max(
-        0,
-        Number(refreshed?.inscritos ?? (targetAnuncio?.inscritos ?? 1) - 1),
-      );
-      writeLocal(
-        INSCRIPCIONES_STORAGE_KEY,
-        localInsc.filter(
-          (i) => !(i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId),
-        ),
-      );
+      const nextCount = Math.max(0, Number(refreshed?.inscritos ?? 0));
+      if (!authUid) {
+        const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
+        writeLocal(
+          INSCRIPCIONES_STORAGE_KEY,
+          localInsc.filter(
+            (i) => !(i.anuncio_id === input.anuncioId && i.estudiante_id === effectiveStudentId),
+          ),
+        );
+      }
       return { ok: true, inscritos: nextCount };
     } catch (err) {
       return {
@@ -775,6 +843,10 @@ export async function cancelarInscripcionEnAnuncio(input: {
       };
     }
   }
+
+  const localInsc = readLocal<AnuncioInscripcionRecord>(INSCRIPCIONES_STORAGE_KEY, []);
+  const localAnuncios = readLocal<AnuncioRecord>(ANUNCIOS_STORAGE_KEY, SEED_ANUNCIOS);
+  const targetAnuncio = localAnuncios.find((a) => a.id === input.anuncioId);
 
   // Modo demo / local
   const wasEnrolled = localInsc.some(

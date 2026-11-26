@@ -12,6 +12,8 @@ import {
 import { VideoPlayerView, type ResolvedOrientation } from "./video-player-view";
 import type { PsychoResource, ResourceCategory } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
+import { useAuth } from "@/lib/auth-context";
+import { isDemoUserId } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -68,7 +70,11 @@ function getIconComponent(iconName: PsychoResource["iconName"]) {
 }
 
 export function RecursosPage() {
-  const [resources, setResources] = useState<PsychoResource[]>(() => getStoredResources());
+  const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+  const [resources, setResources] = useState<PsychoResource[]>(() =>
+    isRealUser ? [] : getStoredResources(),
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<"Todos" | ResourceCategory>("Todos");
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<"all" | "under5" | "over5">("all");

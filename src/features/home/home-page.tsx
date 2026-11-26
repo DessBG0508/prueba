@@ -25,6 +25,7 @@ import type { MoodId } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 import { useMoodStats, getTodayMoodCheckIn } from "@/lib/mood-store";
 import { useAuth } from "@/lib/auth-context";
+import { isDemoUserId } from "@/lib/supabase";
 import { BreathingModal } from "@/features/bienestar/breathing-modal";
 import {
   getStudentPendingCanalizaciones,
@@ -79,9 +80,11 @@ const statIcons = [Brain, BedDouble, CircleGauge, BatteryMedium];
 export function HomePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
   const nombre = user?.name ?? "Estudiante";
   const { todayMood, saveTodayMood } = useMoodStats();
   const [selectedMood, setSelectedMood] = useState<MoodId>(() => {
+    if (isRealUser) return "regular";
     const today = getTodayMoodCheckIn();
     return today ? today.moodId : "regular";
   });

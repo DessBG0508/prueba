@@ -34,12 +34,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  getPsychologistCases,
-  getCaseNotes,
-  savePsychologistCases,
-} from "@/lib/psychologist-store";
-import type { CaseSummary, RiskLevel, ClinicalNote } from "@/lib/types";
+import { getPsychologistCases, getCaseNotes } from "@/lib/psychologist-store";
+import { supabase, hasRealSupabaseSession, isDemoUserId } from "@/lib/supabase";
+import type { CaseSummary, RiskLevel, CaseStatus, ClinicalNote } from "@/lib/types";
 import { BRAND } from "@/lib/branding";
 
 import { CaseDetailSheet } from "./case-detail-sheet";
@@ -116,9 +113,11 @@ export function ExpedientesPage({ embedded = false }: ExpedientesPageProps = {})
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
   // Estados de datos
   const [cases, setCases] = useState<CaseSummary[]>(() =>
-    getPsychologistCases().filter((c) => c.modo_acompanamiento === true),
+    isRealUser ? [] : getPsychologistCases().filter((c) => c.modo_acompanamiento === true),
   );
 
   // Filtros
@@ -138,13 +137,89 @@ export function ExpedientesPage({ embedded = false }: ExpedientesPageProps = {})
   const [printingCase, setPrintingCase] = useState<CaseSummary | null>(null);
   const [printingNotes, setPrintingNotes] = useState<ClinicalNote[]>([]);
 
-  const refreshCases = useCallback(() => {
-    const updated = getPsychologistCases().filter((c) => c.modo_acompanamiento === true);
-    setCases(updated);
-  }, []);
+  const refreshCases = useCallback(async () => {
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+    if (!isRealSession) {
+      const updated = getPsychologistCases().filter((c) => c.modo_acompanamiento === true);
+      setCases(updated);
+      return;
+    }
+
+    try {
+      const { data: viewData, error: viewError } = await supabase
+        .from("para_psicologo")
+        .select("*");
+      if (!viewError && Array.isArray(viewData)) {
+        const mapped: CaseSummary[] = viewData.map((p) => {
+          const dateStr = p.ultimo_tamizaje
+            ? new Date(p.ultimo_tamizaje).toLocaleDateString("es-MX", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "Reciente";
+          const nivel = (p.ultimo_nivel?.toLowerCase() || "amarillo") as RiskLevel;
+          return {
+            id: p.folio || `case-${p.iniciales}`,
+            initials: p.iniciales || "E.A.",
+            studentName: `Estudiante ${p.iniciales || ""}`.trim(),
+            matricula: p.folio || "TESH",
+            career: p.carrera || "TESH Huixquilucan",
+            semester: p.semestre ? `${p.semestre}º Semestre` : "Semestre no especificado",
+            riskLevel: nivel,
+            status: (p.bloqueado ? "por_contactar" : "atendido") as CaseStatus,
+            summary: `Tamizaje registrado (Folio: ${p.folio || "N/A"}).`,
+            lastCheckIn: dateStr,
+            accompanimentSummary: `Expediente institucional folio ${p.folio || "N/A"}.`,
+            phq9: p.phq9_total ?? 0,
+            gad7: p.gad7_total ?? 0,
+            bloqueado: Boolean(p.bloqueado),
+            modo_acompanamiento: true,
+          };
+        });
+        setCases(mapped);
+        return;
+      }
+
+      const { data: pacData } = await supabase
+        .from("pacientes")
+        .select("*")
+        .order("fecha_registro", { ascending: false });
+      if (Array.isArray(pacData)) {
+        const mapped: CaseSummary[] = pacData.map((p) => ({
+          id: p.folio || p.id,
+          initials: p.iniciales || "E.A.",
+          studentName: `Estudiante ${p.iniciales || ""}`.trim(),
+          matricula: p.folio || "TESH",
+          career: p.carrera || "TESH Huixquilucan",
+          semester: p.semestre ? `${p.semestre}º Semestre` : "Semestre no especificado",
+          riskLevel: (p.bloqueado ? "rojo" : "amarillo") as RiskLevel,
+          status: (p.bloqueado ? "por_contactar" : "atendido") as CaseStatus,
+          summary: `Tamizaje registrado (Folio: ${p.folio || "N/A"}).`,
+          lastCheckIn: p.fecha_registro
+            ? new Date(p.fecha_registro).toLocaleDateString("es-MX", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "Reciente",
+          accompanimentSummary: `Expediente institucional folio ${p.folio || "N/A"}.`,
+          phq9: 0,
+          gad7: 0,
+          bloqueado: Boolean(p.bloqueado),
+          modo_acompanamiento: true,
+        }));
+        setCases(mapped);
+        return;
+      }
+      setCases([]);
+    } catch {
+      setCases([]);
+    }
+  }, [isRealUser]);
 
   useEffect(() => {
-    refreshCases();
+    void refreshCases();
   }, [refreshCases]);
 
   // Reset page when filters change

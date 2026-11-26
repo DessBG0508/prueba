@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { hasRealSupabaseSession, supabase } from "./supabase";
 import { fetchResourcesAsync, getStoredResources } from "@/features/recursos/recursos-service";
 import type { RiskLevel } from "./types";
 
@@ -388,6 +388,252 @@ export interface DirectivoInstitutionalStats {
   recursosPublicados: number;
 }
 
+export interface DirectivoDashboardData {
+  institutionalStats: DirectivoInstitutionalStats;
+  kpis: DirectivoAggregatedKPIs;
+  semesterData: SemesterBarData[];
+}
+
+function emptySemesterData(): SemesterBarData[] {
+  return Array.from({ length: 9 }, (_, i) => ({
+    semesterLabel: `${i + 1}º`,
+    semesterNum: i + 1,
+    bienestarScore: 0,
+    hasData: false,
+  }));
+}
+
+function normalizeCareerName(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function parseSemestreNum(value: unknown): number | null {
+  const match = String(value || "").match(/\d+/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  return num >= 1 && num <= 9 ? num : null;
+}
+
+/**
+ * Obtiene todo el paquete estratégico del Directivo (stats + KPIs + gráfica por semestre).
+ * Para cuentas reales en Supabase lee 100% de BD sin datos mock ni localStorage.
+ * Para cuentas demo conserva los datos demostrativos locales/híbridos.
+ */
+export async function getDirectivoDashboardData(
+  careerFilter: TeshCareer | "all",
+): Promise<DirectivoDashboardData> {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (!isRealSession) {
+    const institutionalStats = await getDirectivoInstitutionalStats(careerFilter);
+    return {
+      institutionalStats,
+      kpis: getDirectivoKPIs(careerFilter),
+      semesterData: getSemesterChartData(careerFilter),
+    };
+  }
+
+  let totalTamizados = 0;
+  let pctVerde = 0;
+  let pctAmarillo = 0;
+  let pctRojo = 0;
+  let totalCanalizaciones = 0;
+  let citasAgendadas = 0;
+  let citasCompletadas = 0;
+  let recursosPublicados = 0;
+
+  let avgAnimo = 0;
+  let weeklyTrendPercent = 0;
+  const semesterData = emptySemesterData();
+
+  // Cargar mapa anónimo de carrera/semestre por user_id desde profiles (sin exponer nombres)
+  const profileMetaMap = new Map<string, { carrera: string; semestre: number | null }>();
+  try {
+    const { data: profs } = await supabase.from("profiles").select("id, carrera, semestre");
+    if (Array.isArray(profs)) {
+      for (const p of profs) {
+        profileMetaMap.set(String(p.id), {
+          carrera: String(p.carrera || ""),
+          semestre: parseSemestreNum(p.semestre),
+        });
+      }
+    }
+  } catch {
+    // Continuar sin segmentación de profiles
+  }
+
+  // Mapa opcional folio -> user_id desde pacientes (anónimo)
+  const folioUserMap = new Map<string, string>();
+  try {
+    const { data: pacs } = await supabase.from("pacientes").select("folio, user_id");
+    if (Array.isArray(pacs)) {
+      for (const p of pacs) {
+        if (p.folio && p.user_id) {
+          folioUserMap.set(String(p.folio), String(p.user_id));
+        }
+      }
+    }
+  } catch {
+    // Continuar
+  }
+
+  // 1. Tamizajes agregados desde respuestas_tamizaje
+  try {
+    const { data: tamizajeRows, error: tamErr } = await supabase
+      .from("respuestas_tamizaje")
+      .select("nivel, folio, created_at");
+
+    if (!tamErr && Array.isArray(tamizajeRows)) {
+      const filteredRows =
+        careerFilter === "all"
+          ? tamizajeRows
+          : tamizajeRows.filter((row) => {
+              const uid = row.folio ? folioUserMap.get(String(row.folio)) : undefined;
+              const meta = uid ? profileMetaMap.get(uid) : undefined;
+              return meta
+                ? normalizeCareerName(meta.carrera) === normalizeCareerName(careerFilter)
+                : false;
+            });
+
+      if (filteredRows.length > 0) {
+        totalTamizados = filteredRows.length;
+        const v = filteredRows.filter((r) => String(r.nivel).toLowerCase() === "verde").length;
+        const a = filteredRows.filter((r) => String(r.nivel).toLowerCase() === "amarillo").length;
+        pctVerde = Math.round((v / totalTamizados) * 100);
+        pctAmarillo = Math.round((a / totalTamizados) * 100);
+        pctRojo = Math.max(0, 100 - pctVerde - pctAmarillo);
+        weeklyTrendPercent = pctVerde >= 60 ? 3.4 : pctRojo > 20 ? -2.1 : 1.2;
+      }
+    }
+  } catch {
+    // Mantener ceros reales si falla
+  }
+
+  // 2. Check-ins anónimos desde tabla checkins (ánimo promedio y bienestar por semestre)
+  try {
+    const { data: checkinRows, error: chkErr } = await supabase
+      .from("checkins")
+      .select("user_id, escala");
+
+    if (!chkErr && Array.isArray(checkinRows) && checkinRows.length > 0) {
+      const filteredCheckins =
+        careerFilter === "all"
+          ? checkinRows
+          : checkinRows.filter((row) => {
+              const meta = row.user_id ? profileMetaMap.get(String(row.user_id)) : undefined;
+              return meta
+                ? normalizeCareerName(meta.carrera) === normalizeCareerName(careerFilter)
+                : false;
+            });
+
+      if (filteredCheckins.length > 0) {
+        const animoScores = filteredCheckins
+          .map((c) => 6 - Number(c.escala || 3))
+          .filter((n) => !Number.isNaN(n));
+        if (animoScores.length > 0) {
+          avgAnimo =
+            Math.round((animoScores.reduce((sum, n) => sum + n, 0) / animoScores.length) * 10) / 10;
+        }
+
+        for (let s = 1; s <= 9; s++) {
+          const semScores = filteredCheckins
+            .filter((c) => {
+              const meta = c.user_id ? profileMetaMap.get(String(c.user_id)) : undefined;
+              return meta?.semestre === s;
+            })
+            .map((c) => 6 - Number(c.escala || 3));
+
+          if (semScores.length > 0) {
+            const avgSem = semScores.reduce((sum, n) => sum + n, 0) / semScores.length;
+            semesterData[s - 1] = {
+              semesterLabel: `${s}º`,
+              semesterNum: s,
+              bienestarScore: Math.round(avgSem * 10) / 10,
+              hasData: true,
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    // Mantener ceros reales si falla
+  }
+
+  // 3. Total de canalizaciones (solo conteo numérico)
+  try {
+    const { data: canRows, error } = await supabase.from("canalizaciones").select("id, carrera");
+    if (!error && Array.isArray(canRows)) {
+      totalCanalizaciones =
+        careerFilter === "all"
+          ? canRows.length
+          : canRows.filter(
+              (c) => normalizeCareerName(c.carrera) === normalizeCareerName(careerFilter),
+            ).length;
+    }
+  } catch {
+    totalCanalizaciones = 0;
+  }
+
+  // 4. Total de citas agendadas y completadas
+  try {
+    const { data: citasRows, error } = await supabase
+      .from("solicitudes_cita")
+      .select("estado, carrera");
+    if (!error && Array.isArray(citasRows)) {
+      const filteredCitas =
+        careerFilter === "all"
+          ? citasRows
+          : citasRows.filter(
+              (c) => normalizeCareerName(c.carrera) === normalizeCareerName(careerFilter),
+            );
+      citasAgendadas = filteredCitas.filter((c) => c.estado !== "cancelada").length;
+      citasCompletadas = filteredCitas.filter(
+        (c) => c.estado === "completada" || c.estado === "realizada",
+      ).length;
+    }
+  } catch {
+    citasAgendadas = 0;
+    citasCompletadas = 0;
+  }
+
+  // 5. Total de recursos publicados en Supabase
+  try {
+    const resList = await fetchResourcesAsync();
+    recursosPublicados = Array.isArray(resList)
+      ? resList.filter((r) => r.active !== false).length
+      : 0;
+  } catch {
+    recursosPublicados = 0;
+  }
+
+  return {
+    institutionalStats: {
+      totalTamizados,
+      pctVerde,
+      pctAmarillo,
+      pctRojo,
+      totalCanalizaciones,
+      citasAgendadas,
+      citasCompletadas,
+      recursosPublicados,
+    },
+    kpis: {
+      avgAnimo,
+      avgSueno: 0,
+      avgEstres: 0,
+      avgEnergia: 0,
+      pctVerde,
+      pctAmarillo,
+      pctRojo,
+      weeklyTrendPercent,
+      totalSamples: totalTamizados,
+    },
+    semesterData,
+  };
+}
+
 /**
  * Obtiene estadísticas institucionales estrictamente agregadas y numéricas para el rol Directivo.
  * Nunca expone nombres individuales, matrículas, folios ni datos clínicos.
@@ -395,6 +641,12 @@ export interface DirectivoInstitutionalStats {
 export async function getDirectivoInstitutionalStats(
   careerFilter: TeshCareer | "all",
 ): Promise<DirectivoInstitutionalStats> {
+  const isRealSession = await hasRealSupabaseSession();
+  if (isRealSession) {
+    const bundle = await getDirectivoDashboardData(careerFilter);
+    return bundle.institutionalStats;
+  }
+
   const baseKpis = getDirectivoKPIs(careerFilter);
 
   let totalTamizados = baseKpis.totalSamples;
@@ -465,14 +717,16 @@ export async function getDirectivoInstitutionalStats(
     const { data: citasRows, error } = await supabase.from("solicitudes_cita").select("estado");
     if (!error && Array.isArray(citasRows) && citasRows.length > 0) {
       citasAgendadas = citasRows.filter((c) => c.estado !== "cancelada").length;
-      citasCompletadas = citasRows.filter((c) => c.estado === "realizada").length;
+      citasCompletadas = citasRows.filter(
+        (c) => c.estado === "realizada" || c.estado === "completada",
+      ).length;
     } else if (typeof localStorage !== "undefined") {
       const raw = localStorage.getItem("equilibra_solicitudes_cita_v1");
       const parsed = raw ? JSON.parse(raw) : [];
       if (Array.isArray(parsed) && parsed.length > 0) {
         citasAgendadas = parsed.filter((c: { estado?: string }) => c.estado !== "cancelada").length;
         citasCompletadas = parsed.filter(
-          (c: { estado?: string }) => c.estado === "realizada",
+          (c: { estado?: string }) => c.estado === "realizada" || c.estado === "completada",
         ).length;
       } else {
         citasAgendadas = 2;

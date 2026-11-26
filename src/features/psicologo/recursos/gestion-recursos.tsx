@@ -52,12 +52,16 @@ import type {
   VideoOrientation,
 } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
+import { isDemoUserId } from "@/lib/supabase";
 
 const CATEGORIES: ResourceCategory[] = ["Ansiedad", "Estrés", "Sueño", "Ánimo", "Respiración"];
 
 export function GestionRecursos() {
   const { user } = useAuth();
-  const [resources, setResources] = useState<PsychoResource[]>(() => getStoredResources());
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+  const [resources, setResources] = useState<PsychoResource[]>(() =>
+    isRealUser ? [] : getStoredResources(),
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedFormat, setSelectedFormat] = useState<string>("all");
@@ -274,6 +278,13 @@ export function GestionRecursos() {
     };
 
     const { resource: saved, syncedToDb, dbError } = await saveResourceWithStatus(payload);
+    if (!syncedToDb && isRealUser) {
+      toast.error("No se pudo guardar el recurso en Supabase.", {
+        description: dbError || "Verifica la conexión o los permisos en la tabla 'recursos'.",
+      });
+      return;
+    }
+
     setResources((prev) => {
       const idx = prev.findIndex((r) => r.id === saved.id);
       if (idx >= 0) {
@@ -306,7 +317,11 @@ export function GestionRecursos() {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteResource(id);
+    const ok = await deleteResource(id);
+    if (isRealUser && !ok) {
+      toast.error("No se pudo eliminar el recurso en Supabase.");
+      return;
+    }
     setResources((prev) => prev.filter((r) => r.id !== id));
     setDeleteConfirmId(null);
     toast.success("Recurso eliminado del catálogo");

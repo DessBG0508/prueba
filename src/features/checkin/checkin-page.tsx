@@ -8,6 +8,7 @@ import { SelectableChip } from "@/components/ui/selectable-chip";
 import { saveCheckIn, triggerRedAlert } from "@/lib/api-client";
 import { recordCheckInSuccess } from "@/lib/streak-store";
 import { DEMO_MODE } from "@/lib/mock-data";
+import { isDemoUserId } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { mapCheckInRiskRD02 } from "@/lib/metric-rules";
 import type { CheckIn, RiskLevel } from "@/lib/types";
@@ -49,9 +50,10 @@ export function CheckInPage() {
     const riskLevel: RiskLevel = mapCheckInRiskRD02(academicLoad);
 
     const activeUserId = user?.id;
+    const isRealUser = Boolean(activeUserId && !isDemoUserId(activeUserId));
     const checkIn: CheckIn = {
       id: crypto.randomUUID(),
-      studentId: activeUserId || (DEMO_MODE ? "demo-student-dess" : ""),
+      studentId: activeUserId || (!isRealUser && DEMO_MODE ? "demo-student-dess" : ""),
       academicLoad,
       emotions,
       createdAt: new Date().toISOString(),
@@ -61,7 +63,7 @@ export function CheckInPage() {
     try {
       const savedCheckIn = await saveCheckIn(checkIn, activeUserId);
       recordCheckInSuccess();
-      const shouldOfferSupport = DEMO_MODE && riskLevel === "rojo";
+      const shouldOfferSupport = riskLevel === "rojo";
       if (shouldOfferSupport) {
         await triggerRedAlert(savedCheckIn.id, activeUserId);
         await navigate({ to: "/alerta" });

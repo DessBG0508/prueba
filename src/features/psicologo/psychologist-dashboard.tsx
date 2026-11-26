@@ -57,7 +57,8 @@ import {
   getStoredAppointments,
   updateCaseStatus,
 } from "@/lib/psychologist-store";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasRealSupabaseSession, isDemoUserId, UUID_REGEX } from "@/lib/supabase";
+import { getSolicitudesPsicologo } from "../agenda/agenda-service";
 import type { CaseSummary, RiskLevel, CaseStatus, Appointment } from "@/lib/types";
 
 const riskStyles: Record<
@@ -147,8 +148,14 @@ export function PsychologistDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [alertasViewMode, setAlertasViewMode] = useState<"semaforo" | "tarjetas">("semaforo");
 
-  const [cases, setCases] = useState<CaseSummary[]>(() => getPsychologistCases());
-  const [appointments, setAppointments] = useState<Appointment[]>(() => getStoredAppointments());
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+
+  const [cases, setCases] = useState<CaseSummary[]>(() =>
+    isRealUser ? [] : getPsychologistCases(),
+  );
+  const [appointments, setAppointments] = useState<Appointment[]>(() =>
+    isRealUser ? [] : getStoredAppointments(),
+  );
   const [pendingCanalizacionesCount, setPendingCanalizacionesCount] = useState(0);
 
   // Diálogos y Sheets interactivos
@@ -158,14 +165,15 @@ export function PsychologistDashboard() {
   const [crisisDialogCase, setCrisisDialogCase] = useState<CaseSummary | null>(null);
 
   const refreshCases = async () => {
-    const localCases = getPsychologistCases();
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+    const localCases = isRealSession ? [] : getPsychologistCases();
     try {
       // 1. Intentar cargar desde la vista oficial para_psicologo
       const { data: viewData, error: viewError } = await supabase
         .from("para_psicologo")
         .select("*");
 
-      if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+      if (!viewError && Array.isArray(viewData)) {
         const viewCases: CaseSummary[] = viewData.map((p) => {
           const dateStr = p.ultimo_tamizaje
             ? new Date(p.ultimo_tamizaje).toLocaleDateString("es-MX", {
@@ -196,10 +204,17 @@ export function PsychologistDashboard() {
           };
         });
 
-        const existingIds = new Set(viewCases.map((c) => c.id));
-        const merged = [...viewCases, ...localCases.filter((c) => !existingIds.has(c.id))];
-        setCases(merged);
-        return;
+        if (isRealSession) {
+          setCases(viewCases);
+          return;
+        }
+
+        if (viewCases.length > 0) {
+          const existingIds = new Set(viewCases.map((c) => c.id));
+          const merged = [...viewCases, ...localCases.filter((c) => !existingIds.has(c.id))];
+          setCases(merged);
+          return;
+        }
       }
 
       // 2. Fallback a la tabla pacientes
@@ -217,7 +232,7 @@ export function PsychologistDashboard() {
         error = fallback.error;
       }
 
-      if (!error && Array.isArray(dbPatients) && dbPatients.length > 0) {
+      if (!error && Array.isArray(dbPatients)) {
         const dbCases: CaseSummary[] = dbPatients.map((p) => {
           const dateStr = p.fecha_registro
             ? new Date(p.fecha_registro).toLocaleDateString("es-MX", {
@@ -247,52 +262,124 @@ export function PsychologistDashboard() {
           };
         });
 
-        const existingIds = new Set(dbCases.map((c) => c.id));
-        const merged = [...dbCases, ...localCases.filter((c) => !existingIds.has(c.id))];
-        setCases(merged);
-        return;
+        if (isRealSession) {
+          setCases(dbCases);
+          return;
+        }
+
+        if (dbCases.length > 0) {
+          const existingIds = new Set(dbCases.map((c) => c.id));
+          const merged = [...dbCases, ...localCases.filter((c) => !existingIds.has(c.id))];
+          setCases(merged);
+          return;
+        }
       }
     } catch (err) {
       console.warn("Aviso al consultar pacientes en Supabase:", err);
     }
-    setCases(localCases);
+
+    if (isRealSession) {
+      setCases([]);
+    } else {
+      setCases(localCases);
+    }
   };
 
   const handleLiberarPaciente = async (caseId: string) => {
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
     try {
-      // update pacientes set bloqueado = false where id = (el del caso)
-      const { error } = await supabase
-        .from("pacientes")
-        .update({ bloqueado: false })
-        .eq("id", caseId);
+      let dbError: string | null = null;
 
-      if (error) {
-        console.warn("Aviso al actualizar bloqueo en Supabase:", error.message);
+      if (UUID_REGEX.test(caseId)) {
+        const { error } = await supabase
+          .from("pacientes")
+          .update({ bloqueado: false })
+          .eq("id", caseId);
+        if (error) dbError = error.message;
+      } else {
+        const { data: rpcOk, error: rpcError } = await supabase.rpc("liberar_paciente", {
+          p_folio: caseId,
+        });
+        if (rpcError || rpcOk !== true) {
+          const { error: updErr } = await supabase
+            .from("pacientes")
+            .update({ bloqueado: false })
+            .eq("folio", caseId);
+          if (updErr) dbError = updErr.message;
+        }
+      }
+
+      if (dbError) {
+        if (isRealSession) {
+          toast.error(`No se pudo liberar el paciente en Supabase: ${dbError}`);
+          return;
+        }
+        console.warn("Aviso al actualizar bloqueo en Supabase:", dbError);
       }
 
       setCases((prev) =>
         prev.map((c) => (c.id === caseId ? { ...c, status: "atendido", bloqueado: false } : c)),
       );
 
-      updateCaseStatus(caseId, "atendido");
+      if (!isRealSession) {
+        updateCaseStatus(caseId, "atendido");
+      }
       toast.success("Caso atendido: tamizaje liberado.");
     } catch (err) {
+      if (isRealSession) {
+        toast.error(
+          err instanceof Error ? err.message : "Error al liberar el paciente en Supabase.",
+        );
+        return;
+      }
       console.warn("Error al liberar paciente:", err);
       toast.success("Caso atendido: tamizaje liberado.");
     }
   };
 
-  const refreshAppointments = () => {
+  const refreshAppointments = async () => {
+    const isRealSession = (await hasRealSupabaseSession()) || isRealUser;
+    if (isRealSession) {
+      try {
+        const solicitudes = await getSolicitudesPsicologo();
+        const mapped: Appointment[] = solicitudes.map((s) => ({
+          id: s.id,
+          date: s.fecha_cita,
+          timeSlot: s.hora_cita,
+          modality: "presencial",
+          psychologistName: "Área de Psicología TESH",
+          psychologistRole: "Psicología Clínica",
+          locationOrLink: "Consultorio 3, Edificio de Bienestar Integral TESH",
+          status:
+            s.estado === "completada"
+              ? "realizada"
+              : s.estado === "cancelada"
+                ? "cancelada"
+                : s.estado === "pendiente"
+                  ? "pendiente"
+                  : "confirmada",
+          createdAt: s.created_at || new Date().toISOString(),
+          studentName: s.nombre_estudiante || s.iniciales_estudiante || "Estudiante",
+          folioTamizaje: s.folio_tamizaje || s.folio,
+          serviceType: s.tipo_servicio,
+          notes: s.motivo,
+        }));
+        setAppointments(mapped);
+      } catch {
+        setAppointments([]);
+      }
+      return;
+    }
     setAppointments(getStoredAppointments());
   };
 
   useEffect(() => {
-    refreshCases();
-    refreshAppointments();
+    void refreshCases();
+    void refreshAppointments();
     getCanalizaciones({ estado: "pendiente" })
       .then((list) => setPendingCanalizacionesCount(list.length))
       .catch(() => {});
-  }, []);
+  }, [isRealUser]);
 
   // Reiniciar a la primera página cuando cambian los filtros
   useEffect(() => {

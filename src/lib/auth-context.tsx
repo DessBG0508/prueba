@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
 import { toast } from "sonner";
-import { supabase, isSupabaseConfigured } from "./supabase";
+import { supabase, isSupabaseConfigured, isDemoUserId } from "./supabase";
 import { DEMO_MODE } from "./mock-data";
 import type { User, UserRole } from "./types";
 import { clearLegacyUnscopedScreeningData } from "./screening-storage";
@@ -224,8 +224,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.removeItem(LAST_ACTIVITY_KEY);
           localStorage.setItem("equilibra_logged_out", "true");
         } else if (raw) {
-          setUser(JSON.parse(raw));
-          localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+          const parsedUser = JSON.parse(raw) as User;
+          const isLocalRegistered = getRegisteredUsers().some((u) => u.id === parsedUser.id);
+          if (!isDemoUserId(parsedUser.id) && !isLocalRegistered && isSupabaseConfigured) {
+            // La sesión real de Supabase expiró; no mantener usuario UUID sin JWT válido
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+            localStorage.removeItem(LAST_ACTIVITY_KEY);
+          } else {
+            setUser(parsedUser);
+            localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+          }
         } else if (DEMO_MODE) {
           const hasLoggedOut = localStorage.getItem("equilibra_logged_out") === "true";
           if (!hasLoggedOut) {
@@ -551,6 +559,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Establece el usuario y rol localmente SIN llamar a Supabase Auth.
    */
   const loginAsDemo = (role: UserRole): User => {
+    // Asegurar que no quede una sesión real de Supabase activa al entrar en modo demo
+    if (isSupabaseConfigured) {
+      void supabase.auth.signOut().catch(() => {});
+    }
+
     const mock = MOCK_USERS.find((u) => u.role === role) || MOCK_USERS[0];
 
     const activeUser: User = {

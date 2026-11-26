@@ -3,7 +3,7 @@
  * Equilibra TESH - Sistema de Calidad y Acompañamiento
  */
 
-import { supabase } from "@/lib/supabase";
+import { hasRealSupabaseSession, isDemoUserId, supabase } from "@/lib/supabase";
 import { sha256 } from "@/lib/blockchain-audit";
 import type { RespuestaEncuesta, MetricasEncuesta, TriggerEncuestaTipo } from "./types";
 import { enviarNotificacionEncuestaResend } from "./resend-service";
@@ -163,6 +163,8 @@ export async function getRespuestasEncuesta(filtros?: {
   trigger_tipo?: string;
   search?: string;
 }): Promise<RespuestaEncuesta[]> {
+  const isRealSession = await hasRealSupabaseSession();
+
   try {
     let query = supabase
       .from("respuestas_encuesta")
@@ -174,6 +176,20 @@ export async function getRespuestasEncuesta(filtros?: {
     }
 
     const { data, error } = await query;
+    if (isRealSession) {
+      if (error || !Array.isArray(data)) return [];
+      let filtered = data as RespuestaEncuesta[];
+      if (filtros?.search) {
+        const s = filtros.search.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.folio.toLowerCase().includes(s) ||
+            (r.q9_comentarios && r.q9_comentarios.toLowerCase().includes(s)),
+        );
+      }
+      return filtered;
+    }
+
     if (!error && data && data.length > 0) {
       let filtered = data as RespuestaEncuesta[];
       if (filtros?.search) {
@@ -187,8 +203,10 @@ export async function getRespuestasEncuesta(filtros?: {
       return filtered;
     }
   } catch {
-    // Continuar con almacenamiento local
+    if (isRealSession) return [];
   }
+
+  if (isRealSession) return [];
 
   let local = getLocalRespuestas();
   if (filtros?.trigger_tipo && filtros.trigger_tipo !== "todos") {
@@ -212,6 +230,7 @@ export async function guardarRespuestaEncuesta(
   payload: Omit<RespuestaEncuesta, "id" | "hash_auditoria" | "created_at" | "respondida_en">,
 ): Promise<{ ok: boolean; id?: string; hash?: string; error?: string }> {
   try {
+    const isRealSession = await hasRealSupabaseSession();
     const ahora = new Date().toISOString();
     const stringParaHash = `${payload.folio}|${payload.trigger_tipo}|${ahora}|${payload.q1_satisfaccion}|${payload.q2_escuchado}|${payload.q3_claridad}|${payload.q4_respeto}|${payload.q5_tiempo_espera}|${payload.q6_utilidad}|${payload.q7_mejoria}|${payload.q8_recomendar}|${payload.q10a_facilidad_eli}|${payload.q10b_util_eli}`;
     const hash = await sha256(stringParaHash);
@@ -224,30 +243,50 @@ export async function guardarRespuestaEncuesta(
       created_at: ahora,
     };
 
-    // Intentar persistir en Supabase
     try {
-      await supabase.from("respuestas_encuesta").insert({
-        folio: nuevaRespuesta.folio,
-        user_id: nuevaRespuesta.user_id || null,
-        trigger_tipo: nuevaRespuesta.trigger_tipo,
-        trigger_fecha: nuevaRespuesta.trigger_fecha,
-        enviada_en: nuevaRespuesta.enviada_en,
-        respondida_en: nuevaRespuesta.respondida_en,
-        q1_satisfaccion: nuevaRespuesta.q1_satisfaccion,
-        q2_escuchado: nuevaRespuesta.q2_escuchado,
-        q3_claridad: nuevaRespuesta.q3_claridad,
-        q4_respeto: nuevaRespuesta.q4_respeto,
-        q5_tiempo_espera: nuevaRespuesta.q5_tiempo_espera,
-        q6_utilidad: nuevaRespuesta.q6_utilidad,
-        q7_mejoria: nuevaRespuesta.q7_mejoria,
-        q8_recomendar: nuevaRespuesta.q8_recomendar,
-        q9_comentarios: nuevaRespuesta.q9_comentarios || null,
-        q10a_facilidad_eli: nuevaRespuesta.q10a_facilidad_eli,
-        q10b_util_eli: nuevaRespuesta.q10b_util_eli,
-        hash_auditoria: hash,
-      });
-    } catch {
-      // Ignorar error de red y guardar en local
+      const { data: inserted, error } = await supabase
+        .from("respuestas_encuesta")
+        .insert({
+          folio: nuevaRespuesta.folio,
+          user_id: nuevaRespuesta.user_id || null,
+          trigger_tipo: nuevaRespuesta.trigger_tipo,
+          trigger_fecha: nuevaRespuesta.trigger_fecha,
+          enviada_en: nuevaRespuesta.enviada_en,
+          respondida_en: nuevaRespuesta.respondida_en,
+          q1_satisfaccion: nuevaRespuesta.q1_satisfaccion,
+          q2_escuchado: nuevaRespuesta.q2_escuchado,
+          q3_claridad: nuevaRespuesta.q3_claridad,
+          q4_respeto: nuevaRespuesta.q4_respeto,
+          q5_tiempo_espera: nuevaRespuesta.q5_tiempo_espera,
+          q6_utilidad: nuevaRespuesta.q6_utilidad,
+          q7_mejoria: nuevaRespuesta.q7_mejoria,
+          q8_recomendar: nuevaRespuesta.q8_recomendar,
+          q9_comentarios: nuevaRespuesta.q9_comentarios || null,
+          q10a_facilidad_eli: nuevaRespuesta.q10a_facilidad_eli,
+          q10b_util_eli: nuevaRespuesta.q10b_util_eli,
+          hash_auditoria: hash,
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (error && isRealSession) {
+        return { ok: false, error: error.message };
+      }
+
+      if (inserted?.id) {
+        nuevaRespuesta.id = String(inserted.id);
+      }
+    } catch (err) {
+      if (isRealSession) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Error de conexión con Supabase",
+        };
+      }
+    }
+
+    if (isRealSession) {
+      return { ok: true, id: nuevaRespuesta.id, hash };
     }
 
     const localList = getLocalRespuestas();
@@ -433,39 +472,41 @@ export async function validarFolioUsuario(
   }
 
   const cleanFolio = folio.trim().toUpperCase();
+  const isRealSession = (await hasRealSupabaseSession()) || !isDemoUserId(user.id);
 
   // Roles administrativos o psicólogos tienen acceso de supervisión y prueba
   if (user.role === "psicologo" || user.role === "directivo") {
     return { valido: true };
   }
 
-  // 1. Verificar contra el folio de tamizaje almacenado para el usuario en sesión
-  const storedFolio = getStoredUserFolio(user.id, user.email);
-  if (storedFolio && storedFolio.trim().toUpperCase() === cleanFolio) {
-    return { valido: true };
-  }
-
-  // 2. Verificar contra solicitudes de citas locales (localStorage)
-  try {
-    const rawCitas = localStorage.getItem("equilibra_solicitudes_cita_v1");
-    if (rawCitas) {
-      const citas = JSON.parse(rawCitas);
-      if (Array.isArray(citas)) {
-        const match = citas.some((c) => {
-          const isUser =
-            c.user_id === user.id ||
-            (c.email && c.email.toLowerCase() === user.email.toLowerCase()) ||
-            (c.matricula && c.matricula === user.matricula);
-          const hasFolio =
-            (c.folio && c.folio.trim().toUpperCase() === cleanFolio) ||
-            (c.folio_tamizaje && c.folio_tamizaje.trim().toUpperCase() === cleanFolio);
-          return isUser && hasFolio;
-        });
-        if (match) return { valido: true };
-      }
+  // En modo demo únicamente, validar folio almacenado en localStorage y citas locales
+  if (!isRealSession) {
+    const storedFolio = getStoredUserFolio(user.id, user.email);
+    if (storedFolio && storedFolio.trim().toUpperCase() === cleanFolio) {
+      return { valido: true };
     }
-  } catch {
-    // Continuar con verificación en Supabase
+
+    try {
+      const rawCitas = localStorage.getItem("equilibra_solicitudes_cita_v1");
+      if (rawCitas) {
+        const citas = JSON.parse(rawCitas);
+        if (Array.isArray(citas)) {
+          const match = citas.some((c) => {
+            const isUser =
+              c.user_id === user.id ||
+              (c.email && c.email.toLowerCase() === user.email.toLowerCase()) ||
+              (c.matricula && c.matricula === user.matricula);
+            const hasFolio =
+              (c.folio && c.folio.trim().toUpperCase() === cleanFolio) ||
+              (c.folio_tamizaje && c.folio_tamizaje.trim().toUpperCase() === cleanFolio);
+            return isUser && hasFolio;
+          });
+          if (match) return { valido: true };
+        }
+      }
+    } catch {
+      // Continuar con verificación en Supabase
+    }
   }
 
   // 3. Verificar en Supabase solicitudes_cita
@@ -489,7 +530,20 @@ export async function validarFolioUsuario(
     // Continuar si falla la conexión
   }
 
-  // 4. Verificar en Supabase tamizajes
+  // 4. Verificar en Supabase pacientes / respuestas_tamizaje / tamizajes
+  try {
+    const { data: pacDb } = await supabase
+      .from("pacientes")
+      .select("id, folio, user_id")
+      .eq("folio", cleanFolio)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (pacDb) return { valido: true };
+  } catch {
+    // Continuar
+  }
+
   try {
     const { data: tamizDb } = await supabase
       .from("tamizajes")
@@ -503,17 +557,18 @@ export async function validarFolioUsuario(
     // Continuar si falla
   }
 
-  // 5. Cuentas de demostración estudiantil (Dess Bautista / demo-user-student)
-  // con folios institucionales de prueba (TESH-2026-0842, EQ-9374, EQ-1234, TESH-2026-0915)
-  const isDemoStudent =
-    user.id === "demo-student-dess" ||
-    user.email === "dess@tesh.mx" ||
-    user.id === "demo-user-student" ||
-    user.id === "demo-student-01";
+  // 5. Cuentas de demostración estudiantil únicamente (nunca para sesiones reales)
+  if (!isRealSession) {
+    const isDemoStudent =
+      user.id === "demo-student-dess" ||
+      user.email === "dess@tesh.mx" ||
+      user.id === "demo-user-student" ||
+      user.id === "demo-student-01";
 
-  const foliosDemoValidos = ["TESH-2026-0842", "EQ-9374", "EQ-1234", "TESH-2026-0915"];
-  if (isDemoStudent && foliosDemoValidos.includes(cleanFolio)) {
-    return { valido: true };
+    const foliosDemoValidos = ["TESH-2026-0842", "EQ-9374", "EQ-1234", "TESH-2026-0915"];
+    if (isDemoStudent && foliosDemoValidos.includes(cleanFolio)) {
+      return { valido: true };
+    }
   }
 
   return {

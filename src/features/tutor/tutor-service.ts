@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, hasRealSupabaseSession, UUID_REGEX } from "@/lib/supabase";
 
 export type CanalizacionPrioridad = "baja" | "normal" | "alta" | "urgente";
 export type CanalizacionEstado = "pendiente" | "aceptada" | "rechazada" | "completada";
@@ -90,8 +90,6 @@ export interface AlertaInasistencia {
   leida_estudiante?: boolean;
   created_at: string;
 }
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const TUTORES_GRUPO_KEY = "equilibra_tutores_grupo_v1";
 const CANALIZACIONES_KEY = "equilibra_canalizaciones_v1";
@@ -414,6 +412,7 @@ export async function getAuthenticatedUid(): Promise<string | null> {
  * Obtener lista de perfiles con rol = 'tutor'
  */
 export async function getTutorProfiles(): Promise<TutorProfile[]> {
+  const isRealSession = await hasRealSupabaseSession();
   try {
     let { data, error } = await supabase
       .from("profiles")
@@ -431,29 +430,34 @@ export async function getTutorProfiles(): Promise<TutorProfile[]> {
       error = fallback.error;
     }
 
-    if (!error && Array.isArray(data) && data.length > 0) {
-      return data.map((p: Record<string, unknown>) => ({
-        id: String(p.id),
-        nombre: String(p.nombre || "Tutor TESH"),
-        matricula: p.matricula ? String(p.matricula) : undefined,
-        carrera: p.carrera ? String(p.carrera) : undefined,
-        semestre: p.semestre ? String(p.semestre) : undefined,
-        grupo: p.grupo ? String(p.grupo) : undefined,
-        rol: String(p.rol || p.role || "tutor"),
-      }));
+    if (!error && Array.isArray(data)) {
+      if (isRealSession || data.length > 0) {
+        return data.map((p: Record<string, unknown>) => ({
+          id: String(p.id),
+          nombre: String(p.nombre || "Tutor TESH"),
+          matricula: p.matricula ? String(p.matricula) : undefined,
+          carrera: p.carrera ? String(p.carrera) : undefined,
+          semestre: p.semestre ? String(p.semestre) : undefined,
+          grupo: p.grupo ? String(p.grupo) : undefined,
+          rol: String(p.rol || p.role || "tutor"),
+        }));
+      }
     }
   } catch {
-    // Fallback local
+    // Fallback local solo en modo demo
   }
 
-  return DEMO_TUTOR_PROFILES;
+  return isRealSession ? [] : DEMO_TUTOR_PROFILES;
 }
 
 /**
- * Obtener todas las asignaciones tutor-grupo (para Directivo o búsqueda)
+ * Obtener todas las asignaciones tutor-grupo (para Coordinador / Directivo o búsqueda)
  */
 export async function getAllTutorGroupAssignments(): Promise<TutorGrupoAssignment[]> {
-  const local = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
+  const isRealSession = await hasRealSupabaseSession();
+  const local = isRealSession
+    ? []
+    : readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
 
   try {
     const { data, error } = await supabase
@@ -461,7 +465,7 @@ export async function getAllTutorGroupAssignments(): Promise<TutorGrupoAssignmen
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       const profiles = await getTutorProfiles();
       const profileMap = new Map(profiles.map((p) => [p.id, p.nombre]));
 
@@ -480,11 +484,21 @@ export async function getAllTutorGroupAssignments(): Promise<TutorGrupoAssignmen
         created_at: row.created_at ? String(row.created_at) : undefined,
       }));
 
-      const seenIds = new Set(dbRows.map((r) => r.id));
-      return [...dbRows, ...local.filter((l) => !seenIds.has(l.id))];
+      if (isRealSession) {
+        return dbRows;
+      }
+
+      if (dbRows.length > 0) {
+        const seenIds = new Set(dbRows.map((r) => r.id));
+        return [...dbRows, ...local.filter((l) => !seenIds.has(l.id))];
+      }
     }
   } catch {
-    // Fallback local
+    // Fallback local solo en modo demo
+  }
+
+  if (isRealSession) {
+    return [];
   }
 
   return local.map((item) => ({
@@ -520,9 +534,12 @@ export async function getTutorGroupAssignments(
   tutorId: string,
   fallbackUser?: { name?: string; carrera?: string; grupo?: string; semestre?: string },
 ): Promise<TutorGrupoAssignment[]> {
+  const isRealSession = await hasRealSupabaseSession();
   const authUid = await getAuthenticatedUid();
   const effectiveTutorId = authUid || tutorId;
-  const local = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
+  const local = isRealSession
+    ? []
+    : readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
 
   if (UUID_REGEX.test(effectiveTutorId)) {
     try {
@@ -543,8 +560,8 @@ export async function getTutorGroupAssignments(
         error = retry.error;
       }
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        return data
+      if (!error && Array.isArray(data)) {
+        const rows = data
           .filter((row: Record<string, unknown>) => row.activo !== false)
           .map((row: Record<string, unknown>) => ({
             id: String(row.id),
@@ -557,10 +574,17 @@ export async function getTutorGroupAssignments(
             activo: row.activo !== undefined ? Boolean(row.activo) : true,
             created_at: row.created_at ? String(row.created_at) : undefined,
           }));
+        if (isRealSession || rows.length > 0) {
+          return rows;
+        }
       }
     } catch {
-      // Continuar a fallback
+      if (isRealSession) return [];
     }
+  }
+
+  if (isRealSession) {
+    return [];
   }
 
   const matchedLocal = local.filter((a) => a.tutor_id === effectiveTutorId && a.activo !== false);
@@ -623,6 +647,7 @@ export async function assignTutorToGroup(input: {
   const cleanSemestre = input.semestre.trim();
   const cleanCarrera = input.carrera.trim();
   const cleanPeriodo = (input.periodo || "2026-2").trim();
+  const isRealSession = await hasRealSupabaseSession();
 
   if (!input.tutor_id || !cleanCarrera || !cleanGrupo || !cleanSemestre) {
     return { ok: false, error: "Selecciona tutor, carrera, semestre y grupo." };
@@ -678,12 +703,18 @@ export async function assignTutorToGroup(input: {
         localRecord.id = String(data.id);
         if (data.created_at) localRecord.created_at = String(data.created_at);
       }
+
+      if (isRealSession) {
+        return { ok: true, assignment: localRecord };
+      }
     } catch (err) {
       return {
         ok: false,
         error: err instanceof Error ? err.message : "No se pudo guardar la asignación.",
       };
     }
+  } else if (isRealSession) {
+    return { ok: false, error: "El tutor seleccionado no tiene un ID válido en Supabase." };
   }
 
   const existing = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
@@ -724,6 +755,7 @@ export async function saveBulkTutorAssignments(input: {
     grupo: string;
   }>;
 }): Promise<{ ok: boolean; savedCount: number; error?: string }> {
+  const isRealSession = await hasRealSupabaseSession();
   const cleanPeriodo = input.periodo.trim();
   if (!cleanPeriodo) {
     return { ok: false, savedCount: 0, error: "Selecciona un periodo académico." };
@@ -754,6 +786,14 @@ export async function saveBulkTutorAssignments(input: {
   }));
 
   const dbItems = validItems.filter((item) => UUID_REGEX.test(item.tutor_id.trim()));
+  if (isRealSession && dbItems.length !== validItems.length) {
+    return {
+      ok: false,
+      savedCount: 0,
+      error: "Todos los tutores asignados deben tener un ID válido en Supabase.",
+    };
+  }
+
   if (dbItems.length > 0) {
     try {
       await Promise.all(
@@ -816,6 +856,10 @@ export async function saveBulkTutorAssignments(input: {
     }
   }
 
+  if (isRealSession) {
+    return { ok: true, savedCount: dbItems.length };
+  }
+
   const keySet = new Set(
     newRecords.map(
       (n) =>
@@ -853,6 +897,7 @@ export async function copyTutorAssignmentsFromPreviousPeriod(input: {
   sourcePeriodo: string;
   error?: string;
 }> {
+  const isRealSession = await hasRealSupabaseSession();
   const targetPeriodo = input.targetPeriodo.trim();
   const sourcePeriodo = (input.sourcePeriodo || getPreviousPeriodo(targetPeriodo)).trim();
 
@@ -897,15 +942,16 @@ export async function copyTutorAssignmentsFromPreviousPeriod(input: {
       .eq("periodo", sourcePeriodo)
       .eq("activo", true);
   } catch {
-    // Continuar con desactivación por grupo y localStorage
+    // Continuar con desactivación por grupo
   }
 
-  // Marcar como activo = false en localStorage para el periodo origen
-  const existingLocal = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
-  const markedLocal = existingLocal.map((item) =>
-    (item.periodo || "2026-2") === sourcePeriodo ? { ...item, activo: false } : item,
-  );
-  writeLocal(TUTORES_GRUPO_KEY, markedLocal);
+  if (!isRealSession) {
+    const existingLocal = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
+    const markedLocal = existingLocal.map((item) =>
+      (item.periodo || "2026-2") === sourcePeriodo ? { ...item, activo: false } : item,
+    );
+    writeLocal(TUTORES_GRUPO_KEY, markedLocal);
+  }
 
   const bulkRes = await saveBulkTutorAssignments({
     periodo: targetPeriodo,
@@ -943,6 +989,12 @@ export async function updateTutorAssignment(input: {
   tutor_nombre?: string;
   activo?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (isRealSession && !UUID_REGEX.test(input.id)) {
+    return { ok: false, error: "ID de asignación inválido para Supabase." };
+  }
+
   if (UUID_REGEX.test(input.id)) {
     try {
       const payload: Record<string, unknown> = {};
@@ -963,6 +1015,10 @@ export async function updateTutorAssignment(input: {
     }
   }
 
+  if (isRealSession) {
+    return { ok: true };
+  }
+
   const local = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
   const updated = local.map((item) => {
     if (item.id !== input.id) return item;
@@ -979,10 +1035,10 @@ export async function updateTutorAssignment(input: {
 }
 
 /**
- * Obtener catálogo de estudiantes (para gestión de recursamiento en Directivo)
+ * Obtener catálogo de estudiantes (para gestión de recursamiento en Coordinador)
  */
 export async function getAllStudentsForDirectivo(): Promise<TutorStudentItem[]> {
-  const localStudents = readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
+  const isRealSession = await hasRealSupabaseSession();
 
   try {
     let { data, error } = await supabase
@@ -1014,14 +1070,23 @@ export async function getAllStudentsForDirectivo(): Promise<TutorStudentItem[]> 
           semestre: String(p.semestre || "1"),
         }));
 
+      if (isRealSession) {
+        return dbStudents;
+      }
+
+      const localStudents = readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
       const seen = new Set(dbStudents.map((s) => s.id));
       return [...dbStudents, ...localStudents.filter((l) => !seen.has(l.id))];
     }
   } catch {
-    // Fallback local
+    // Fallback local solo en modo demo
   }
 
-  return localStudents;
+  if (isRealSession) {
+    return [];
+  }
+
+  return readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
 }
 
 /**
@@ -1033,12 +1098,17 @@ export async function updateStudentAcademicGroup(input: {
   semestre: string;
   grupo: string;
 }): Promise<{ ok: boolean; error?: string }> {
+  const isRealSession = await hasRealSupabaseSession();
   const cleanCarrera = input.carrera.trim();
   const cleanSemestre = input.semestre.trim();
   const cleanGrupo = input.grupo.trim();
 
   if (!cleanCarrera || !cleanSemestre || !cleanGrupo) {
     return { ok: false, error: "Carrera, semestre y grupo son obligatorios." };
+  }
+
+  if (isRealSession && !UUID_REGEX.test(input.studentId)) {
+    return { ok: false, error: "ID de estudiante inválido para Supabase." };
   }
 
   if (UUID_REGEX.test(input.studentId)) {
@@ -1064,6 +1134,10 @@ export async function updateStudentAcademicGroup(input: {
     }
   }
 
+  if (isRealSession) {
+    return { ok: true };
+  }
+
   const localStudents = readLocal<TutorStudentItem>(DEMO_STUDENTS_KEY, SEED_STUDENTS_DEMO);
   const existsLocally = localStudents.some((s) => s.id === input.studentId);
   if (existsLocally) {
@@ -1087,6 +1161,7 @@ export async function getGroupStudents(
   grupo: string,
   semestre?: string,
 ): Promise<TutorStudentItem[]> {
+  const isRealSession = await hasRealSupabaseSession();
   const targetSemestreNorm = normalizeSemestre(semestre);
 
   try {
@@ -1128,12 +1203,20 @@ export async function getGroupStudents(
           semestre: String(p.semestre || semestre || ""),
         }));
 
+      if (isRealSession) {
+        return students;
+      }
+
       if (students.length > 0) {
         return students;
       }
     }
   } catch {
-    // Fallback abajo
+    // Fallback abajo solo en modo demo
+  }
+
+  if (isRealSession) {
+    return [];
   }
 
   // Fallback demostrativo leyendo almacenamiento local actualizado (refleja cambios de recursamiento)
@@ -1179,6 +1262,7 @@ export async function findTutorForStudent(params: {
   carrera?: string | null;
   grupo?: string | null;
 }): Promise<{ tutor_id: string; carrera?: string; grupo?: string } | null> {
+  const isRealSession = await hasRealSupabaseSession();
   let carrera = params.carrera?.trim() || "";
   let grupo = params.grupo?.trim() || "";
 
@@ -1244,6 +1328,10 @@ export async function findTutorForStudent(params: {
     }
   }
 
+  if (isRealSession) {
+    return null;
+  }
+
   // 3. Fallback local / demo
   const local = readLocal<TutorGrupoAssignment>(TUTORES_GRUPO_KEY, SEED_TUTORES_GRUPO);
   const byCarreraGrupo = local.find(
@@ -1298,6 +1386,7 @@ export async function createCanalizacion(input: {
   motivo: string;
   prioridad: CanalizacionPrioridad;
 }): Promise<{ ok: boolean; canalizacion?: CanalizacionRecord; error?: string }> {
+  const isRealSession = await hasRealSupabaseSession();
   const motivoClean = input.motivo.trim();
   if (!motivoClean) {
     return { ok: false, error: "Debes indicar el motivo de la canalización." };
@@ -1324,6 +1413,16 @@ export async function createCanalizacion(input: {
     estado: "pendiente",
     created_at: new Date().toISOString(),
   };
+
+  if (
+    isRealSession &&
+    (!UUID_REGEX.test(effectiveTutorId) || !UUID_REGEX.test(input.estudiante_id))
+  ) {
+    return {
+      ok: false,
+      error: "Se requieren IDs válidos de Supabase para registrar la canalización.",
+    };
+  }
 
   if (UUID_REGEX.test(effectiveTutorId) && UUID_REGEX.test(input.estudiante_id)) {
     try {
@@ -1378,8 +1477,10 @@ export async function createCanalizacion(input: {
     }
   }
 
-  const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
-  writeLocal(CANALIZACIONES_KEY, [newRecord, ...local]);
+  if (!isRealSession) {
+    const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
+    writeLocal(CANALIZACIONES_KEY, [newRecord, ...local]);
+  }
 
   // Notificar automáticamente al estudiante en alertas_inasistencia
   await createAlertaInasistencia({
@@ -1436,13 +1537,13 @@ export async function createCanalizacionesBatch(input: {
 }
 
 /**
- * Consultar canalizaciones (para tutor, psicólogo o directivo)
+ * Consultar canalizaciones (para tutor, psicólogo o coordinador)
  */
 export async function getCanalizaciones(filtros?: {
   tutorId?: string;
   estado?: CanalizacionEstado;
 }): Promise<CanalizacionRecord[]> {
-  const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
+  const isRealSession = await hasRealSupabaseSession();
 
   try {
     let query = supabase
@@ -1459,111 +1560,135 @@ export async function getCanalizaciones(filtros?: {
 
     const { data, error } = await query;
 
-    if (!error && Array.isArray(data) && data.length > 0) {
-      // Enriquecer nombres si es posible desde profiles
-      const ids = Array.from(
-        new Set(
-          data
-            .flatMap((r: Record<string, unknown>) => [
-              r.tutor_id ? String(r.tutor_id) : "",
-              r.estudiante_id ? String(r.estudiante_id) : "",
-              r.psicologo_id ? String(r.psicologo_id) : "",
-            ])
-            .filter((id) => UUID_REGEX.test(id)),
-        ),
-      );
-
-      const profileMap = new Map<
-        string,
-        { nombre?: string; matricula?: string; carrera?: string; grupo?: string; semestre?: string }
-      >();
-
-      if (ids.length > 0) {
-        try {
-          const { data: profs } = await supabase
-            .from("profiles")
-            .select("id, nombre, matricula, carrera, grupo, semestre")
-            .in("id", ids);
-
-          if (Array.isArray(profs)) {
-            profs.forEach((p: Record<string, unknown>) => {
-              profileMap.set(String(p.id), {
-                nombre: p.nombre ? String(p.nombre) : undefined,
-                matricula: p.matricula ? String(p.matricula) : undefined,
-                carrera: p.carrera ? String(p.carrera) : undefined,
-                grupo: p.grupo ? String(p.grupo) : undefined,
-                semestre: p.semestre ? String(p.semestre) : undefined,
-              });
-            });
-          }
-        } catch {
-          // Continuar sin enriquecimiento
-        }
-      }
-
-      const mapped: CanalizacionRecord[] = data.map((row: Record<string, unknown>) => {
-        const tId = String(row.tutor_id || "");
-        const eId = String(row.estudiante_id || "");
-        const pId = row.psicologo_id ? String(row.psicologo_id) : null;
-        const tProf = profileMap.get(tId);
-        const eProf = profileMap.get(eId);
-        const pProf = pId ? profileMap.get(pId) : undefined;
-
-        return {
-          id: String(row.id),
-          tutor_id: tId,
-          tutor_nombre:
-            (row.tutor_nombre ? String(row.tutor_nombre) : undefined) ||
-            tProf?.nombre ||
-            "Tutor TESH",
-          psicologo_id: pId,
-          psicologo_nombre:
-            (row.psicologo_nombre ? String(row.psicologo_nombre) : undefined) ||
-            pProf?.nombre ||
-            undefined,
-          estudiante_id: eId,
-          estudiante_nombre:
-            (row.estudiante_nombre ? String(row.estudiante_nombre) : undefined) ||
-            eProf?.nombre ||
-            "Estudiante TESH",
-          estudiante_iniciales: buildInitials(
-            (row.estudiante_nombre ? String(row.estudiante_nombre) : undefined) || eProf?.nombre,
+    if (!error && Array.isArray(data)) {
+      if (data.length === 0) {
+        if (isRealSession) return [];
+      } else {
+        // Enriquecer nombres si es posible desde profiles
+        const ids = Array.from(
+          new Set(
+            data
+              .flatMap((r: Record<string, unknown>) => [
+                r.tutor_id ? String(r.tutor_id) : "",
+                r.estudiante_id ? String(r.estudiante_id) : "",
+                r.psicologo_id ? String(r.psicologo_id) : "",
+              ])
+              .filter((id) => UUID_REGEX.test(id)),
           ),
-          folio: filtros?.tutorId ? null : row.folio ? String(row.folio) : eProf?.matricula || null,
-          carrera: (row.carrera ? String(row.carrera) : undefined) || eProf?.carrera,
-          grupo: (row.grupo ? String(row.grupo) : undefined) || eProf?.grupo,
-          semestre: (row.semestre ? String(row.semestre) : undefined) || eProf?.semestre,
-          motivo: String(row.motivo || ""),
-          prioridad: (row.prioridad as CanalizacionPrioridad) || "normal",
-          estado: (row.estado as CanalizacionEstado) || "pendiente",
-          motivo_rechazo: row.motivo_rechazo
-            ? String(row.motivo_rechazo)
-            : row.observaciones
-              ? String(row.observaciones)
-              : null,
-          created_at: String(row.created_at || new Date().toISOString()),
-          updated_at: row.updated_at ? String(row.updated_at) : undefined,
-        };
-      });
+        );
 
-      const dbIds = new Set(mapped.map((m) => m.id));
-      const merged = [
-        ...mapped,
-        ...local
-          .filter((l) => {
-            if (dbIds.has(l.id)) return false;
-            if (filtros?.tutorId && l.tutor_id !== filtros.tutorId) return false;
-            if (filtros?.estado && l.estado !== filtros.estado) return false;
-            return true;
-          })
-          .map((l) => (filtros?.tutorId ? { ...l, folio: null } : l)),
-      ];
-      return merged;
+        const profileMap = new Map<
+          string,
+          {
+            nombre?: string;
+            matricula?: string;
+            carrera?: string;
+            grupo?: string;
+            semestre?: string;
+          }
+        >();
+
+        if (ids.length > 0) {
+          try {
+            const { data: profs } = await supabase
+              .from("profiles")
+              .select("id, nombre, matricula, carrera, grupo, semestre")
+              .in("id", ids);
+
+            if (Array.isArray(profs)) {
+              profs.forEach((p: Record<string, unknown>) => {
+                profileMap.set(String(p.id), {
+                  nombre: p.nombre ? String(p.nombre) : undefined,
+                  matricula: p.matricula ? String(p.matricula) : undefined,
+                  carrera: p.carrera ? String(p.carrera) : undefined,
+                  grupo: p.grupo ? String(p.grupo) : undefined,
+                  semestre: p.semestre ? String(p.semestre) : undefined,
+                });
+              });
+            }
+          } catch {
+            // Continuar sin enriquecimiento
+          }
+        }
+
+        const mapped: CanalizacionRecord[] = data.map((row: Record<string, unknown>) => {
+          const tId = String(row.tutor_id || "");
+          const eId = String(row.estudiante_id || "");
+          const pId = row.psicologo_id ? String(row.psicologo_id) : null;
+          const tProf = profileMap.get(tId);
+          const eProf = profileMap.get(eId);
+          const pProf = pId ? profileMap.get(pId) : undefined;
+
+          return {
+            id: String(row.id),
+            tutor_id: tId,
+            tutor_nombre:
+              (row.tutor_nombre ? String(row.tutor_nombre) : undefined) ||
+              tProf?.nombre ||
+              "Tutor TESH",
+            psicologo_id: pId,
+            psicologo_nombre:
+              (row.psicologo_nombre ? String(row.psicologo_nombre) : undefined) ||
+              pProf?.nombre ||
+              undefined,
+            estudiante_id: eId,
+            estudiante_nombre:
+              (row.estudiante_nombre ? String(row.estudiante_nombre) : undefined) ||
+              eProf?.nombre ||
+              "Estudiante TESH",
+            estudiante_iniciales: buildInitials(
+              (row.estudiante_nombre ? String(row.estudiante_nombre) : undefined) || eProf?.nombre,
+            ),
+            folio: filtros?.tutorId
+              ? null
+              : row.folio
+                ? String(row.folio)
+                : eProf?.matricula || null,
+            carrera: (row.carrera ? String(row.carrera) : undefined) || eProf?.carrera,
+            grupo: (row.grupo ? String(row.grupo) : undefined) || eProf?.grupo,
+            semestre: (row.semestre ? String(row.semestre) : undefined) || eProf?.semestre,
+            motivo: String(row.motivo || ""),
+            prioridad: (row.prioridad as CanalizacionPrioridad) || "normal",
+            estado: (row.estado as CanalizacionEstado) || "pendiente",
+            motivo_rechazo: row.motivo_rechazo
+              ? String(row.motivo_rechazo)
+              : row.observaciones
+                ? String(row.observaciones)
+                : null,
+            created_at: String(row.created_at || new Date().toISOString()),
+            updated_at: row.updated_at ? String(row.updated_at) : undefined,
+          };
+        });
+
+        if (isRealSession) {
+          return mapped;
+        }
+
+        const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
+        const dbIds = new Set(mapped.map((m) => m.id));
+        const merged = [
+          ...mapped,
+          ...local
+            .filter((l) => {
+              if (dbIds.has(l.id)) return false;
+              if (filtros?.tutorId && l.tutor_id !== filtros.tutorId) return false;
+              if (filtros?.estado && l.estado !== filtros.estado) return false;
+              return true;
+            })
+            .map((l) => (filtros?.tutorId ? { ...l, folio: null } : l)),
+        ];
+        return merged;
+      }
     }
   } catch {
-    // Fallback local
+    // Fallback local solo en modo demo
   }
 
+  if (isRealSession) {
+    return [];
+  }
+
+  const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
   return local
     .filter((c) => {
       if (filtros?.tutorId && c.tutor_id !== filtros.tutorId) return false;
@@ -1583,10 +1708,15 @@ export async function updateCanalizacionEstado(input: {
   psicologo_nombre?: string;
   motivo_rechazo?: string;
 }): Promise<{ ok: boolean; error?: string }> {
+  const isRealSession = await hasRealSupabaseSession();
   const authUid = await getAuthenticatedUid();
   const effectivePsicologoId =
     authUid ||
     (input.psicologo_id && UUID_REGEX.test(input.psicologo_id) ? input.psicologo_id : null);
+
+  if (isRealSession && !UUID_REGEX.test(input.id)) {
+    return { ok: false, error: "ID de canalización inválido para Supabase." };
+  }
 
   if (UUID_REGEX.test(input.id)) {
     try {
@@ -1635,6 +1765,10 @@ export async function updateCanalizacionEstado(input: {
     }
   }
 
+  if (isRealSession) {
+    return { ok: true };
+  }
+
   const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
   const idx = local.findIndex((c) => c.id === input.id);
   if (idx !== -1) {
@@ -1666,6 +1800,7 @@ export async function createAlertaInasistencia(input: {
   leida_tutor?: boolean;
   leida_estudiante?: boolean;
 }): Promise<{ ok: boolean; alerta?: AlertaInasistencia }> {
+  const isRealSession = await hasRealSupabaseSession();
   const leidaTutor = input.leida_tutor ?? false;
   const leidaEstudiante = input.leida_estudiante ?? false;
 
@@ -1683,10 +1818,15 @@ export async function createAlertaInasistencia(input: {
     created_at: new Date().toISOString(),
   };
 
-  if (
+  const hasValidUuid =
     UUID_REGEX.test(input.tutor_id) ||
-    (input.estudiante_id && UUID_REGEX.test(input.estudiante_id))
-  ) {
+    Boolean(input.estudiante_id && UUID_REGEX.test(input.estudiante_id));
+
+  if (isRealSession && !hasValidUuid) {
+    return { ok: false };
+  }
+
+  if (hasValidUuid) {
     try {
       const basePayload: Record<string, unknown> = {
         tipo_alerta: input.tipo_alerta,
@@ -1730,13 +1870,23 @@ export async function createAlertaInasistencia(input: {
         error = retry.error;
       }
 
+      if (error && isRealSession) {
+        return { ok: false };
+      }
+
       if (!error && data) {
         newAlert.id = String(data.id);
         if (data.created_at) newAlert.created_at = String(data.created_at);
       }
     } catch {
-      // Fallback local
+      if (isRealSession) {
+        return { ok: false };
+      }
     }
+  }
+
+  if (isRealSession) {
+    return { ok: true, alerta: newAlert };
   }
 
   const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
@@ -1750,9 +1900,9 @@ export async function createAlertaInasistencia(input: {
  * Por LFPDPPP, se excluye cualquier alerta con datos clínicos de tamizaje o nivel de riesgo.
  */
 export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasistencia[]> {
+  const isRealSession = await hasRealSupabaseSession();
   const authUid = await getAuthenticatedUid();
   const effectiveTutorId = authUid || tutorId;
-  const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
 
   const isNonClinicalTutorAlert = (a: AlertaInasistencia): boolean => {
     if (a.tipo_alerta === "no_canalizacion") return false;
@@ -1790,6 +1940,11 @@ export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasi
           }))
           .filter(isNonClinicalTutorAlert);
 
+        if (isRealSession) {
+          return dbAlerts;
+        }
+
+        const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
         const seen = new Set(dbAlerts.map((a) => a.id));
         const localUnread = local.filter(
           (l) =>
@@ -1801,10 +1956,15 @@ export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasi
         return [...dbAlerts, ...localUnread];
       }
     } catch {
-      // Fallback local
+      // Fallback local solo en modo demo
     }
   }
 
+  if (isRealSession) {
+    return [];
+  }
+
+  const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
   return local.filter(
     (a) => a.tutor_id === effectiveTutorId && !a.leida_tutor && isNonClinicalTutorAlert(a),
   );
@@ -1814,11 +1974,25 @@ export async function getUnreadTutorAlerts(tutorId: string): Promise<AlertaInasi
  * Marcar alerta de tutor como leída
  */
 export async function markAlertaAsRead(alertaId: string): Promise<boolean> {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (isRealSession && !UUID_REGEX.test(alertaId)) {
+    return false;
+  }
+
   if (UUID_REGEX.test(alertaId)) {
     try {
-      await supabase.from("alertas_inasistencia").update({ leida_tutor: true }).eq("id", alertaId);
+      const { error } = await supabase
+        .from("alertas_inasistencia")
+        .update({ leida_tutor: true })
+        .eq("id", alertaId);
+      if (isRealSession) {
+        return !error;
+      }
     } catch {
-      // Continuar con actualización local
+      if (isRealSession) {
+        return false;
+      }
     }
   }
 
@@ -1834,14 +2008,10 @@ export async function markAlertaAsRead(alertaId: string): Promise<boolean> {
 export async function getStudentPendingCanalizaciones(
   studentId?: string | null,
 ): Promise<CanalizacionRecord[]> {
+  const isRealSession = await hasRealSupabaseSession();
   const authUid = await getAuthenticatedUid();
   const effectiveStudentId = authUid || studentId || "";
   if (!effectiveStudentId) return [];
-
-  const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
-  const localMatches = local.filter(
-    (c) => c.estudiante_id === effectiveStudentId && c.estado === "pendiente",
-  );
 
   if (UUID_REGEX.test(effectiveStudentId)) {
     try {
@@ -1869,15 +2039,28 @@ export async function getStudentPendingCanalizaciones(
           created_at: String(row.created_at || new Date().toISOString()),
         }));
 
+        if (isRealSession) {
+          return dbRecords;
+        }
+
+        const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
+        const localMatches = local.filter(
+          (c) => c.estudiante_id === effectiveStudentId && c.estado === "pendiente",
+        );
         const seen = new Set(dbRecords.map((r) => r.id));
         return [...dbRecords, ...localMatches.filter((l) => !seen.has(l.id))];
       }
     } catch {
-      // Fallback local
+      // Fallback local solo en modo demo
     }
   }
 
-  return localMatches;
+  if (isRealSession) {
+    return [];
+  }
+
+  const local = readLocal<CanalizacionRecord>(CANALIZACIONES_KEY, SEED_CANALIZACIONES);
+  return local.filter((c) => c.estudiante_id === effectiveStudentId && c.estado === "pendiente");
 }
 
 /**
@@ -1886,17 +2069,10 @@ export async function getStudentPendingCanalizaciones(
 export async function getUnreadStudentAlerts(
   studentId?: string | null,
 ): Promise<AlertaInasistencia[]> {
+  const isRealSession = await hasRealSupabaseSession();
   const authUid = await getAuthenticatedUid();
   const effectiveStudentId = authUid || studentId || "";
   if (!effectiveStudentId) return [];
-
-  const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
-  const localMatches = local.filter(
-    (a) =>
-      a.estudiante_id === effectiveStudentId &&
-      a.leida_estudiante !== true &&
-      !a.mensaje.includes("obtuvo nivel rojo en tamizaje"),
-  );
 
   if (UUID_REGEX.test(effectiveStudentId)) {
     try {
@@ -1925,29 +2101,61 @@ export async function getUnreadStudentAlerts(
           }))
           .filter((a) => !a.mensaje.includes("obtuvo nivel rojo en tamizaje"));
 
+        if (isRealSession) {
+          return dbAlerts;
+        }
+
+        const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
+        const localMatches = local.filter(
+          (a) =>
+            a.estudiante_id === effectiveStudentId &&
+            a.leida_estudiante !== true &&
+            !a.mensaje.includes("obtuvo nivel rojo en tamizaje"),
+        );
         const seen = new Set(dbAlerts.map((a) => a.id));
         return [...dbAlerts, ...localMatches.filter((l) => !seen.has(l.id))];
       }
     } catch {
-      // Fallback local
+      // Fallback local solo en modo demo
     }
   }
 
-  return localMatches;
+  if (isRealSession) {
+    return [];
+  }
+
+  const local = readLocal<AlertaInasistencia>(ALERTAS_TUTOR_KEY, SEED_ALERTAS);
+  return local.filter(
+    (a) =>
+      a.estudiante_id === effectiveStudentId &&
+      a.leida_estudiante !== true &&
+      !a.mensaje.includes("obtuvo nivel rojo en tamizaje"),
+  );
 }
 
 /**
  * Marcar alerta del estudiante como leída (leida_estudiante = true)
  */
 export async function markStudentAlertaAsRead(alertaId: string): Promise<boolean> {
+  const isRealSession = await hasRealSupabaseSession();
+
+  if (isRealSession && !UUID_REGEX.test(alertaId)) {
+    return false;
+  }
+
   if (UUID_REGEX.test(alertaId)) {
     try {
-      await supabase
+      const { error } = await supabase
         .from("alertas_inasistencia")
         .update({ leida_estudiante: true })
         .eq("id", alertaId);
+      if (isRealSession) {
+        return !error;
+      }
     } catch {
-      // Continuar con actualización local
+      if (isRealSession) {
+        return false;
+      }
     }
   }
 

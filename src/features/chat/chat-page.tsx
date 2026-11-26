@@ -27,7 +27,7 @@ import {
   type EliMessage,
   type TamizajeSubmissionPayload,
 } from "@/lib/api-client";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, isDemoUserId } from "@/lib/supabase";
 import { DEMO_MODE } from "@/lib/mock-data";
 import {
   INITIAL_SCREENING_STATE,
@@ -239,11 +239,13 @@ export function ChatPage() {
   const messages = activeSession.messages;
   const screeningState = activeSession.screeningState || INITIAL_SCREENING_STATE;
 
+  const isRealUser = Boolean(user?.id && !isDemoUserId(user.id));
+  const isDemoSession = DEMO_MODE && !isRealUser;
+
   // RD-07: Fix definitivo de bloqueo:
   // 1. isEffectiveBlocked depende ÚNICAMENTE de isBlockedByBackend (que consulta Supabase).
-  // 2. Si estamos en modo demo (DEMO_MODE === true) o Supabase no está configurado, isEffectiveBlocked se fuerza a false.
-  // 3. Se elimina cualquier bloqueo basado en el estado local de la sesión (intraSessionRiskBlocked o screeningState.step === "completed").
-  const isEffectiveBlocked = DEMO_MODE ? false : isBlockedByBackend;
+  // 2. Solo en sesión demo local se fuerza a false; si inició sesión con cuenta real de Supabase, respeta la BD.
+  const isEffectiveBlocked = isDemoSession ? false : isBlockedByBackend;
   const isGatedByRisk = isEffectiveBlocked;
 
   const scrollToBottom = useCallback(() => {
@@ -279,8 +281,8 @@ export function ChatPage() {
   useEffect(() => {
     let isMounted = true;
     async function checkBlockedStatus() {
-      // En modo demo, no bloquear jamás
-      if (DEMO_MODE) {
+      // En sesión demo local, no bloquear jamás
+      if (isDemoSession) {
         if (isMounted) setIsBlockedByBackend(false);
         return;
       }
@@ -398,7 +400,7 @@ export function ChatPage() {
     return () => {
       isMounted = false;
     };
-  }, [user?.id, user?.email, user?.name, user?.semestre]);
+  }, [user?.id, user?.email, user?.name, user?.semestre, isDemoSession]);
 
   // RECUPERACIÓN AUTOMÁTICA: Si el usuario respondió el reactivo 9 pero falta mostrar el mensaje final con el folio del servidor
   useEffect(() => {
@@ -538,7 +540,7 @@ export function ChatPage() {
         const { data: authData } = await supabase.auth.getUser();
         authUserId = authData?.user?.id;
       }
-      if (authUserId && !DEMO_MODE) {
+      if (authUserId && isRealUser) {
         await supabase.from("pacientes").update({ bloqueado: false }).eq("user_id", authUserId);
       }
     } catch {
@@ -1147,7 +1149,7 @@ export function ChatPage() {
           updatedSessionsInterim.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)),
         );
         if (
-          !DEMO_MODE &&
+          !isDemoSession &&
           (serverNivel === "amarillo" || serverNivel === "rojo" || Boolean(nestedData?.bloqueado))
         ) {
           setIsBlockedByBackend(true);
@@ -1317,7 +1319,7 @@ export function ChatPage() {
 
           {/* Lado derecho: Reiniciar (siempre visible en demo) + Historial + Tema */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            {(DEMO_MODE || !isGatedByRisk) && (
+            {(isDemoSession || !isGatedByRisk) && (
               <Button
                 type="button"
                 variant="outline"
@@ -1864,7 +1866,7 @@ export function ChatPage() {
           </SheetHeader>
 
           <div className="mt-4 space-y-4">
-            {DEMO_MODE || !isEffectiveBlocked ? (
+            {isDemoSession || !isEffectiveBlocked ? (
               <Button
                 type="button"
                 onClick={handleNewConversation}
@@ -1891,7 +1893,7 @@ export function ChatPage() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                   Sesiones Guardadas ({sessions.length})
                 </p>
-                {sessions.length > 1 && (DEMO_MODE || !isGatedByRisk) && (
+                {sessions.length > 1 && (isDemoSession || !isGatedByRisk) && (
                   <button
                     type="button"
                     onClick={handleClearAllHistory}
