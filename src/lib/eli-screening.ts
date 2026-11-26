@@ -79,9 +79,65 @@ export const PHQ9_ANUNCIO =
 export const CRISIS_MESSAGE =
   "Tu seguridad es importante. Te recomiendo contactar ahora a Línea de la Vida 800 911 2000 / SAPTEL 800 472 7835 o acudir a urgencias. Un profesional revisará tus respuestas.";
 
-export function generateFolio(): string {
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  return `EQ-${randomNum}`;
+export function getTodayFormattedDate(): string {
+  return new Date().toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+export function getInitialsFromName(name?: string | null, email?: string | null): string {
+  const cleanName = (name || "").trim();
+  if (cleanName) {
+    const words = cleanName
+      .replace(/\b(dr|dra|mtro|mtra|lic|ing|prof)\.?\s+/gi, "")
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    if (words.length >= 2) {
+      return (
+        words
+          .slice(0, 3)
+          .map((w) => w[0].toUpperCase())
+          .join(".") + "."
+      );
+    }
+    if (words.length === 1) {
+      return `${words[0][0].toUpperCase()}.`;
+    }
+  }
+  const cleanEmail = (email || "").trim();
+  if (cleanEmail) {
+    return `${cleanEmail[0].toUpperCase()}.`;
+  }
+  return "EST";
+}
+
+export function buildEliCompletionMessage(params: {
+  folio?: string | null;
+  nivel: ScreeningNivel;
+  hasCrisisItem9?: boolean;
+  jsonOutput?: string;
+}): string {
+  const { folio, nivel, hasCrisisItem9, jsonOutput } = params;
+  const folioBlock = folio
+    ? `\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario de la Agenda para vincular tus resultados.`
+    : "";
+  const folioBlockVerde = folio
+    ? `\n\nTu folio de tamizaje es: ${folio} por si deseas vincularlo.`
+    : "";
+  const jsonSection = jsonOutput ? `\n\n${jsonOutput}` : "\n";
+
+  if (hasCrisisItem9) {
+    return `${CRISIS_MESSAGE}${folioBlock}${jsonSection}\nGracias. Un profesional revisará tus respuestas.`;
+  }
+  if (nivel === "rojo") {
+    return `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita hoy mismo en el apartado 'Agenda de Citas' de esta plataforma y elige TERAPIA PSICOLÓGICA.${folioBlock}${jsonSection}\nGracias. Un profesional revisará tus respuestas.`;
+  }
+  if (nivel === "amarillo") {
+    return `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado 'Agenda de Citas' de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.${folioBlock}${jsonSection}\nGracias. Un profesional revisará tus respuestas.`;
+  }
+  return `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado 'Agenda de Citas' de esta plataforma.${folioBlockVerde}${jsonSection}\nGracias. Un profesional revisará tus respuestas.`;
 }
 
 export function normalize(text: string): string {
@@ -243,11 +299,23 @@ export interface EliStepResult {
   };
 }
 
+export interface ScreeningDefaults {
+  iniciales?: string;
+  semestre?: string;
+}
+
 /**
  * Motor central de la aplicación de tamizaje por Eli conforme al protocolo oficial.
  */
-export function processEliMessage(userText: string, currentState: ScreeningState): EliStepResult {
+export function processEliMessage(
+  userText: string,
+  currentState: ScreeningState,
+  defaults?: ScreeningDefaults,
+): EliStepResult {
   const trimmed = userText.trim();
+  const resolvedInitials = currentState.paciente.iniciales || defaults?.iniciales || "EST";
+  const resolvedFecha = getTodayFormattedDate();
+  const resolvedSemestre = currentState.paciente.semestre || defaults?.semestre;
 
   // PASO 0 — Mensaje de bienvenida EXACTO
   if (currentState.step === "not_started") {
@@ -255,13 +323,19 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       replyText: ELI_WELCOME_MESSAGE,
       nextState: {
         ...currentState,
+        paciente: {
+          ...currentState.paciente,
+          iniciales: resolvedInitials,
+          fecha: resolvedFecha,
+          semestre: resolvedSemestre,
+        },
         step: "waiting_consent",
       },
       quickReplies: ["Sí", "No"],
     };
   }
 
-  // PASO 1 — Esperando consentimiento
+  // PASO 1 — Esperando consentimiento (solo pregunta si acepta o no; iniciales y fecha ya van por default)
   if (currentState.step === "waiting_consent") {
     const norm = normalize(trimmed);
     if (norm === "no" || norm === "no acepto" || norm === "rechazar" || norm === "cancelar") {
@@ -286,10 +360,16 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       norm === "iniciar tamizaje"
     ) {
       return {
-        replyText: "Perfecto. ¿Cuáles son tus iniciales?",
+        replyText: "Perfecto. ¿Qué edad tienes?",
         nextState: {
           ...currentState,
-          step: "waiting_initials",
+          paciente: {
+            ...currentState.paciente,
+            iniciales: resolvedInitials,
+            fecha: resolvedFecha,
+            semestre: resolvedSemestre,
+          },
+          step: "waiting_age",
         },
       };
     }
@@ -308,34 +388,29 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       replyText: ELI_WELCOME_MESSAGE,
       nextState: {
         ...INITIAL_SCREENING_STATE,
+        paciente: {
+          ...INITIAL_SCREENING_STATE.paciente,
+          iniciales: resolvedInitials,
+          fecha: resolvedFecha,
+          semestre: resolvedSemestre,
+        },
         step: "waiting_consent",
       },
       quickReplies: ["Sí", "No"],
     };
   }
 
-  // PASO 1 -> PASO 2: Iniciales
+  // Compatibilidad con sesiones previas pausadas en waiting_initials
   if (currentState.step === "waiting_initials") {
-    if (!trimmed || trimmed.length > 50) {
-      return {
-        replyText: "Anotado. ¿Cuáles son tus iniciales?",
-        nextState: currentState,
-      };
-    }
-
-    const cleanInitials =
-      trimmed
-        .toUpperCase()
-        .replace(/[^A-ZÁÉÍÓÚÑ.\s]/g, "")
-        .slice(0, 10) || trimmed.slice(0, 10).toUpperCase();
-
     return {
       replyText: "¿Qué edad tienes?",
       nextState: {
         ...currentState,
         paciente: {
           ...currentState.paciente,
-          iniciales: cleanInitials,
+          iniciales: resolvedInitials,
+          fecha: resolvedFecha,
+          semestre: resolvedSemestre,
         },
         step: "waiting_age",
       },
@@ -358,6 +433,9 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         ...currentState,
         paciente: {
           ...currentState.paciente,
+          iniciales: resolvedInitials,
+          fecha: resolvedFecha,
+          semestre: resolvedSemestre,
           edad: parsedAge,
         },
         step: "waiting_sex",
@@ -366,7 +444,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
     };
   }
 
-  // PASO 3 -> PASO 4: Sexo
+  // PASO 3 -> PASO 4: Sexo (y salta directo a GAD-7 usando fecha actual automática)
   if (currentState.step === "waiting_sex") {
     const norm = normalize(trimmed);
     let resolvedSex = "";
@@ -391,57 +469,36 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       };
     }
 
-    const todayStr = new Date().toLocaleDateString("es-MX", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-
-    return {
-      replyText: "¿Fecha de hoy?",
-      nextState: {
-        ...currentState,
-        paciente: {
-          ...currentState.paciente,
-          sexo: resolvedSex,
-        },
-        step: "waiting_fecha",
-      },
-      quickReplies: [todayStr, "Hoy"],
-    };
-  }
-
-  // PASO 4 -> PASO 5: Fecha de hoy
-  if (currentState.step === "waiting_fecha") {
-    const norm = normalize(trimmed);
-    let resolvedFecha = trimmed;
-    if (norm === "hoy" || norm === "fecha de hoy") {
-      resolvedFecha = new Date().toLocaleDateString("es-MX", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
-    }
-
-    if (!resolvedFecha || resolvedFecha.length > 50) {
-      return {
-        replyText: "Anotado. ¿Fecha de hoy?",
-        nextState: currentState,
-        quickReplies: [
-          new Date().toLocaleDateString("es-MX", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-          }),
-        ],
-      };
-    }
-
     const nextState: ScreeningState = {
       ...currentState,
       paciente: {
         ...currentState.paciente,
+        iniciales: resolvedInitials,
+        sexo: resolvedSex,
         fecha: resolvedFecha,
+        semestre: resolvedSemestre,
+      },
+      step: "gad7",
+      currentQuestionIndex: 0,
+      gad7Items: [],
+    };
+
+    return {
+      replyText: `${GAD7_ANUNCIO}\n\n${GAD7_QUESTIONS[0]}`,
+      nextState,
+      quickReplies: ["Nunca", "Varios días", "Más de la mitad de los días", "Casi todos los días"],
+    };
+  }
+
+  // Compatibilidad con sesiones previas pausadas en waiting_fecha
+  if (currentState.step === "waiting_fecha") {
+    const nextState: ScreeningState = {
+      ...currentState,
+      paciente: {
+        ...currentState.paciente,
+        iniciales: resolvedInitials,
+        fecha: resolvedFecha,
+        semestre: resolvedSemestre,
       },
       step: "gad7",
       currentQuestionIndex: 0,
@@ -566,7 +623,8 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       nivel = "verde";
     }
 
-    const folio = generateFolio();
+    // El folio oficial se genera únicamente en el servidor (Edge Function `tamizaje` -> json.data.folio)
+    const folio = currentState.folio;
 
     const recomendaciones =
       nivel === "rojo"
@@ -596,24 +654,20 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       recomendaciones,
     });
 
-    // Construcción de la respuesta de Eli
-    let replyText = "";
-    if (hasCrisisItem9) {
-      replyText = `${CRISIS_MESSAGE}\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario de la Agenda para vincular tus resultados.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
-    } else if (nivel === "rojo") {
-      replyText = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita hoy mismo en el apartado 'Agenda de Citas' de esta plataforma y elige TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
-    } else if (nivel === "amarillo") {
-      replyText = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado 'Agenda de Citas' de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${folio}\nEscríbelo en el formulario para vincular tus resultados.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
-    } else {
-      replyText = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado 'Agenda de Citas' de esta plataforma.\n\nTu folio de tamizaje es: ${folio} por si deseas vincularlo.\n\n${jsonOutput}\nGracias. Un profesional revisará tus respuestas.`;
-    }
+    // Construcción de la respuesta de Eli (si aún no hay folio del servidor, no inventar ninguno)
+    const replyText = buildEliCompletionMessage({
+      folio,
+      nivel,
+      hasCrisisItem9,
+      jsonOutput,
+    });
 
     const finalJson: ScreeningFinalJson = {
       paciente: {
-        iniciales: currentState.paciente.iniciales || "",
+        iniciales: resolvedInitials,
         edad: currentState.paciente.edad || 0,
         sexo: currentState.paciente.sexo || "",
-        fecha: currentState.paciente.fecha || new Date().toLocaleDateString("es-MX"),
+        fecha: resolvedFecha,
       },
       GAD_7: {
         total: gad7Total,
@@ -624,7 +678,7 @@ export function processEliMessage(userText: string, currentState: ScreeningState
         items: updatedItems,
         item9: item9Score,
       },
-      folio,
+      folio: folio || "",
       nivel,
       alerta: isCrisis,
       recomendaciones,
@@ -634,6 +688,12 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       replyText,
       nextState: {
         ...currentState,
+        paciente: {
+          ...currentState.paciente,
+          iniciales: resolvedInitials,
+          fecha: resolvedFecha,
+          semestre: resolvedSemestre,
+        },
         currentQuestionIndex: 8,
         phq9Items: updatedItems,
         step: "completed",
@@ -648,11 +708,11 @@ export function processEliMessage(userText: string, currentState: ScreeningState
       isReadyForSubmission: true,
       submissionPayload: {
         paciente: {
-          iniciales: currentState.paciente.iniciales || "",
+          iniciales: resolvedInitials,
           edad: currentState.paciente.edad || 0,
           sexo: currentState.paciente.sexo || "",
-          fecha: currentState.paciente.fecha || new Date().toLocaleDateString("es-MX"),
-          semestre: currentState.paciente.semestre,
+          fecha: resolvedFecha,
+          semestre: resolvedSemestre,
         },
         GAD7: currentState.gad7Items,
         PHQ9: updatedItems,

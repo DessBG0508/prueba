@@ -80,6 +80,18 @@ const MOCK_USERS: Array<User & { passwordHash: string }> = [
     passwordHash: "password123",
     createdAt: "2026-09-01T00:00:00.000Z",
   },
+  {
+    id: "demo-coordinador-roberto",
+    name: "Lic. Roberto Torres",
+    matricula: "COORD-10402",
+    email: "demo-coordinador@tesh.mx",
+    role: "coordinador",
+    carrera: "Coordinación Académica y Tutorías",
+    semestre: "",
+    grupo: "",
+    passwordHash: "demo",
+    createdAt: "2026-09-01T00:00:00.000Z",
+  },
 ];
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -405,8 +417,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error("El correo electrónico no coincide con ningún usuario registrado.");
       }
 
-      if (password.length < 8 && found.passwordHash !== password) {
-        throw new Error("La contraseña debe tener al menos 8 caracteres.");
+      if (found.passwordHash !== password) {
+        if (password.length < 8) {
+          throw new Error("La contraseña debe tener al menos 8 caracteres.");
+        }
+        if (mockMatch && found.passwordHash === "demo") {
+          throw new Error("Credenciales incorrectas. Verifica tu correo y contraseña.");
+        }
       }
 
       const activeUser: User = {

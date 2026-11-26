@@ -49,14 +49,19 @@ import {
   updateStudentAcademicGroup,
   updateTutorAssignment,
   type CanalizacionEstado,
-  type CanalizacionPrioridad,
   type CanalizacionRecord,
   type TutorGrupoAssignment,
   type TutorProfile,
   type TutorStudentItem,
 } from "@/features/tutor/tutor-service";
 
-type PanelTab = "asignaciones" | "estudiantes" | "canalizaciones";
+export type PanelTab = "asignaciones" | "estudiantes" | "canalizaciones";
+
+interface TutoresAsignacionPanelProps {
+  activeTab?: PanelTab;
+  onTabChange?: (tab: PanelTab) => void;
+  hideInternalTabs?: boolean;
+}
 
 interface GridRowItem {
   key: string;
@@ -86,13 +91,6 @@ const ESTADO_BADGE: Record<CanalizacionEstado, { label: string; cls: string }> =
   },
 };
 
-const PRIORIDAD_BADGE: Record<CanalizacionPrioridad, string> = {
-  baja: "border-slate-200 bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
-  normal: "border-blue-200 bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
-  alta: "border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  urgente: "border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
-};
-
 function makeGridKey(carrera: string, semestre: string, grupo: string): string {
   return `${carrera.trim().toLowerCase()}|${semestre.trim()}|${grupo.trim().toLowerCase()}`;
 }
@@ -108,8 +106,17 @@ function formatFecha(iso?: string): string {
   }
 }
 
-export function TutoresAsignacionPanel() {
-  const [activeTab, setActiveTab] = useState<PanelTab>("asignaciones");
+export function TutoresAsignacionPanel({
+  activeTab: controlledTab,
+  onTabChange,
+  hideInternalTabs = false,
+}: TutoresAsignacionPanelProps = {}) {
+  const [internalTab, setInternalTab] = useState<PanelTab>("asignaciones");
+  const activeTab = controlledTab ?? internalTab;
+  const setActiveTab = (next: PanelTab) => {
+    setInternalTab(next);
+    onTabChange?.(next);
+  };
 
   const [tutores, setTutores] = useState<TutorProfile[]>([]);
   const [allAsignaciones, setAllAsignaciones] = useState<TutorGrupoAssignment[]>([]);
@@ -469,7 +476,7 @@ export function TutoresAsignacionPanel() {
       pendientes: canalizaciones.filter((c) => c.estado === "pendiente").length,
       aceptadas: canalizaciones.filter((c) => c.estado === "aceptada").length,
       completadas: canalizaciones.filter((c) => c.estado === "completada").length,
-      urgentes: canalizaciones.filter((c) => c.prioridad === "urgente").length,
+      rechazadas: canalizaciones.filter((c) => c.estado === "rechazada").length,
     };
   }, [canalizaciones]);
 
@@ -502,75 +509,77 @@ export function TutoresAsignacionPanel() {
         </Button>
       </div>
 
-      {/* Pestañas del módulo */}
-      <div
-        role="tablist"
-        aria-label="Secciones de gestión tutorial"
-        className="flex flex-wrap items-center gap-2 border-b border-border pb-3"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "asignaciones"}
-          onClick={() => setActiveTab("asignaciones")}
-          className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
-            activeTab === "asignaciones"
-              ? "border-[#1B198F] bg-[#1B198F] text-white"
-              : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
+      {/* Pestañas del módulo (cuando no se ocultan desde el sidebar del Coordinador) */}
+      {!hideInternalTabs && (
+        <div
+          role="tablist"
+          aria-label="Secciones de gestión tutorial"
+          className="flex flex-wrap items-center gap-2 border-b border-border pb-3"
         >
-          <CalendarRange className="size-3.5" />
-          Asignaciones por periodo
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "asignaciones"}
+            onClick={() => setActiveTab("asignaciones")}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
+              activeTab === "asignaciones"
+                ? "border-[#1B198F] bg-[#1B198F] text-white"
+                : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            <CalendarRange className="size-3.5" />
+            Asignaciones por periodo
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "estudiantes"}
-          onClick={() => setActiveTab("estudiantes")}
-          className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
-            activeTab === "estudiantes"
-              ? "border-[#1B198F] bg-[#1B198F] text-white"
-              : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          <Users className="size-3.5" />
-          Estudiantes
-          <span
-            className={`rounded-md px-1.5 py-0.5 text-[10px] ${
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "estudiantes"}
+            onClick={() => setActiveTab("estudiantes")}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
               activeTab === "estudiantes"
-                ? "bg-white/20 text-white"
-                : "bg-muted text-muted-foreground"
+                ? "border-[#1B198F] bg-[#1B198F] text-white"
+                : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
-            {estudiantes.length}
-          </span>
-        </button>
+            <Users className="size-3.5" />
+            Estudiantes
+            <span
+              className={`rounded-md px-1.5 py-0.5 text-[10px] ${
+                activeTab === "estudiantes"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {estudiantes.length}
+            </span>
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "canalizaciones"}
-          onClick={() => setActiveTab("canalizaciones")}
-          className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
-            activeTab === "canalizaciones"
-              ? "border-[#1B198F] bg-[#1B198F] text-white"
-              : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          <ClipboardList className="size-3.5" />
-          Canalizaciones
-          <span
-            className={`rounded-md px-1.5 py-0.5 text-[10px] ${
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "canalizaciones"}
+            onClick={() => setActiveTab("canalizaciones")}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
               activeTab === "canalizaciones"
-                ? "bg-white/20 text-white"
-                : "bg-muted text-muted-foreground"
+                ? "border-[#1B198F] bg-[#1B198F] text-white"
+                : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/50"
             }`}
           >
-            {canalizaciones.length}
-          </span>
-        </button>
-      </div>
+            <ClipboardList className="size-3.5" />
+            Canalizaciones
+            <span
+              className={`rounded-md px-1.5 py-0.5 text-[10px] ${
+                activeTab === "canalizaciones"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {canalizaciones.length}
+            </span>
+          </button>
+        </div>
+      )}
 
       {activeTab === "asignaciones" && (
         <div className="space-y-6">
@@ -1158,7 +1167,7 @@ export function TutoresAsignacionPanel() {
       )}
 
       {activeTab === "canalizaciones" && (
-        /* Resumen institucional de canalizaciones */
+        /* Vista agregada de todas las canalizaciones del sistema (sin datos clínicos: solo estudiante, tutor, estado, fecha) */
         <section className="rounded-2xl border border-border bg-card p-5 space-y-5">
           <div className="flex items-center gap-2.5">
             <div className="grid size-9 place-items-center rounded-xl bg-[#1B198F]/10 text-[#1B198F] dark:text-indigo-300">
@@ -1166,11 +1175,11 @@ export function TutoresAsignacionPanel() {
             </div>
             <div>
               <h3 className="text-base font-bold text-foreground">
-                Todas las Canalizaciones del Sistema (Resumen Agregado)
+                Canalizaciones del Sistema (Seguimiento Administrativo)
               </h3>
               <p className="text-xs text-muted-foreground">
-                Monitoreo institucional del flujo tutor → área psicológica sin exposición clínica
-                sensible.
+                Control operativo del flujo tutor → psicología sin datos clínicos, folios ni motivos
+                confidenciales.
               </p>
             </div>
           </div>
@@ -1208,10 +1217,10 @@ export function TutoresAsignacionPanel() {
             </div>
             <div className="col-span-2 sm:col-span-1 rounded-xl border border-rose-200 bg-rose-50/40 dark:border-rose-900/50 dark:bg-rose-950/20 p-3.5">
               <span className="text-[11px] font-bold uppercase text-rose-700 dark:text-rose-300">
-                Urgentes
+                Rechazadas
               </span>
               <p className="font-numeric text-2xl font-bold text-rose-700 dark:text-rose-300 mt-1">
-                {canalizacionesStats.urgentes}
+                {canalizacionesStats.rechazadas}
               </p>
             </div>
           </div>
@@ -1220,10 +1229,8 @@ export function TutoresAsignacionPanel() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40">
-                  <TableHead className="text-xs font-bold">Carrera / Grupo</TableHead>
-                  <TableHead className="text-xs font-bold">Tutor Solicitante</TableHead>
-                  <TableHead className="text-xs font-bold">Estudiante / Folio</TableHead>
-                  <TableHead className="text-xs font-bold">Prioridad</TableHead>
+                  <TableHead className="text-xs font-bold">Estudiante</TableHead>
+                  <TableHead className="text-xs font-bold">Tutor</TableHead>
                   <TableHead className="text-xs font-bold">Estado</TableHead>
                   <TableHead className="text-xs font-bold">Fecha</TableHead>
                 </TableRow>
@@ -1232,7 +1239,7 @@ export function TutoresAsignacionPanel() {
                 {canalizaciones.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={4}
                       className="text-center py-6 text-xs text-muted-foreground"
                     >
                       No existen canalizaciones registradas en el sistema.
@@ -1241,31 +1248,13 @@ export function TutoresAsignacionPanel() {
                 ) : (
                   canalizaciones.map((c) => {
                     const est = ESTADO_BADGE[c.estado] || ESTADO_BADGE.pendiente;
-                    const prio = PRIORIDAD_BADGE[c.prioridad] || PRIORIDAD_BADGE.normal;
                     return (
                       <TableRow key={c.id}>
-                        <TableCell className="text-xs text-foreground">
-                          <div className="font-semibold">{c.carrera || "TESH"}</div>
-                          {c.grupo && (
-                            <span className="text-[11px] text-muted-foreground">
-                              Grupo {c.grupo}
-                            </span>
-                          )}
+                        <TableCell className="text-xs font-semibold text-foreground">
+                          {c.estudiante_nombre || "Estudiante"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {c.tutor_nombre || "Tutor TESH"}
-                        </TableCell>
-                        <TableCell className="text-xs font-semibold text-foreground">
-                          {c.estudiante_nombre || "Estudiante"}
-                          {c.folio ? ` (${c.folio})` : ""}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`${prio} text-[11px] font-bold capitalize`}
-                          >
-                            {c.prioridad}
-                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={`${est.cls} text-[11px] font-bold`}>

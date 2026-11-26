@@ -11,10 +11,12 @@ import { PersistentSosButton } from "@/components/common/persistent-sos-button";
 const PUBLIC_ROUTES = ["/login", "/registro", "/recuperar", "/reset", "/aviso-privacidad"];
 
 /**
- * DECISIÓN DE ARQUITECTURA:
- * El rol directivo/jefatura de carrera se representa con el valor "jefatura" (y "coordinador")
- * del enum app_role en la BD; la ruta de UI es "/directivo".
- * La rama rol === "directivo" se eliminó por ser un rol inexistente en la BD.
+ * Control de acceso por rol (RBAC en cliente, respaldado por RLS en Supabase):
+ * - coordinador: accede a /coordinador, /perfil, /, /aviso-privacidad (bloqueado de /psicologo, /directivo, /tutor, /expedientes, /auditoria)
+ * - jefatura (directivo): accede SOLO a /directivo (estadísticas estratégicas) y /aviso-privacidad
+ * - psicologo: accede a /psicologo, /expedientes, /directivo, /perfil, /
+ * - tutor: accede a /tutor, /perfil, /
+ * - estudiante: accede a rutas estudiantiles; bloqueado de paneles institucionales
  */
 export function RouteGuard({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -43,7 +45,6 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     }
 
     // El Aviso de Privacidad SOLO se muestra de forma forzada 1 sola vez en el PRIMER INGRESO
-    // tras registrar cuenta nueva. En inicios de sesión normales el usuario entra directo a su panel.
     const esPrimerIngreso =
       typeof window !== "undefined" && localStorage.getItem("equilibra_primer_ingreso") === "true";
 
@@ -54,13 +55,13 @@ export function RouteGuard({ children }: { children: ReactNode }) {
 
     const destinoAutorizado = rutaPorRol(user.role);
 
-    // 3. Con sesión activa en ruta pública -> Redirigir según rol (salvo en /reset donde se actualiza contraseña)
+    // 2. Con sesión activa en ruta pública -> Redirigir según rol (salvo en /reset)
     if (isPublic && !isResetPage && pathname !== "/aviso-privacidad") {
       navigate({ to: destinoAutorizado, replace: true });
       return;
     }
 
-    // 3. Rol Psicólogo: puede ver /psicologo, /expedientes, /directivo, /perfil, / y /citas
+    // 3. Rol Psicólogo: puede ver /psicologo, /expedientes, /directivo, /perfil y /
     if (user.role === "psicologo") {
       if (
         !pathname.startsWith("/psicologo") &&
@@ -75,21 +76,26 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 4. Roles Jefatura / Coordinador: puede ver /directivo, /auditoria, /perfil y /
-    if (user.role === "jefatura" || user.role === "coordinador") {
-      if (
-        !pathname.startsWith("/directivo") &&
-        !pathname.startsWith("/auditoria") &&
-        pathname !== "/perfil" &&
-        pathname !== "/"
-      ) {
+    // 4. Rol Coordinador: acceso a /coordinador, /perfil, /, /aviso-privacidad
+    //    NO accede a /psicologo, /directivo, /tutor, /expedientes, /auditoria
+    if (user.role === "coordinador") {
+      if (!pathname.startsWith("/coordinador") && pathname !== "/perfil" && pathname !== "/") {
+        toast.info("Redirigido al panel de coordinación correspondiente a tu rol.");
+        navigate({ to: "/coordinador", replace: true });
+      }
+      return;
+    }
+
+    // 5. Rol Directivo / Jefatura: SOLO accede a /directivo (estadísticas institucionales)
+    if (user.role === "jefatura" || (user.role as string) === "directivo") {
+      if (!pathname.startsWith("/directivo")) {
         toast.info("Redirigido al panel directivo correspondiente a tu rol.");
         navigate({ to: "/directivo", replace: true });
       }
       return;
     }
 
-    // 5. Rol Tutor: puede ver /tutor, /perfil y /
+    // 6. Rol Tutor: puede ver /tutor, /perfil y /
     if (user.role === "tutor") {
       if (!pathname.startsWith("/tutor") && pathname !== "/perfil" && pathname !== "/") {
         toast.info("Redirigido al panel de tutoría correspondiente a tu rol.");
@@ -98,11 +104,12 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 6. Rol Estudiante: puede ver /, /checkin, /alerta, /chat, /citas, /recursos, /perfil
+    // 7. Rol Estudiante: bloqueado de rutas institucionales
     if (user.role === "estudiante") {
       if (
         pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
+        pathname.startsWith("/coordinador") ||
         pathname.startsWith("/expedientes") ||
         pathname.startsWith("/auditoria") ||
         pathname.startsWith("/tutor")
@@ -140,8 +147,9 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     if (esPrimerIngreso && needsAcceptance && pathname !== "/aviso-privacidad" && !enReset) {
       return null;
     }
-    if (PUBLIC_ROUTES.includes(pathname) && !enReset && pathname !== "/aviso-privacidad")
+    if (PUBLIC_ROUTES.includes(pathname) && !enReset && pathname !== "/aviso-privacidad") {
       return null;
+    }
     if (
       user.role === "psicologo" &&
       pathname !== "/aviso-privacidad" &&
@@ -150,35 +158,46 @@ export function RouteGuard({ children }: { children: ReactNode }) {
       !pathname.startsWith("/psicologo") &&
       !pathname.startsWith("/expedientes") &&
       !pathname.startsWith("/directivo")
-    )
+    ) {
       return null;
+    }
     if (
-      (user.role === "jefatura" || user.role === "coordinador") &&
+      user.role === "coordinador" &&
       pathname !== "/aviso-privacidad" &&
       pathname !== "/perfil" &&
       pathname !== "/" &&
-      !pathname.startsWith("/directivo") &&
-      !pathname.startsWith("/auditoria")
-    )
+      !pathname.startsWith("/coordinador")
+    ) {
       return null;
+    }
+    if (
+      (user.role === "jefatura" || (user.role as string) === "directivo") &&
+      pathname !== "/aviso-privacidad" &&
+      !pathname.startsWith("/directivo")
+    ) {
+      return null;
+    }
     if (
       user.role === "tutor" &&
       pathname !== "/aviso-privacidad" &&
       pathname !== "/perfil" &&
       pathname !== "/" &&
       !pathname.startsWith("/tutor")
-    )
+    ) {
       return null;
+    }
     if (
       user.role === "estudiante" &&
       pathname !== "/aviso-privacidad" &&
       (pathname.startsWith("/psicologo") ||
         pathname.startsWith("/directivo") ||
+        pathname.startsWith("/coordinador") ||
         pathname.startsWith("/expedientes") ||
         pathname.startsWith("/auditoria") ||
         pathname.startsWith("/tutor"))
-    )
+    ) {
       return null;
+    }
   }
 
   return (

@@ -22,6 +22,8 @@ import {
 import { VoiceNoteRecorder } from "@/components/chat/voice-note-recorder";
 import {
   resetBackendScreeningState,
+  parseEdgeFunctionPayload,
+  extractSafeMensaje,
   type EliMessage,
   type TamizajeSubmissionPayload,
 } from "@/lib/api-client";
@@ -32,11 +34,14 @@ import {
   ELI_WELCOME_MESSAGE,
   type ScreeningState,
   type ScreeningNivel,
+  type ScreeningDefaults,
   processEliMessage,
-  generateFolio,
+  buildEliCompletionMessage,
   parseLikertOption,
   CRISIS_MESSAGE,
   detectCrisisKeywords,
+  getInitialsFromName,
+  getTodayFormattedDate,
 } from "@/lib/eli-screening";
 import { sanitizeText } from "@/lib/security";
 import { useAuth } from "@/lib/auth-context";
@@ -75,7 +80,18 @@ if (typeof window !== "undefined") {
   clearLegacyUnscopedScreeningData();
 }
 
-function ensureSessionHasWelcome(session: ChatSession): ChatSession {
+function ensureSessionHasWelcome(session: ChatSession, defaults?: ScreeningDefaults): ChatSession {
+  const baseState = session.screeningState || INITIAL_SCREENING_STATE;
+  const hydratedState: ScreeningState = {
+    ...baseState,
+    paciente: {
+      ...baseState.paciente,
+      iniciales: baseState.paciente?.iniciales || defaults?.iniciales || "",
+      fecha: baseState.paciente?.fecha || getTodayFormattedDate(),
+      semestre: baseState.paciente?.semestre || defaults?.semestre,
+    },
+  };
+
   if (!session.messages || session.messages.length === 0) {
     const welcomeMsg: EliMessage = {
       id: crypto.randomUUID(),
@@ -88,15 +104,18 @@ function ensureSessionHasWelcome(session: ChatSession): ChatSession {
       preview: ELI_WELCOME_MESSAGE.slice(0, 60),
       messages: [welcomeMsg],
       screeningState: {
-        ...(session.screeningState || INITIAL_SCREENING_STATE),
+        ...hydratedState,
         step: "waiting_consent",
       },
     };
   }
-  return session;
+  return {
+    ...session,
+    screeningState: hydratedState,
+  };
 }
 
-function createFreshSession(): ChatSession {
+function createFreshSession(defaults?: ScreeningDefaults): ChatSession {
   const id = `session-${Date.now()}`;
   const initialMsg: EliMessage = {
     id: crypto.randomUUID(),
@@ -112,14 +131,23 @@ function createFreshSession(): ChatSession {
     messages: [initialMsg],
     screeningState: {
       ...INITIAL_SCREENING_STATE,
+      paciente: {
+        ...INITIAL_SCREENING_STATE.paciente,
+        iniciales: defaults?.iniciales || "",
+        fecha: getTodayFormattedDate(),
+        semestre: defaults?.semestre,
+      },
       step: "waiting_consent",
     },
   };
 }
 
-function loadUserSessions(userIdOrEmail?: string | null): ChatSession[] {
+function loadUserSessions(
+  userIdOrEmail?: string | null,
+  defaults?: ScreeningDefaults,
+): ChatSession[] {
   clearLegacyUnscopedScreeningData();
-  if (typeof window === "undefined" || !userIdOrEmail) return [createFreshSession()];
+  if (typeof window === "undefined" || !userIdOrEmail) return [createFreshSession(defaults)];
 
   try {
     const key = getChatSessionsStorageKey(userIdOrEmail);
@@ -127,26 +155,30 @@ function loadUserSessions(userIdOrEmail?: string | null): ChatSession[] {
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(ensureSessionHasWelcome);
+        return parsed.map((s) => ensureSessionHasWelcome(s, defaults));
       }
     }
   } catch {
     // fallback
   }
-  return [createFreshSession()];
+  return [createFreshSession(defaults)];
 }
 
 export function ChatPage() {
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
   const { user } = useAuth();
+  const defaultPaciente: ScreeningDefaults = {
+    iniciales: getInitialsFromName(user?.name, user?.email),
+    semestre: user?.semestre,
+  };
 
   // RD-07: Bloqueo persistente desde la base de datos (Supabase)
   const [isBlockedByBackend, setIsBlockedByBackend] = useState(false);
 
   // Inicializar sesiones scoped por usuario
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    return loadUserSessions(user?.id || user?.email);
+    return loadUserSessions(user?.id || user?.email, defaultPaciente);
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
@@ -167,7 +199,11 @@ export function ChatPage() {
   // Reaccionar al cambio de usuario (o login) para cargar exclusivamente sus sesiones
   useEffect(() => {
     const userIdOrEmail = user?.id || user?.email;
-    const loaded = loadUserSessions(userIdOrEmail);
+    const defaultsForUser: ScreeningDefaults = {
+      iniciales: getInitialsFromName(user?.name, user?.email),
+      semestre: user?.semestre,
+    };
+    const loaded = loadUserSessions(userIdOrEmail, defaultsForUser);
     setSessions(loaded);
     let activeId = loaded[0]?.id || "default-session";
     if (userIdOrEmail) {
@@ -181,21 +217,25 @@ export function ChatPage() {
       }
     }
     setActiveSessionId(activeId);
-  }, [user?.id, user?.email]);
+  }, [user?.id, user?.email, user?.name, user?.semestre]);
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isAnalyzingResponses, setIsAnalyzingResponses] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [pendingSubmissionPayload, setPendingSubmissionPayload] =
     useState<TamizajeSubmissionPayload | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isSubmittingTamizajeRef = useRef(false);
 
   // Obtener sesión activa
   const activeSession =
-    sessions.find((s) => s.id === activeSessionId) || sessions[0] || createFreshSession();
+    sessions.find((s) => s.id === activeSessionId) ||
+    sessions[0] ||
+    createFreshSession(defaultPaciente);
   const messages = activeSession.messages;
   const screeningState = activeSession.screeningState || INITIAL_SCREENING_STATE;
 
@@ -324,7 +364,10 @@ export function ChatPage() {
             setSessions((prevSessions) => {
               const hasCompleted = prevSessions.some((s) => s.screeningState?.step === "completed");
               if (hasCompleted || prevSessions.length === 0) {
-                const fresh = createFreshSession();
+                const fresh = createFreshSession({
+                  iniciales: getInitialsFromName(user?.name, user?.email),
+                  semestre: user?.semestre,
+                });
                 const userIdOrEmail = authUserId || user?.email;
                 if (userIdOrEmail) {
                   removeStoredUserFolio(authUserId, user?.email);
@@ -355,10 +398,11 @@ export function ChatPage() {
     return () => {
       isMounted = false;
     };
-  }, [user?.id, user?.email]);
+  }, [user?.id, user?.email, user?.name, user?.semestre]);
 
-  // RECUPERACIÓN AUTOMÁTICA: Si el usuario respondió el reactivo 9 pero no se generó el mensaje de Eli con el folio
+  // RECUPERACIÓN AUTOMÁTICA: Si el usuario respondió el reactivo 9 pero falta mostrar el mensaje final con el folio del servidor
   useEffect(() => {
+    if (isTyping || isSubmittingTamizajeRef.current) return;
     if (!activeSession || !activeSession.screeningState) return;
     const st = activeSession.screeningState;
     const msgs = activeSession.messages;
@@ -374,7 +418,11 @@ export function ChatPage() {
         ));
 
     const alreadyHasEliFolio = msgs.some(
-      (m) => m.sender === "eli" && (m.text.includes("folio") || m.text.includes("EQ-")),
+      (m) =>
+        m.sender === "eli" &&
+        (m.text.includes("folio") ||
+          m.text.includes("EQ-") ||
+          m.text.includes("profesional revisará")),
     );
 
     if (hasAnsweredQ9 && !alreadyHasEliFolio) {
@@ -393,17 +441,33 @@ export function ChatPage() {
         : phq9Total >= 10 || gad7Total >= 10
           ? "amarillo"
           : "verde";
-      const existingFolio =
-        st.folio || getStoredUserFolio(user?.id, user?.email) || generateFolio();
+      const existingFolio = st.folio || getStoredUserFolio(user?.id, user?.email);
 
-      let replyText = "";
-      if (nivel === "rojo") {
-        replyText = `${CRISIS_MESSAGE}\n\nRequieres atención prioritaria. Por favor agenda tu cita HOY MISMO en el apartado "Agenda de Citas" de esta plataforma y elige TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${existingFolio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
-      } else if (nivel === "amarillo") {
-        replyText = `Tus resultados sugieren que sería beneficioso recibir apoyo profesional. Te recomiendo agendar una cita en el apartado "Agenda de Citas" de esta plataforma, eligiendo ORIENTACIÓN o TERAPIA PSICOLÓGICA.\n\nTu folio de tamizaje es: ${existingFolio}\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`;
-      } else {
-        replyText = `Tus resultados no muestran señales de alerta en este momento. Si en algún momento lo deseas, puedes agendar una sesión de CONSEJERÍA en el apartado "Agenda de Citas" de esta plataforma.\n\nTu folio de tamizaje es: ${existingFolio} por si deseas vincularlo.\n\nGracias. Un profesional revisará tus respuestas.`;
+      if (!existingFolio) {
+        if (!pendingSubmissionPayload && !submissionError) {
+          setPendingSubmissionPayload({
+            paciente: {
+              iniciales: st.paciente.iniciales || defaultPaciente.iniciales || "",
+              edad: st.paciente.edad || 0,
+              sexo: st.paciente.sexo || "",
+              fecha: st.paciente.fecha || getTodayFormattedDate(),
+              semestre: st.paciente.semestre || defaultPaciente.semestre,
+            },
+            GAD7: st.gad7Items,
+            PHQ9: phq9Items,
+          });
+          setSubmissionError(
+            "Tu tamizaje quedó pendiente de registro. Pulsa Reintentar para obtener tu folio oficial del servidor.",
+          );
+        }
+        return;
       }
+
+      const replyText = buildEliCompletionMessage({
+        folio: existingFolio,
+        nivel,
+        hasCrisisItem9: item9Score > 0,
+      });
 
       const eliMsg: EliMessage = {
         id: crypto.randomUUID(),
@@ -422,9 +486,7 @@ export function ChatPage() {
       };
 
       const userIdOrEmail = user?.id || user?.email;
-      if (userIdOrEmail) {
-        setStoredUserFolio(userIdOrEmail, existingFolio);
-      }
+      setStoredUserFolio(userIdOrEmail || "", existingFolio);
 
       const updatedState: ScreeningState = {
         ...st,
@@ -456,7 +518,17 @@ export function ChatPage() {
         return nextSessions;
       });
     }
-  }, [activeSessionId, activeSession, user?.id, user?.email]);
+  }, [
+    isTyping,
+    activeSessionId,
+    activeSession,
+    user?.id,
+    user?.email,
+    defaultPaciente.iniciales,
+    defaultPaciente.semestre,
+    pendingSubmissionPayload,
+    submissionError,
+  ]);
 
   // REINICIAR CHAT COMPLETAMENTE: Permite al estudiante iniciar una evaluación limpia
   const handleResetChat = async () => {
@@ -478,7 +550,7 @@ export function ChatPage() {
     setPendingSubmissionPayload(null);
     removeStoredUserFolio(user?.id, user?.email);
     clearLegacyUnscopedScreeningData();
-    const freshSession = createFreshSession();
+    const freshSession = createFreshSession(defaultPaciente);
     persistSessions([freshSession], freshSession.id);
     setActiveSessionId(freshSession.id);
     setInputText("");
@@ -486,10 +558,73 @@ export function ChatPage() {
     toast.success("Chat reiniciado. Puedes comenzar un nuevo tamizaje.");
   };
 
+  // Invocación unificada a la Edge Function `tamizaje` con timeout de 30s y parseo tolerante
+  const invokeTamizajeWithTimeout = async (payload: TamizajeSubmissionPayload) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+    try {
+      let { data, error } = await supabase.functions.invoke("tamizaje", {
+        body: payload,
+        signal: controller.signal,
+      });
+
+      if (
+        error &&
+        error.name !== "AbortError" &&
+        (error.message?.includes("404") ||
+          error.message?.includes("not found") ||
+          error.message?.includes("Failed to send"))
+      ) {
+        const retryController = new AbortController();
+        const retryTimeoutId = setTimeout(() => retryController.abort(), 30_000);
+        try {
+          const alt = await supabase.functions.invoke("tamizaje", {
+            body: payload,
+            signal: retryController.signal,
+          });
+          if (!alt.error) {
+            data = alt.data;
+            error = null;
+          }
+        } finally {
+          clearTimeout(retryTimeoutId);
+        }
+      }
+
+      const parsed = await parseEdgeFunctionPayload(data);
+      const nestedData =
+        parsed?.data && typeof parsed.data === "object"
+          ? (parsed.data as Record<string, unknown>)
+          : null;
+
+      const serverFolio =
+        (typeof nestedData?.folio === "string" && nestedData.folio.trim()) ||
+        (typeof parsed?.folio === "string" && parsed.folio.trim()) ||
+        "";
+      const isCompletedStatus = parsed?.status === "completado";
+      const isSuccess =
+        !error && parsed?.status !== "error" && (Boolean(serverFolio) || isCompletedStatus);
+
+      return {
+        isSuccess,
+        error,
+        rawData: data,
+        parsed,
+        nestedData,
+        serverFolio,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
   // REINTENTAR ENVÍO TRAS ERROR DE CONEXIÓN
   const handleRetrySubmission = async () => {
     if (!pendingSubmissionPayload || isTyping) return;
+    isSubmittingTamizajeRef.current = true;
     setIsTyping(true);
+    setIsAnalyzingResponses(true);
     setSubmissionError(null);
 
     try {
@@ -509,139 +644,176 @@ export function ChatPage() {
         finalPayload = { ...finalPayload, user_id: currentUserId };
       }
 
-      let { data, error } = await supabase.functions.invoke("tamizaje", {
-        body: finalPayload,
-      });
+      const { isSuccess, error, rawData, parsed, nestedData, serverFolio } =
+        await invokeTamizajeWithTimeout(finalPayload);
 
-      if (
-        error &&
-        (error.message?.includes("404") ||
-          error.message?.includes("not found") ||
-          error.message?.includes("Failed to send"))
-      ) {
-        const alt = await supabase.functions.invoke("tamizaje", {
-          body: finalPayload,
+      if (!isSuccess) {
+        console.error("[Tamizaje] Error en respuesta al reintentar:", {
+          error,
+          rawData,
+          parsed,
         });
-        if (!alt.error) {
-          data = alt.data;
-          error = null;
-        }
-      }
-
-      if (error || data?.status === "error" || !data) {
         setSubmissionError(
           error?.message ||
-            data?.error ||
+            (typeof parsed?.error === "string" && parsed.error) ||
             "Error al conectar con la función de tamizaje en Supabase. Por favor reintenta.",
         );
         return;
       }
 
-      if (data.status === "completado" && data.data) {
-        setPendingSubmissionPayload(null);
-        setSubmissionError(null);
+      setPendingSubmissionPayload(null);
+      setSubmissionError(null);
 
-        const eliTimestamp = new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
+      const eliTimestamp = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      const rawNivel = typeof nestedData?.nivel === "string" ? nestedData.nivel.toLowerCase() : "";
+      const serverNivel: ScreeningNivel =
+        rawNivel === "rojo" || rawNivel === "amarillo" || rawNivel === "verde"
+          ? rawNivel
+          : screeningState.nivel || "verde";
+      const isCrisis = Boolean(nestedData?.alerta || serverNivel === "rojo");
+      const phq9Items = Array.isArray(finalPayload.PHQ9)
+        ? finalPayload.PHQ9
+        : screeningState.phq9Items || [];
+      const gad7Items = Array.isArray(finalPayload.GAD7)
+        ? finalPayload.GAD7
+        : screeningState.gad7Items || [];
+      const gad7Total = gad7Items.reduce((a, b) => a + b, 0);
+      const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
+      const item9Score = phq9Items[8] ?? 0;
+
+      const recomendaciones =
+        serverNivel === "rojo"
+          ? "Atención prioritaria inmediata en Terapia Psicológica"
+          : serverNivel === "amarillo"
+            ? "Orientación o Terapia Psicológica recomendada"
+            : "Consejería preventiva opcional";
+
+      const jsonOutput = JSON.stringify({
+        paciente: {
+          iniciales: finalPayload.paciente.iniciales || "",
+          edad: finalPayload.paciente.edad || 0,
+          sexo: finalPayload.paciente.sexo || "",
+          fecha: finalPayload.paciente.fecha || new Date().toLocaleDateString("es-MX"),
+        },
+        GAD_7: { total: gad7Total, items: gad7Items },
+        PHQ_9: { total: phq9Total, items: phq9Items, item9: item9Score },
+        alerta: isCrisis,
+        recomendaciones,
+      });
+
+      const serverMensaje = extractSafeMensaje(parsed?.mensaje);
+      let eliText = "";
+      if (serverMensaje) {
+        eliText =
+          serverFolio && !serverMensaje.includes(serverFolio)
+            ? `${serverMensaje}\n\nTu folio de tamizaje es: ${serverFolio}`
+            : serverMensaje;
+      } else {
+        eliText = buildEliCompletionMessage({
+          folio: serverFolio,
+          nivel: serverNivel,
+          hasCrisisItem9: item9Score > 0,
+          jsonOutput,
         });
+      }
 
-        const isCrisis = Boolean(data.data.alerta || data.data.nivel === "rojo");
-
-        const eliMsg: EliMessage = {
-          id: crypto.randomUUID(),
-          sender: "eli",
-          text: data.mensaje || "Tamizaje completado. Un profesional revisará tus respuestas.",
-          isCrisisProtocol: isCrisis,
-          crisisData: isCrisis
-            ? {
-                actionLabel: "Contactar a Línea de la Vida ahora",
-                actionRoute: "/alerta",
-                helplineName: "Línea de la Vida",
-                helphoneNumber: "800 911 2000",
-              }
-            : undefined,
-          timestamp: eliTimestamp,
-        };
-
-        const finalMessages = [...messages, eliMsg];
-
-        const userIdOrEmail = user?.id || user?.email;
-        if (userIdOrEmail && data.data?.folio) {
-          setStoredUserFolio(userIdOrEmail, data.data.folio);
-        }
-
-        const updatedState: ScreeningState = {
-          ...screeningState,
-          step: "completed",
-          folio: data.data.folio,
-          nivel: data.data.nivel,
-        };
-
-        const updatedSessionFinal: ChatSession = {
-          ...activeSession,
-          updatedAt: "Ahora",
-          messages: finalMessages,
-          preview: eliMsg.text.slice(0, 60),
-          screeningState: updatedState,
-        };
-
-        const finalSessions = sessions.map((s) =>
-          s.id === activeSession.id ? updatedSessionFinal : s,
-        );
-        persistSessions(finalSessions);
-        if (
-          !DEMO_MODE &&
-          (data.data.nivel === "amarillo" || data.data.nivel === "rojo" || data.data.bloqueado)
-        ) {
-          setIsBlockedByBackend(true);
-        }
-        toast.success("Tamizaje registrado correctamente");
-
-        if (data.data.nivel === "rojo" || isCrisis) {
-          (async () => {
-            try {
-              const gad7Items = finalPayload.GAD7 || [];
-              const phq9Items = finalPayload.PHQ9 || [];
-              const gad7Total = gad7Items.reduce((a, b) => a + b, 0);
-              const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
-              const item9Score = phq9Items[8] ?? 0;
-
-              await supabase.functions.invoke("notificar-psicologo-rojo", {
-                body: {
-                  folio: data.data.folio,
-                  paciente: finalPayload.paciente,
-                  gad7_total: gad7Total,
-                  gad7_items: gad7Items,
-                  phq9_total: phq9Total,
-                  phq9_items: phq9Items,
-                  item9_score: item9Score,
-                  estudiante_id: finalPayload.user_id || undefined,
-                  estudiante_email: user?.email || undefined,
-                  estudiante_nombre: user?.name || undefined,
-                  fecha: new Date().toISOString(),
-                },
-              });
-
-              await notificarTutorNivelRojo({
-                estudianteId: finalPayload.user_id || user?.id,
-                folio: data.data.folio,
-                carrera: user?.carrera,
-                grupo: user?.grupo,
-              });
-            } catch (retryAlertErr) {
-              console.warn("[AlertaRojo] Aviso al reintentar alerta al psicólogo:", retryAlertErr);
+      const eliMsg: EliMessage = {
+        id: crypto.randomUUID(),
+        sender: "eli",
+        text: eliText,
+        isCrisisProtocol: isCrisis,
+        crisisData: isCrisis
+          ? {
+              actionLabel: "Contactar a Línea de la Vida ahora",
+              actionRoute: "/alerta",
+              helplineName: "Línea de la Vida",
+              helphoneNumber: "800 911 2000",
             }
-          })();
-        }
+          : undefined,
+        timestamp: eliTimestamp,
+      };
+
+      const finalMessages = [...messages, eliMsg];
+
+      const userIdOrEmail = user?.id || user?.email;
+      if (serverFolio) {
+        setStoredUserFolio(userIdOrEmail || "", serverFolio);
+      }
+
+      const updatedState: ScreeningState = {
+        ...screeningState,
+        step: "completed",
+        currentQuestionIndex: 8,
+        gad7Items,
+        phq9Items,
+        folio: serverFolio || undefined,
+        nivel: serverNivel,
+      };
+
+      const updatedSessionFinal: ChatSession = {
+        ...activeSession,
+        updatedAt: "Ahora",
+        messages: finalMessages,
+        preview: eliText.slice(0, 60),
+        screeningState: updatedState,
+      };
+
+      const finalSessions = sessions.map((s) =>
+        s.id === activeSession.id ? updatedSessionFinal : s,
+      );
+      persistSessions(finalSessions);
+      if (
+        !DEMO_MODE &&
+        (serverNivel === "amarillo" || serverNivel === "rojo" || Boolean(nestedData?.bloqueado))
+      ) {
+        setIsBlockedByBackend(true);
+      }
+      toast.success("Tamizaje registrado correctamente");
+
+      if (serverNivel === "rojo" || isCrisis) {
+        (async () => {
+          try {
+            await supabase.functions.invoke("notificar-psicologo-rojo", {
+              body: {
+                folio: serverFolio || "ALERTA-CHAT",
+                paciente: finalPayload.paciente,
+                gad7_total: gad7Total,
+                gad7_items: gad7Items,
+                phq9_total: phq9Total,
+                phq9_items: phq9Items,
+                item9_score: item9Score,
+                estudiante_id: finalPayload.user_id || undefined,
+                estudiante_email: user?.email || undefined,
+                estudiante_nombre: user?.name || undefined,
+                fecha: new Date().toISOString(),
+              },
+            });
+
+            await notificarTutorNivelRojo({
+              estudianteId: finalPayload.user_id || user?.id,
+              folio: serverFolio || "ALERTA-CHAT",
+              carrera: user?.carrera,
+              grupo: user?.grupo,
+            });
+          } catch (retryAlertErr) {
+            console.warn("[AlertaRojo] Aviso al reintentar alerta al psicólogo:", retryAlertErr);
+          }
+        })();
       }
     } catch (err: unknown) {
+      console.error("[Tamizaje] Error real al reintentar el tamizaje:", err);
       const msg =
         err instanceof Error
           ? err.message
           : "Error al conectar con la función de tamizaje en Supabase.";
       setSubmissionError(msg);
     } finally {
+      isSubmittingTamizajeRef.current = false;
+      setIsAnalyzingResponses(false);
       setIsTyping(false);
     }
   };
@@ -650,7 +822,7 @@ export function ChatPage() {
   const handleNewConversation = () => {
     setIsBlockedByBackend(false);
     resetBackendScreeningState();
-    const freshSession = createFreshSession();
+    const freshSession = createFreshSession(defaultPaciente);
     const updated = [freshSession, ...sessions];
     persistSessions(updated, freshSession.id);
     setActiveSessionId(freshSession.id);
@@ -662,10 +834,13 @@ export function ChatPage() {
   // SELECCIONAR SESIÓN
   const handleSelectSession = (session: ChatSession) => {
     setActiveSessionId(session.id);
-    try {
-      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, session.id);
-    } catch {
-      // ignore
+    const userIdOrEmail = user?.id || user?.email;
+    if (userIdOrEmail) {
+      try {
+        localStorage.setItem(getActiveSessionStorageKey(userIdOrEmail), session.id);
+      } catch {
+        // ignore
+      }
     }
     setIsHistoryOpen(false);
   };
@@ -674,7 +849,7 @@ export function ChatPage() {
   const handleClearAllHistory = () => {
     setIsBlockedByBackend(false);
     resetBackendScreeningState();
-    const freshSession = createFreshSession();
+    const freshSession = createFreshSession(defaultPaciente);
     persistSessions([freshSession], freshSession.id);
     setActiveSessionId(freshSession.id);
     setIsHistoryOpen(false);
@@ -688,14 +863,6 @@ export function ChatPage() {
     }
     if (screeningState.step === "waiting_sex") {
       return ["Femenino", "Masculino", "Otro"];
-    }
-    if (screeningState.step === "waiting_fecha") {
-      const todayStr = new Date().toLocaleDateString("es-MX", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
-      return [todayStr, "Hoy"];
     }
     if (screeningState.step === "gad7" || screeningState.step === "phq9") {
       return ["Nunca", "Varios días", "Más de la mitad de los días", "Casi todos los días"];
@@ -732,13 +899,14 @@ export function ChatPage() {
       preview: sanitized.slice(0, 60),
     };
 
+    isSubmittingTamizajeRef.current = true;
+    setInputText("");
+    setIsTyping(true);
+
     const updatedSessionsInterim = sessions.map((s) =>
       s.id === activeSession.id ? sessionWithUser : s,
     );
     persistSessions(updatedSessionsInterim);
-
-    setInputText("");
-    setIsTyping(true);
     // Detección proactiva de palabras clave de crisis (SIN Gemini)
     // "suicidio", "morir", "matarme", "hacerme daño", "acabar con todo", "no quiero vivir", etc.
     const hasCrisisKeyword = detectCrisisKeywords(sanitized);
@@ -749,8 +917,8 @@ export function ChatPage() {
         minute: "2-digit",
       });
 
-      const crisisFolio =
-        screeningState.folio || getStoredUserFolio(user?.id, user?.email) || generateFolio();
+      const existingFolio =
+        screeningState.folio || getStoredUserFolio(user?.id, user?.email) || undefined;
 
       const eliMsg: EliMessage = {
         id: crypto.randomUUID(),
@@ -776,14 +944,18 @@ export function ChatPage() {
         screeningState: {
           ...screeningState,
           nivel: "rojo",
-          folio: crisisFolio,
+          folio: existingFolio,
         },
       };
 
       const finalSessions = sessions.map((s) =>
         s.id === activeSession.id ? updatedSessionCrisis : s,
       );
+      if (existingFolio) {
+        setStoredUserFolio(user?.id || user?.email || "", existingFolio);
+      }
       persistSessions(finalSessions);
+      isSubmittingTamizajeRef.current = false;
       setIsTyping(false);
 
       // Notificación activa en segundo plano al psicólogo vía Edge Function
@@ -803,12 +975,13 @@ export function ChatPage() {
 
           await supabase.functions.invoke("notificar-psicologo-rojo", {
             body: {
-              folio: crisisFolio,
+              folio: existingFolio || "ALERTA-CHAT",
               paciente: {
-                iniciales: screeningState.paciente.iniciales || "ALERTA-CHAT",
+                iniciales:
+                  screeningState.paciente.iniciales || defaultPaciente.iniciales || "ALERTA-CHAT",
                 edad: screeningState.paciente.edad || 0,
                 sexo: screeningState.paciente.sexo || "No especificado",
-                fecha: new Date().toLocaleDateString("es-MX"),
+                fecha: getTodayFormattedDate(),
               },
               gad7_total: screeningState.gad7Items.reduce((a, b) => a + b, 0),
               phq9_total: screeningState.phq9Items.reduce((a, b) => a + b, 0),
@@ -822,7 +995,7 @@ export function ChatPage() {
 
           await notificarTutorNivelRojo({
             estudianteId: currentUserId || user?.id,
-            folio: crisisFolio,
+            folio: existingFolio || "ALERTA-CHAT",
             carrera: user?.carrera,
             grupo: user?.grupo,
           });
@@ -836,66 +1009,13 @@ export function ChatPage() {
     }
 
     // Procesar localmente la pregunta/respuesta actual
-    const stepResult = processEliMessage(sanitized, screeningState);
+    const stepResult = processEliMessage(sanitized, screeningState, defaultPaciente);
 
-    // Si respondió la pregunta 9 de PHQ-9, hacer UNA sola llamada a la función de Supabase 'tamizaje':
+    // Si respondió la pregunta 9 de PHQ-9, llamar a la Edge Function `tamizaje` y usar EXCLUSIVAMENTE json.data.folio
     if (stepResult.isReadyForSubmission && stepResult.submissionPayload) {
-      // 1. Inmediatamente generar y publicar la respuesta de Eli con el Folio en el chat
-      const eliTimestamp = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      setSubmissionError(null);
+      setIsAnalyzingResponses(true);
 
-      const isCrisis = Boolean(stepResult.isCrisis || stepResult.nivel === "rojo");
-      const calculatedFolio = stepResult.folio || generateFolio();
-      const calculatedNivel = stepResult.nivel || "verde";
-
-      const eliMsg: EliMessage = {
-        id: crypto.randomUUID(),
-        sender: "eli",
-        text:
-          stepResult.replyText ||
-          `Tamizaje completado. Tu folio de tamizaje es: ${calculatedFolio}.\nEscríbelo en el formulario para vincular tus resultados.\n\nGracias. Un profesional revisará tus respuestas.`,
-        isCrisisProtocol: isCrisis,
-        crisisData: isCrisis
-          ? {
-              actionLabel: "Contactar a Línea de la Vida ahora",
-              actionRoute: "/alerta",
-              helplineName: "Línea de la Vida",
-              helphoneNumber: "800 911 2000",
-            }
-          : undefined,
-        timestamp: eliTimestamp,
-      };
-
-      const finalMessages = [...newMessages, eliMsg];
-
-      const userIdOrEmail = user?.id || user?.email;
-      if (userIdOrEmail) {
-        setStoredUserFolio(userIdOrEmail, calculatedFolio);
-      }
-
-      const updatedState: ScreeningState = {
-        ...stepResult.nextState,
-        step: "completed",
-        folio: calculatedFolio,
-        nivel: calculatedNivel,
-      };
-
-      const updatedSessionFinal: ChatSession = {
-        ...activeSession,
-        updatedAt: "Ahora",
-        messages: finalMessages,
-        preview: eliMsg.text.slice(0, 60),
-        screeningState: updatedState,
-      };
-
-      setSessions((prev) => prev.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)));
-      persistSessions(sessions.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)));
-      setIsTyping(false);
-      toast.success("Tamizaje completado con éxito");
-
-      // 2. Registro asíncrono en Supabase (sin bloquear la visualización del folio en el chat)
       let currentUserId: string | null = null;
       try {
         const { data: authData } = await supabase.auth.getUser();
@@ -908,78 +1028,185 @@ export function ChatPage() {
         currentUserId = null;
       }
 
+      // Mantener exactamente el payload esperado: { paciente, GAD7, PHQ9, user_id }
       const payloadWithUser: TamizajeSubmissionPayload = {
         ...stepResult.submissionPayload,
         user_id: currentUserId,
       };
 
-      (async () => {
-        try {
-          const invokePromise = supabase.functions.invoke("tamizaje", {
-            body: payloadWithUser,
+      try {
+        const { isSuccess, error, rawData, parsed, nestedData, serverFolio } =
+          await invokeTamizajeWithTimeout(payloadWithUser);
+
+        if (!isSuccess) {
+          console.error("[Tamizaje] Error en respuesta de Edge Function:", {
+            error,
+            rawData,
+            parsed,
           });
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout")), 6000),
+          setPendingSubmissionPayload(payloadWithUser);
+          setSubmissionError(
+            error?.message ||
+              (typeof parsed?.error === "string" && parsed.error) ||
+              "Error al obtener el folio oficial desde la función de tamizaje. Por favor reintenta.",
           );
-          const res = (await Promise.race([invokePromise, timeoutPromise])) as {
-            data?: { data?: { folio?: string } };
-            error?: Error | null;
-          };
-
-          if (res?.data?.data?.folio) {
-            const serverFolio = res.data.data.folio;
-            if (userIdOrEmail) {
-              setStoredUserFolio(userIdOrEmail, serverFolio);
-            }
-          }
-        } catch {
-          // El tamizaje ya quedó procesado y asegurado localmente en la sesión del chat
+          return;
         }
-      })();
 
-      // Disparar Edge Function "notificar-psicologo-rojo" cuando el tamizaje resulta en nivel rojo
-      if (calculatedNivel === "rojo" || isCrisis) {
-        (async () => {
-          try {
-            const gad7Items = stepResult.submissionPayload?.GAD7 || [];
-            const phq9Items = stepResult.submissionPayload?.PHQ9 || [];
-            const gad7Total = gad7Items.reduce((a, b) => a + b, 0);
-            const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
-            const item9Score = phq9Items[8] ?? 0;
+        const rawNivel =
+          typeof nestedData?.nivel === "string" ? nestedData.nivel.toLowerCase() : "";
+        const serverNivel: ScreeningNivel =
+          rawNivel === "rojo" || rawNivel === "amarillo" || rawNivel === "verde"
+            ? rawNivel
+            : stepResult.nivel || "verde";
+        const isCrisis = Boolean(
+          nestedData?.alerta || serverNivel === "rojo" || stepResult.isCrisis,
+        );
+        const gad7Items = Array.isArray(stepResult.submissionPayload.GAD7)
+          ? stepResult.submissionPayload.GAD7
+          : [];
+        const phq9Items = Array.isArray(stepResult.submissionPayload.PHQ9)
+          ? stepResult.submissionPayload.PHQ9
+          : [];
+        const item9Score = phq9Items[8] ?? 0;
 
-            const alertaPayload = {
-              folio: calculatedFolio,
-              paciente: stepResult.submissionPayload?.paciente || {
-                iniciales: "",
-                edad: 0,
-                sexo: "",
-                fecha: new Date().toLocaleDateString("es-MX"),
-              },
-              gad7_total: gad7Total,
-              gad7_items: gad7Items,
-              phq9_total: phq9Total,
-              phq9_items: phq9Items,
-              item9_score: item9Score,
-              estudiante_id: currentUserId || undefined,
-              estudiante_email: user?.email || undefined,
-              estudiante_nombre: user?.name || undefined,
-              fecha: new Date().toISOString(),
-            };
+        const eliTimestamp = new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
 
-            await supabase.functions.invoke("notificar-psicologo-rojo", {
-              body: alertaPayload,
-            });
+        const jsonOutput = stepResult.finalJson
+          ? JSON.stringify({
+              paciente: stepResult.finalJson.paciente,
+              GAD_7: stepResult.finalJson.GAD_7,
+              PHQ_9: stepResult.finalJson.PHQ_9,
+              alerta: isCrisis,
+              recomendaciones: stepResult.finalJson.recomendaciones,
+            })
+          : undefined;
 
-            await notificarTutorNivelRojo({
-              estudianteId: currentUserId || user?.id,
-              folio: calculatedFolio,
-              carrera: user?.carrera,
-              grupo: user?.grupo,
-            });
-          } catch (alertaErr) {
-            console.warn("[AlertaRojo] Aviso al disparar notificación al psicólogo:", alertaErr);
-          }
-        })();
+        const serverMensaje = extractSafeMensaje(parsed?.mensaje);
+        let eliText = "";
+        if (serverMensaje) {
+          eliText =
+            serverFolio && !serverMensaje.includes(serverFolio)
+              ? `${serverMensaje}\n\nTu folio de tamizaje es: ${serverFolio}`
+              : serverMensaje;
+        } else {
+          eliText = buildEliCompletionMessage({
+            folio: serverFolio,
+            nivel: serverNivel,
+            hasCrisisItem9: item9Score > 0,
+            jsonOutput,
+          });
+        }
+
+        const eliMsg: EliMessage = {
+          id: crypto.randomUUID(),
+          sender: "eli",
+          text: eliText,
+          isCrisisProtocol: isCrisis,
+          crisisData: isCrisis
+            ? {
+                actionLabel: "Contactar a Línea de la Vida ahora",
+                actionRoute: "/alerta",
+                helplineName: "Línea de la Vida",
+                helphoneNumber: "800 911 2000",
+              }
+            : undefined,
+          timestamp: eliTimestamp,
+        };
+
+        const finalMessages = [...newMessages, eliMsg];
+
+        const userIdOrEmail = user?.id || user?.email;
+        if (serverFolio) {
+          setStoredUserFolio(userIdOrEmail || "", serverFolio);
+        }
+
+        const updatedState: ScreeningState = {
+          ...stepResult.nextState,
+          step: "completed",
+          folio: serverFolio || undefined,
+          nivel: serverNivel,
+        };
+
+        const updatedSessionFinal: ChatSession = {
+          ...activeSession,
+          updatedAt: "Ahora",
+          messages: finalMessages,
+          preview: eliText.slice(0, 60),
+          screeningState: updatedState,
+        };
+
+        setPendingSubmissionPayload(null);
+        setSessions((prev) =>
+          prev.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)),
+        );
+        persistSessions(
+          updatedSessionsInterim.map((s) => (s.id === activeSession.id ? updatedSessionFinal : s)),
+        );
+        if (
+          !DEMO_MODE &&
+          (serverNivel === "amarillo" || serverNivel === "rojo" || Boolean(nestedData?.bloqueado))
+        ) {
+          setIsBlockedByBackend(true);
+        }
+        toast.success("Tamizaje completado con éxito");
+
+        // Disparar Edge Function "notificar-psicologo-rojo" con el folio oficial del servidor
+        if (serverNivel === "rojo" || isCrisis) {
+          (async () => {
+            try {
+              const gad7Total = gad7Items.reduce((a, b) => a + b, 0);
+              const phq9Total = phq9Items.reduce((a, b) => a + b, 0);
+
+              const alertaPayload = {
+                folio: serverFolio || "ALERTA-CHAT",
+                paciente: stepResult.submissionPayload?.paciente || {
+                  iniciales: "",
+                  edad: 0,
+                  sexo: "",
+                  fecha: new Date().toLocaleDateString("es-MX"),
+                },
+                gad7_total: gad7Total,
+                gad7_items: gad7Items,
+                phq9_total: phq9Total,
+                phq9_items: phq9Items,
+                item9_score: item9Score,
+                estudiante_id: currentUserId || undefined,
+                estudiante_email: user?.email || undefined,
+                estudiante_nombre: user?.name || undefined,
+                fecha: new Date().toISOString(),
+              };
+
+              await supabase.functions.invoke("notificar-psicologo-rojo", {
+                body: alertaPayload,
+              });
+
+              await notificarTutorNivelRojo({
+                estudianteId: currentUserId || user?.id,
+                folio: serverFolio || "ALERTA-CHAT",
+                carrera: user?.carrera,
+                grupo: user?.grupo,
+              });
+            } catch (alertaErr) {
+              console.warn("[AlertaRojo] Aviso al disparar notificación al psicólogo:", alertaErr);
+            }
+          })();
+        }
+      } catch (err: unknown) {
+        console.error("[Tamizaje] Error real al registrar el tamizaje:", err);
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Error al conectar con la función de tamizaje en Supabase.";
+        setPendingSubmissionPayload(payloadWithUser);
+        setSubmissionError(msg);
+      } finally {
+        isSubmittingTamizajeRef.current = false;
+        setIsAnalyzingResponses(false);
+        setIsTyping(false);
       }
 
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -1020,6 +1247,7 @@ export function ChatPage() {
       s.id === activeSession.id ? updatedSessionFinal : s,
     );
     persistSessions(finalSessions);
+    isSubmittingTamizajeRef.current = false;
     setIsTyping(false);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
@@ -1249,45 +1477,45 @@ export function ChatPage() {
                   <p className="whitespace-pre-wrap">{msg.text}</p>
 
                   {/* Tarjeta destacada de Folio directamente en el mensaje de Eli */}
-                  {!isUser && (msg.text.includes("folio") || msg.text.includes("EQ-")) && (
-                    <div className="mt-3 rounded-xl border-2 border-primary/40 bg-primary/10 p-3 text-card-foreground shadow-xs">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <Ticket className="size-4 text-primary shrink-0" />
-                          <span className="text-xs font-bold text-primary">Folio Oficial:</span>
-                          <span className="font-mono text-base font-extrabold text-primary bg-background px-2.5 py-0.5 rounded-lg border border-primary/30">
-                            {screeningState.folio ||
-                              msg.text.match(/EQ-\d{4}/)?.[0] ||
-                              getStoredUserFolio(user?.id, user?.email) ||
-                              "EQ-PENDIENTE"}
-                          </span>
+                  {!isUser &&
+                    (msg.text.includes("folio") || msg.text.includes("EQ-")) &&
+                    (() => {
+                      const resolvedMsgFolio =
+                        msg.text.match(/EQ-\d{4}/)?.[0] ||
+                        screeningState.folio ||
+                        getStoredUserFolio(user?.id, user?.email) ||
+                        "";
+                      if (!resolvedMsgFolio) return null;
+                      return (
+                        <div className="mt-3 rounded-xl border-2 border-primary/40 bg-primary/10 p-3 text-card-foreground shadow-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Ticket className="size-4 text-primary shrink-0" />
+                              <span className="text-xs font-bold text-primary">Folio Oficial:</span>
+                              <span className="font-mono text-base font-extrabold text-primary bg-background px-2.5 py-0.5 rounded-lg border border-primary/30">
+                                {resolvedMsgFolio}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(resolvedMsgFolio);
+                                toast.success("Folio copiado al portapapeles");
+                              }}
+                              className="h-7 px-2.5 text-[11px] font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 gap-1"
+                            >
+                              <Copy className="size-3" />
+                              <span>Copiar</span>
+                            </Button>
+                          </div>
+                          <p className="mt-1.5 text-[10px] text-muted-foreground leading-tight">
+                            Escribe este folio en el apartado <strong>Agenda de Citas</strong> al
+                            solicitar tu cita.
+                          </p>
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => {
-                            const f =
-                              screeningState.folio ||
-                              msg.text.match(/EQ-\d{4}/)?.[0] ||
-                              getStoredUserFolio(user?.id, user?.email) ||
-                              "";
-                            if (f) {
-                              navigator.clipboard.writeText(f);
-                              toast.success("Folio copiado al portapapeles");
-                            }
-                          }}
-                          className="h-7 px-2.5 text-[11px] font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 gap-1"
-                        >
-                          <Copy className="size-3" />
-                          <span>Copiar</span>
-                        </Button>
-                      </div>
-                      <p className="mt-1.5 text-[10px] text-muted-foreground leading-tight">
-                        Escribe este folio en el apartado <strong>Agenda de Citas</strong> al
-                        solicitar tu cita.
-                      </p>
-                    </div>
-                  )}
+                      );
+                    })()}
 
                   <div
                     className={`mt-1 text-[10px] ${
@@ -1497,7 +1725,9 @@ export function ChatPage() {
                   <span className="size-2 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
                   <span className="size-2 rounded-full bg-primary animate-bounce" />
                   <span className="ml-1.5 text-xs text-muted-foreground font-medium">
-                    {BRAND.assistant} está registrando...
+                    {isAnalyzingResponses
+                      ? "Eli está analizando tus respuestas..."
+                      : `${BRAND.assistant} está registrando...`}
                   </span>
                 </div>
               </motion.div>

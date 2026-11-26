@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { GraduationCap } from "lucide-react";
+import { Building2, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { authIcons } from "@/config/icons";
 import { useAuth } from "@/lib/auth-context";
@@ -123,7 +123,9 @@ export function LoginPage() {
   };
 
   // Activación directa de modo demostración en cliente (SIN llamar a Supabase Auth)
-  const handleActivateDemo = (role: "estudiante" | "psicologo" | "jefatura" | "tutor") => {
+  const handleActivateDemo = (
+    role: "estudiante" | "psicologo" | "jefatura" | "coordinador" | "tutor",
+  ) => {
     setErrorMessage(null);
     const demoUser = loginAsDemo(role);
     resetLoginAttempts();
@@ -219,13 +221,30 @@ export function LoginPage() {
 
                 <button
                   type="button"
-                  onClick={() => handleActivateDemo("jefatura")}
+                  onClick={() => handleActivateDemo("coordinador")}
                   className="flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
-                  title="Acceso directo de prueba como Jefatura hacia /directivo"
+                  title="Acceso directo de prueba como Coordinador (Lic. Roberto Torres) hacia /coordinador"
+                >
+                  <Building2 className="size-3.5 shrink-0 text-[#1B198F]" />
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="block font-semibold truncate">Lic. Roberto (Coordinador)</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      Modo demo • /coordinador
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleActivateDemo("jefatura")}
+                  className="sm:col-span-2 flex items-center gap-2 rounded-xl border border-border/60 bg-background/80 px-2.5 py-1.5 text-left text-xs font-medium text-foreground transition-colors hover:border-accent hover:bg-accent/10 cursor-pointer"
+                  title="Acceso directo de prueba como Jefatura / Directivo hacia /directivo"
                 >
                   <GraduationCap className="size-3.5 shrink-0 text-accent" />
                   <div className="min-w-0 flex-1 truncate">
-                    <span className="block font-semibold truncate">Jefatura de Carrera</span>
+                    <span className="block font-semibold truncate">
+                      Directivo / Jefatura de Carrera
+                    </span>
                     <span className="block truncate text-[10px] text-muted-foreground">
                       Modo demo • /directivo
                     </span>

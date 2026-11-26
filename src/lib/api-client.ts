@@ -383,6 +383,47 @@ export interface TamizajeEdgeResponse {
   error?: string;
 }
 
+const TAMIZAJE_TIMEOUT_MS = 30_000;
+
+export async function parseEdgeFunctionPayload(
+  raw: unknown,
+): Promise<Record<string, unknown> | null> {
+  try {
+    if (raw == null) return null;
+    if (typeof Blob !== "undefined" && raw instanceof Blob) {
+      const text = await raw.text();
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    }
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const parsed = JSON.parse(trimmed);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    }
+    if (typeof raw === "object") {
+      return raw as Record<string, unknown>;
+    }
+    return null;
+  } catch (parseErr) {
+    console.warn("[Tamizaje] No se pudo parsear respuesta JSON de Edge Function:", parseErr);
+    return null;
+  }
+}
+
+export function extractSafeMensaje(rawMensaje: unknown): string {
+  if (typeof rawMensaje === "string") return rawMensaje.trim();
+  if (
+    rawMensaje &&
+    typeof rawMensaje === "object" &&
+    "text" in rawMensaje &&
+    typeof (rawMensaje as { text?: unknown }).text === "string"
+  ) {
+    return (rawMensaje as { text: string }).text.trim();
+  }
+  return "";
+}
+
 /**
  * Invoca la Edge Function `tamizaje` en Supabase al concluir el reactivo 9 de PHQ-9.
  * Utiliza supabase.functions.invoke inyectando automáticamente la URL y clave pública anónima.
@@ -391,6 +432,9 @@ export interface TamizajeEdgeResponse {
 export async function invokeTamizajeEdgeFunction(
   payload: TamizajeSubmissionPayload,
 ): Promise<{ data: TamizajeEdgeResponse | null; error: string | null }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TAMIZAJE_TIMEOUT_MS);
+
   try {
     let finalPayload = payload;
     if (finalPayload.user_id === undefined) {
@@ -410,37 +454,59 @@ export async function invokeTamizajeEdgeFunction(
 
     const { data, error } = await supabase.functions.invoke("tamizaje", {
       body: finalPayload,
+      signal: controller.signal,
     });
 
     if (error) {
+      console.error("[Tamizaje] Error devuelto por supabase.functions.invoke:", error);
       return {
         data: null,
         error: error.message || "Error al invocar la función de tamizaje en Supabase",
       };
     }
 
-    if (!data) {
+    const parsed = await parseEdgeFunctionPayload(data);
+    if (!parsed) {
+      console.error("[Tamizaje] Respuesta vacía o no parseable de tamizaje:", data);
       return {
         data: null,
-        error: "No se recibió respuesta de la función de tamizaje",
+        error: "No se recibió respuesta válida de la función de tamizaje",
       };
     }
 
-    if (data.status === "error" || data.error) {
+    const nestedData =
+      parsed.data && typeof parsed.data === "object"
+        ? (parsed.data as Record<string, unknown>)
+        : null;
+    const hasFolio = Boolean(
+      (typeof nestedData?.folio === "string" && nestedData.folio.trim().length > 0) ||
+      (typeof parsed.folio === "string" && parsed.folio.trim().length > 0),
+    );
+    const isCompletado = parsed.status === "completado";
+
+    if (parsed.status === "error" || (!hasFolio && !isCompletado)) {
+      const errDetail =
+        (typeof parsed.error === "string" && parsed.error) ||
+        extractSafeMensaje(parsed.mensaje) ||
+        "Error al procesar el tamizaje en el servidor";
+      console.error("[Tamizaje] Respuesta de fallo del servidor:", parsed);
       return {
         data: null,
-        error: data.error || data.mensaje || "Error al procesar el tamizaje en el servidor",
+        error: errDetail,
       };
     }
 
-    return { data: data as TamizajeEdgeResponse, error: null };
+    return { data: parsed as unknown as TamizajeEdgeResponse, error: null };
   } catch (err: unknown) {
+    console.error("[Tamizaje] Excepción real en invokeTamizajeEdgeFunction:", err);
     const errorMsg =
       err instanceof Error ? err.message : "Error de red al conectar con la función de tamizaje";
     return {
       data: null,
       error: errorMsg,
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -487,6 +553,8 @@ export async function callTamizajeEdgeFunction(
 ): Promise<EdgeFunctionTamizajeResult | null> {
   const URL_FN = `${supabaseUrl}/functions/v1/tamizaje`;
   const ANON_KEY = supabaseAnonKey;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TAMIZAJE_TIMEOUT_MS);
 
   try {
     const res = await fetch(URL_FN, {
@@ -497,6 +565,7 @@ export async function callTamizajeEdgeFunction(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ messages: historial }),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -508,8 +577,11 @@ export async function callTamizajeEdgeFunction(
       return null;
     }
     return data;
-  } catch {
+  } catch (err) {
+    console.error("[Tamizaje] Error real en callTamizajeEdgeFunction:", err);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -537,7 +609,9 @@ export async function sendEliMessage(
       const replyText =
         edgeResult.mensaje ||
         (isCompletado
-          ? `Tamizaje finalizado. Tu folio es: ${edgeData?.folio || "EQ-0000"}. Gracias. Un profesional revisará tus respuestas.`
+          ? edgeData?.folio
+            ? `Tamizaje finalizado. Tu folio es: ${edgeData.folio}. Gracias. Un profesional revisará tus respuestas.`
+            : "Tamizaje finalizado. Gracias. Un profesional revisará tus respuestas."
           : "");
 
       const isCrisis =

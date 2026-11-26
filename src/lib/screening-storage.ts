@@ -19,6 +19,8 @@ export function getActiveSessionStorageKey(userIdOrEmail?: string | null): strin
   return `equilibra_eli_active_session_scoped_${clean}`;
 }
 
+export const LAST_FOLIO_STORAGE_KEY = "equilibra_ultimo_folio_tamizaje";
+
 export function getLastFolioStorageKey(userIdOrEmail?: string | null): string {
   const clean = getCleanUserIdentifier(userIdOrEmail);
   return `equilibra_ultimo_folio_scoped_${clean}`;
@@ -48,9 +50,12 @@ export function setStoredUserFolio(
   folio: string,
   altIdentifier?: string | null,
 ): void {
-  if (typeof window === "undefined" || !userIdOrEmail || !folio) return;
+  if (typeof window === "undefined" || !folio) return;
   try {
-    localStorage.setItem(getLastFolioStorageKey(userIdOrEmail), folio);
+    localStorage.setItem(LAST_FOLIO_STORAGE_KEY, folio);
+    if (userIdOrEmail) {
+      localStorage.setItem(getLastFolioStorageKey(userIdOrEmail), folio);
+    }
     if (altIdentifier) {
       localStorage.setItem(getLastFolioStorageKey(altIdentifier), folio);
     }
@@ -78,7 +83,6 @@ export function removeStoredUserFolio(userId?: string | null, userEmail?: string
 export function clearLegacyUnscopedScreeningData(): void {
   if (typeof window === "undefined") return;
   const legacyKeys = [
-    "equilibra_ultimo_folio_tamizaje",
     "equilibra_eli_screening_sessions_v5",
     "equilibra_eli_active_session_id_v5",
     "equilibra_eli_screening_sessions_v4",
@@ -102,6 +106,7 @@ export function clearLegacyUnscopedScreeningData(): void {
       const k = localStorage.key(i);
       if (
         k &&
+        k !== LAST_FOLIO_STORAGE_KEY &&
         !k.startsWith("equilibra_eli_sessions_scoped_") &&
         !k.startsWith("equilibra_ultimo_folio_scoped_")
       ) {
